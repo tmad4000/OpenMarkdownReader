@@ -1,35 +1,27 @@
 // marked and hljs are loaded from CDN in index.html
 
 // Configure marked with syntax highlighting
-marked.use({
+marked.setOptions({
   gfm: true,
   breaks: false,
-  renderer: {
-    code(token) {
-      const lang = token.lang || '';
-      const code = token.text;
-
-      if (lang && hljs.getLanguage(lang)) {
-        try {
-          const highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-          return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
-        } catch (err) {
-          // Fall through to default
-        }
-      }
-
-      // Auto-detect language or use plain text
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
       try {
-        const highlighted = hljs.highlightAuto(code).value;
-        return `<pre><code class="hljs">${highlighted}</code></pre>`;
+        return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
       } catch (err) {
-        return `<pre><code>${escapeHtml(code)}</code></pre>`;
+        // Fall through
       }
+    }
+    try {
+      return hljs.highlightAuto(code).value;
+    } catch (err) {
+      return escapeHtml(code);
     }
   }
 });
 
 function escapeHtml(text) {
+  if (!text) return '';
   const map = {
     '&': '&amp;',
     '<': '&lt;',
@@ -59,6 +51,11 @@ window.electronAPI.onFileLoaded((data) => {
 function renderMarkdown(mdContent) {
   const html = marked.parse(mdContent);
   markdownBody.innerHTML = html;
+
+  // Apply syntax highlighting to code blocks
+  document.querySelectorAll('pre code').forEach((block) => {
+    hljs.highlightElement(block);
+  });
 
   // Show content, hide welcome
   dropZone.classList.add('hidden');
