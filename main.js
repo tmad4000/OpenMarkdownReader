@@ -7,6 +7,34 @@ let isReadOnlyMode = true; // Default to read-only
 let watchFileMode = false; // Watch for external file changes
 const fileWatchers = new Map(); // Track active file watchers
 
+// Configuration Management
+const configPath = path.join(app.getPath('userData'), 'config.json');
+let config = {
+  theme: 'system' // 'system', 'light', 'dark'
+};
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      const data = fs.readFileSync(configPath, 'utf-8');
+      config = { ...config, ...JSON.parse(data) };
+    }
+  } catch (err) {
+    console.error('Error loading config:', err);
+  }
+}
+
+function saveConfig() {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  } catch (err) {
+    console.error('Error saving config:', err);
+  }
+}
+
+// Load config on startup
+loadConfig();
+
 function createWindow(filePath = null) {
   const win = new BrowserWindow({
     width: 900,
@@ -14,7 +42,7 @@ function createWindow(filePath = null) {
     minWidth: 400,
     minHeight: 300,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#ffffff',
+    // backgroundColor: '#ffffff', // Removed to respect system theme
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
@@ -29,13 +57,25 @@ function createWindow(filePath = null) {
   win.loadFile('index.html');
 
   // Load file after window is ready
-  if (filePath) {
-    win.webContents.on('did-finish-load', () => {
+  win.webContents.on('did-finish-load', () => {
+    // Apply theme
+    win.webContents.send('set-theme', config.theme);
+    
+    if (filePath) {
       loadMarkdownFile(win, filePath);
-    });
-  }
+    }
+  });
 
   return win;
+}
+
+function setTheme(theme) {
+  config.theme = theme;
+  saveConfig();
+  windows.forEach(win => {
+    win.webContents.send('set-theme', theme);
+  });
+  setupMenu(); // Rebuild menu to update checkmarks
 }
 
 function setupMenu() {
@@ -165,6 +205,29 @@ function setupMenu() {
             const win = getFocusedWindow();
             if (win) win.webContents.send('toggle-sidebar');
           }
+        },
+        {
+          label: 'Theme',
+          submenu: [
+            {
+              label: 'System Default',
+              type: 'radio',
+              checked: config.theme === 'system',
+              click: () => setTheme('system')
+            },
+            {
+              label: 'Light',
+              type: 'radio',
+              checked: config.theme === 'light',
+              click: () => setTheme('light')
+            },
+            {
+              label: 'Dark',
+              type: 'radio',
+              checked: config.theme === 'dark',
+              click: () => setTheme('dark')
+            }
+          ]
         },
         {
           label: 'Read-Only Mode',

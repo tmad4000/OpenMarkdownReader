@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Settings
   onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data)),
+  onSetTheme: (callback) => ipcRenderer.on('set-theme', (event, theme) => callback(theme)),
 
   // Command palette
   onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback())

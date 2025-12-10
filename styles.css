@@ -17,6 +17,8 @@
   --table-row-alt: #f6f8fa;
 }
 
+/* Dark Theme Variables */
+/* Applied via media query (System Dark) */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg-color: #0d1117;
@@ -30,6 +32,34 @@
     --table-border: #30363d;
     --table-row-alt: #161b22;
   }
+}
+
+/* Applied via manual override (Force Dark) */
+[data-theme="dark"] {
+  --bg-color: #0d1117;
+  --text-color: #e6edf3;
+  --text-secondary: #8b949e;
+  --border-color: #30363d;
+  --code-bg: #161b22;
+  --link-color: #58a6ff;
+  --blockquote-border: #3b434b;
+  --blockquote-text: #8b949e;
+  --table-border: #30363d;
+  --table-row-alt: #161b22;
+}
+
+/* Applied via manual override (Force Light) */
+[data-theme="light"] {
+  --bg-color: #ffffff;
+  --text-color: #1a1a1a;
+  --text-secondary: #666666;
+  --border-color: #e5e5e5;
+  --code-bg: #f6f8fa;
+  --link-color: #0969da;
+  --blockquote-border: #d0d7de;
+  --blockquote-text: #57606a;
+  --table-border: #d0d7de;
+  --table-row-alt: #f6f8fa;
 }
 
 html, body {
@@ -274,8 +304,8 @@ html, body {
   cursor: pointer;
   white-space: nowrap;
   min-width: 80px;
-  max-width: 180px;
-  flex: 0 1 180px; /* Don't grow, can shrink, preferred 180px */
+  /* max-width: 180px; Removed to allow filling space */
+  flex: 1 1 auto; /* Grow to fill space */
   transition: background 0.15s, color 0.15s;
 }
 
@@ -961,4 +991,53 @@ html, body {
   .hljs-regexp {
     color: #ff7b72;
   }
+}
+
+/* Syntax Highlighting - Force Dark Mode */
+[data-theme="dark"] .hljs-comment,
+[data-theme="dark"] .hljs-quote {
+  color: #8b949e;
+}
+
+[data-theme="dark"] .hljs-keyword,
+[data-theme="dark"] .hljs-selector-tag,
+[data-theme="dark"] .hljs-addition {
+  color: #ff7b72;
+}
+
+[data-theme="dark"] .hljs-string,
+[data-theme="dark"] .hljs-attr,
+[data-theme="dark"] .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+
+[data-theme="dark"] .hljs-number,
+[data-theme="dark"] .hljs-literal,
+[data-theme="dark"] .hljs-variable,
+[data-theme="dark"] .hljs-template-variable,
+[data-theme="dark"] .hljs-tag .hljs-attr {
+  color: #79c0ff;
+}
+
+[data-theme="dark"] .hljs-title,
+[data-theme="dark"] .hljs-section,
+[data-theme="dark"] .hljs-name,
+[data-theme="dark"] .hljs-selector-id,
+[data-theme="dark"] .hljs-selector-class {
+  color: #d2a8ff;
+}
+
+[data-theme="dark"] .hljs-type,
+[data-theme="dark"] .hljs-built_in,
+[data-theme="dark"] .hljs-builtin-name,
+[data-theme="dark"] .hljs-params {
+  color: #ffa657;
+}
+
+[data-theme="dark"] .hljs-symbol,
+[data-theme="dark"] .hljs-bullet,
+[data-theme="dark"] .hljs-link,
+[data-theme="dark"] .hljs-deletion,
+[data-theme="dark"] .hljs-regexp {
+  color: #ff7b72;
 }

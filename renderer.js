@@ -641,6 +641,30 @@ window.electronAPI.onShowCommandPalette(() => {
   showCommandPalette();
 });
 
+// Listen for theme changes
+window.electronAPI.onSetTheme((theme) => {
+  // Set data attribute for CSS
+  document.documentElement.setAttribute('data-theme', theme);
+
+  // Handle highlight.js stylesheets
+  const lightStyle = document.querySelector('link[href*="github.min.css"]');
+  const darkStyle = document.querySelector('link[href*="github-dark.min.css"]');
+
+  if (lightStyle && darkStyle) {
+    if (theme === 'light') {
+      lightStyle.media = 'all';
+      darkStyle.media = 'not all';
+    } else if (theme === 'dark') {
+      lightStyle.media = 'not all';
+      darkStyle.media = 'all';
+    } else {
+      // System
+      lightStyle.media = '(prefers-color-scheme: light)';
+      darkStyle.media = '(prefers-color-scheme: dark)';
+    }
+  }
+});
+
 // Listen for export PDF request
 window.electronAPI.onExportPDF(async () => {
   const tab = tabs.find(t => t.id === activeTabId);
