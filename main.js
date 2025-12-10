@@ -2,10 +2,10 @@ const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-let mainWindow;
+const windows = new Set();
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+function createWindow(filePath = null) {
+  const win = new BrowserWindow({
     width: 900,
     height: 700,
     minWidth: 400,
@@ -20,9 +20,22 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile('index.html');
+  windows.add(win);
+  win.on('closed', () => windows.delete(win));
 
-  // Build menu
+  win.loadFile('index.html');
+
+  // Load file after window is ready
+  if (filePath) {
+    win.webContents.on('did-finish-load', () => {
+      loadMarkdownFile(win, filePath);
+    });
+  }
+
+  return win;
+}
+
+function setupMenu() {
   const template = [
     {
       label: 'Markdown Reader',
@@ -39,6 +52,11 @@ function createWindow() {
     {
       label: 'File',
       submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => createWindow()
+        },
         {
           label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
@@ -72,7 +90,9 @@ function createWindow() {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'zoom' }
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' }
       ]
     }
   ];
@@ -81,25 +101,38 @@ function createWindow() {
   Menu.setApplicationMenu(menu);
 }
 
-async function openFile() {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
+function getFocusedWindow() {
+  return BrowserWindow.getFocusedWindow() || [...windows][0];
+}
+
+async function openFile(targetWindow = null) {
+  const win = targetWindow || getFocusedWindow();
+
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'Markdown Files', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] }
     ]
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    loadMarkdownFile(result.filePaths[0]);
+    // Open first file in current window, rest in new windows
+    result.filePaths.forEach((filePath, index) => {
+      if (index === 0 && win) {
+        loadMarkdownFile(win, filePath);
+      } else {
+        createWindow(filePath);
+      }
+    });
   }
 }
 
-function loadMarkdownFile(filePath) {
+function loadMarkdownFile(win, filePath) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     const fileName = path.basename(filePath);
-    mainWindow.webContents.send('file-loaded', { content, fileName, filePath });
-    mainWindow.setTitle(`${fileName} - Markdown Reader`);
+    win.webContents.send('file-loaded', { content, fileName, filePath });
+    win.setTitle(`${fileName} - Markdown Reader`);
   } catch (err) {
     dialog.showErrorBox('Error', `Could not read file: ${err.message}`);
   }
@@ -108,17 +141,17 @@ function loadMarkdownFile(filePath) {
 // Handle file open from Finder (drag to dock icon or Open With)
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
-  if (mainWindow) {
-    loadMarkdownFile(filePath);
+  if (app.isReady()) {
+    createWindow(filePath);
   } else {
-    app.whenReady().then(() => {
-      createWindow();
-      setTimeout(() => loadMarkdownFile(filePath), 500);
-    });
+    app.whenReady().then(() => createWindow(filePath));
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  setupMenu();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -127,10 +160,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (windows.size === 0) {
     createWindow();
   }
 });
 
 // IPC handlers
-ipcMain.handle('open-file-dialog', openFile);
+ipcMain.handle('open-file-dialog', () => openFile());
