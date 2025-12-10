@@ -1,15 +1,9 @@
-const { Marked } = require('marked');
-const hljs = require('highlight.js');
+// marked and hljs are loaded from CDN in index.html
 
 // Configure marked with syntax highlighting
-const marked = new Marked({
+marked.use({
   gfm: true,
   breaks: false,
-  pedantic: false
-});
-
-// Custom renderer for syntax highlighting
-marked.use({
   renderer: {
     code(token) {
       const lang = token.lang || '';
@@ -31,17 +25,6 @@ marked.use({
       } catch (err) {
         return `<pre><code>${escapeHtml(code)}</code></pre>`;
       }
-    },
-
-    // Task list support
-    listitem(token) {
-      let text = token.text;
-      if (token.task) {
-        const checkbox = `<input type="checkbox" ${token.checked ? 'checked' : ''} disabled>`;
-        text = checkbox + text;
-        return `<li class="task-list-item">${text}</li>\n`;
-      }
-      return `<li>${text}</li>\n`;
     }
   }
 });
