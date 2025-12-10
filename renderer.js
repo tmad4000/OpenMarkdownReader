@@ -442,6 +442,11 @@ openBtn.addEventListener('click', () => {
   window.electronAPI.openFileDialog();
 });
 
+// Open folder button on welcome screen
+document.getElementById('open-folder-welcome-btn').addEventListener('click', () => {
+  window.electronAPI.openFolder();
+});
+
 // New tab button
 newTabBtn.addEventListener('click', () => {
   createTab();
@@ -559,6 +564,11 @@ window.electronAPI.onFileChanged(({ filePath, content }) => {
 // Listen for toggle sidebar
 window.electronAPI.onToggleSidebar(() => {
   sidebarToggle.click();
+});
+
+// Listen for open folder from menu
+window.electronAPI.onOpenFolderDialog(() => {
+  window.electronAPI.openFolder();
 });
 
 // Listen for setting changes

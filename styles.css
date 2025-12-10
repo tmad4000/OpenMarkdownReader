@@ -440,8 +440,18 @@ html, body {
   margin-bottom: 16px;
 }
 
-.welcome button {
-  padding: 10px 24px;
+.welcome-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.welcome-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
   font-size: 14px;
   font-weight: 500;
   background: var(--link-color);
@@ -452,8 +462,23 @@ html, body {
   transition: opacity 0.15s;
 }
 
-.welcome button:hover {
+.welcome-btn:hover {
   opacity: 0.9;
+}
+
+.welcome-btn svg {
+  flex-shrink: 0;
+}
+
+.welcome-btn-secondary {
+  background: var(--code-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+.welcome-btn-secondary:hover {
+  background: var(--border-color);
+  opacity: 1;
 }
 
 .welcome .hint {

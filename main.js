@@ -69,9 +69,17 @@ function setupMenu() {
           click: () => createWindow()
         },
         {
-          label: 'Open...',
+          label: 'Open File...',
           accelerator: 'CmdOrCtrl+O',
           click: () => openFile()
+        },
+        {
+          label: 'Open Folder...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('open-folder-dialog');
+          }
         },
         {
           label: 'Quick Open...',

@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
+  onOpenFolderDialog: (callback) => ipcRenderer.on('open-folder-dialog', () => callback()),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
