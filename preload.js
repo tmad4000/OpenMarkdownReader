@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
+  showSaveDialog: (fileName) => ipcRenderer.invoke('show-save-dialog', fileName),
 
   // Print/Export
   exportPDF: (defaultName) => ipcRenderer.invoke('export-pdf', defaultName),

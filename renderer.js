@@ -134,6 +134,11 @@ function switchToTab(tabId) {
   updateTabUI(tabId);
 }
 
+// Show save dialog with Save/Don't Save/Cancel options
+async function showSaveDialog(fileName) {
+  return await window.electronAPI.showSaveDialog(fileName);
+}
+
 // Update tab UI state
 function updateTabUI(tabId) {
   const tab = tabs.find(t => t.id === tabId);
@@ -151,16 +156,32 @@ function updateTabUI(tabId) {
 }
 
 // Close a tab
-function closeTab(tabId) {
+async function closeTab(tabId) {
   const tab = tabs.find(t => t.id === tabId);
   const tabIndex = tabs.findIndex(t => t.id === tabId);
   if (tabIndex === -1) return;
 
-  // Check for unsaved changes
+  // Check for unsaved changes - offer Save/Don't Save/Cancel
   if (tab && tab.isModified) {
-    if (!confirm(`"${tab.fileName}" has unsaved changes. Close anyway?`)) {
-      return;
+    const result = await showSaveDialog(tab.fileName);
+    if (result === 'cancel') {
+      return; // User cancelled, don't close
     }
+    if (result === 'save') {
+      // Save the file first
+      if (tab.isEditing) {
+        tab.content = editor.value;
+      }
+      if (tab.filePath) {
+        await window.electronAPI.saveFile(tab.filePath, tab.content);
+      } else {
+        const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+        if (!saveResult) {
+          return; // Save was cancelled, don't close
+        }
+      }
+    }
+    // 'discard' falls through to close the tab
   }
 
   // Stop watching the file if we were watching it

@@ -329,6 +329,24 @@ app.on('activate', () => {
 // IPC handlers
 ipcMain.handle('open-file-dialog', () => openFile());
 
+// Show save confirmation dialog (Save/Don't Save/Cancel)
+ipcMain.handle('show-save-dialog', async (event, fileName) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: ['Save', "Don't Save", 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    message: `Do you want to save the changes you made to "${fileName}"?`,
+    detail: "Your changes will be lost if you don't save them."
+  });
+
+  // result.response: 0 = Save, 1 = Don't Save, 2 = Cancel
+  if (result.response === 0) return 'save';
+  if (result.response === 1) return 'discard';
+  return 'cancel';
+});
+
 // Toggle maximize/restore window (macOS zoom behavior)
 ipcMain.handle('toggle-maximize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
