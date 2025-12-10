@@ -439,7 +439,10 @@ html, body {
 
 /* Editor */
 .editor-container {
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 38px - 40px); /* viewport - titlebar - padding */
+  margin-bottom: 0;
 }
 
 .editor-container.hidden {
@@ -447,8 +450,9 @@ html, body {
 }
 
 .editor {
+  flex: 1;
   width: 100%;
-  min-height: 300px;
+  min-height: 200px;
   padding: 16px;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 14px;
@@ -457,7 +461,7 @@ html, body {
   background: var(--code-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  resize: vertical;
+  resize: none;
   outline: none;
   transition: border-color 0.15s;
 }
