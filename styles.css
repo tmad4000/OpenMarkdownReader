@@ -383,8 +383,18 @@ html, body {
   color: var(--text-color);
   font-size: 12px;
   font-weight: 500;
-  cursor: default;
+  cursor: pointer;
   opacity: 0.8;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.watch-indicator:hover {
+  opacity: 1;
+  background: var(--border-color);
+}
+
+.watch-indicator:active {
+  transform: scale(0.96);
 }
 
 .watch-indicator svg {

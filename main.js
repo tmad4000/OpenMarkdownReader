@@ -244,6 +244,7 @@ function setupMenu() {
         },
         {
           label: 'Watch for File Changes',
+          id: 'watch-mode-item',
           type: 'checkbox',
           checked: false,
           click: (menuItem) => {
@@ -562,6 +563,20 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
   scan(dirPath, 0);
   return files;
 }
+
+// Toggle watch mode from renderer
+ipcMain.handle('toggle-watch-mode', () => {
+  const menu = Menu.getApplicationMenu();
+  const item = menu.getMenuItemById('watch-mode-item');
+  if (item) {
+    item.checked = !item.checked;
+    watchFileMode = item.checked;
+    windows.forEach(win => {
+      win.webContents.send('set-watch-mode', watchFileMode);
+    });
+  }
+  return watchFileMode;
+});
 
 // Watch a file for changes
 ipcMain.handle('watch-file', async (event, filePath) => {

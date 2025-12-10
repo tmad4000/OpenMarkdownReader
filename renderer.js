@@ -341,7 +341,17 @@ openFolderBtn.addEventListener('click', () => {
 window.electronAPI.onDirectoryLoaded((data) => {
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
-  allFilesCache = null; // Clear command palette cache
+  
+  // Pre-fetch all files for command palette
+  allFilesCache = null;
+  window.electronAPI.getAllFilesRecursive(currentDirectory).then(files => {
+    allFilesCache = files;
+    // If palette is open, update results immediately
+    if (!commandPalette.classList.contains('hidden')) {
+      updateCommandPaletteResults();
+    }
+  });
+
   renderFileTree();
 
   // Show sidebar if hidden
@@ -632,6 +642,11 @@ window.electronAPI.onFileChanged(({ filePath, content }) => {
 // Listen for toggle sidebar
 window.electronAPI.onToggleSidebar(() => {
   sidebarToggle.click();
+});
+
+// Watch indicator click to toggle
+document.getElementById('watch-indicator').addEventListener('click', () => {
+  window.electronAPI.toggleWatchMode();
 });
 
 
