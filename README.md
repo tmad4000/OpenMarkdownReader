@@ -51,3 +51,16 @@ npm start
 - `.mdown`
 - `.mkd`
 - `.txt`
+
+## Notes & Future Plans
+
+### App Size (~200MB)
+
+The app is large because Electron bundles a full Chromium browser. This is standard for Electron apps (VS Code, Slack, Discord are similar sizes). The universal binary (ARM + Intel) doubles the size.
+
+**Potential optimizations (no current intent to implement):**
+- Build single-architecture versions (~100MB each for ARM or Intel separately)
+- Port to Tauri (~15-20MB) which uses the system webview instead of bundling Chromium
+- Port to Neutralino (~3-5MB) for even smaller size
+
+For now, the convenience of Electron's development experience outweighs the size concern.
