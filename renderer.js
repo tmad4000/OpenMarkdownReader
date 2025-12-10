@@ -458,14 +458,21 @@ function findItemByPath(items, targetPath) {
   return null;
 }
 
-// Open file button
-openBtn.addEventListener('click', () => {
-  window.electronAPI.openFileDialog();
+// New file button on welcome screen
+document.getElementById('new-file-btn').addEventListener('click', () => {
+  const tabId = createTab('Untitled.md', '', null);
+  const tab = tabs.find(t => t.id === tabId);
+  if (tab) {
+    tab.isEditing = true;
+    tab.originalContent = '';
+    showEditor('');
+    updateTabUI(tabId);
+  }
 });
 
-// Open folder button on welcome screen
-document.getElementById('open-folder-welcome-btn').addEventListener('click', () => {
-  window.electronAPI.openFolder();
+// Open button (files or folders)
+openBtn.addEventListener('click', () => {
+  window.electronAPI.openFileOrFolder();
 });
 
 // New tab button
@@ -599,10 +606,6 @@ window.electronAPI.onToggleSidebar(() => {
   sidebarToggle.click();
 });
 
-// Listen for open folder from menu
-window.electronAPI.onOpenFolderDialog(() => {
-  window.electronAPI.openFolder();
-});
 
 // Listen for setting changes
 window.electronAPI.onSettingChanged(({ setting, value }) => {

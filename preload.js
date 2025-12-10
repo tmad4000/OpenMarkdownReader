@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onNewTab: (callback) => ipcRenderer.on('new-tab', () => callback()),
   onNewFile: (callback) => ipcRenderer.on('new-file', () => callback()),
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+  openFileOrFolder: () => ipcRenderer.invoke('open-file-or-folder'),
 
   // Save operations
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
@@ -30,7 +31,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
-  onOpenFolderDialog: (callback) => ipcRenderer.on('open-folder-dialog', () => callback()),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),

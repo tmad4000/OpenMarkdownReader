@@ -77,17 +77,9 @@ function setupMenu() {
           click: () => createWindow()
         },
         {
-          label: 'Open File...',
+          label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
-          click: () => openFile()
-        },
-        {
-          label: 'Open Folder...',
-          accelerator: 'CmdOrCtrl+Shift+O',
-          click: () => {
-            const win = getFocusedWindow();
-            if (win) win.webContents.send('open-folder-dialog');
-          }
+          click: () => openFileOrFolder()
         },
         {
           label: 'Quick Open...',
@@ -263,21 +255,30 @@ function broadcastSetting(setting, value) {
   });
 }
 
-async function openFile(targetWindow = null) {
+async function openFileOrFolder(targetWindow = null) {
   const win = targetWindow || getFocusedWindow();
 
   const result = await dialog.showOpenDialog(win, {
-    properties: ['openFile', 'multiSelections'],
+    properties: ['openFile', 'openDirectory', 'multiSelections'],
     filters: [
-      { name: 'Markdown Files', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] }
+      { name: 'Markdown Files', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+      { name: 'All Files', extensions: ['*'] }
     ]
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    // All files open as tabs in current window
     result.filePaths.forEach((filePath) => {
       if (win) {
-        loadMarkdownFile(win, filePath);
+        // Check if it's a directory or file
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+          // Load as folder in sidebar
+          const files = getDirectoryContents(filePath);
+          win.webContents.send('directory-loaded', { dirPath: filePath, files });
+        } else {
+          // Load as file in tab
+          loadMarkdownFile(win, filePath);
+        }
       }
     });
   }
@@ -327,7 +328,8 @@ app.on('activate', () => {
 });
 
 // IPC handlers
-ipcMain.handle('open-file-dialog', () => openFile());
+ipcMain.handle('open-file-dialog', () => openFileOrFolder());
+ipcMain.handle('open-file-or-folder', () => openFileOrFolder());
 
 // Show save confirmation dialog (Save/Don't Save/Cancel)
 ipcMain.handle('show-save-dialog', async (event, fileName) => {
