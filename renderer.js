@@ -40,6 +40,7 @@ const openFolderBtn = document.getElementById('open-folder-btn');
 const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
+const editToggleBtn = document.getElementById('edit-toggle-btn');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
@@ -134,6 +135,10 @@ function updateTabUI(tabId) {
   if (tab && tabEl) {
     tabEl.classList.toggle('editing', tab.isEditing);
     tabEl.classList.toggle('modified', tab.isModified);
+  }
+  // Update edit button state
+  if (tab && tabId === activeTabId) {
+    editToggleBtn.classList.toggle('active', tab.isEditing);
   }
 }
 
@@ -319,6 +324,11 @@ openBtn.addEventListener('click', () => {
 // New tab button
 newTabBtn.addEventListener('click', () => {
   createTab();
+});
+
+// Edit toggle button
+editToggleBtn.addEventListener('click', () => {
+  toggleEditMode();
 });
 
 // Listen for file loaded from main process

@@ -12,15 +12,20 @@
 </head>
 <body>
   <div class="titlebar" id="titlebar">
-    <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle Sidebar">
+    <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle Sidebar (⌘B)">
       <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
         <path d="M2 4.5A1.5 1.5 0 013.5 3h13A1.5 1.5 0 0118 4.5v11a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 012 15.5v-11zM3.5 4a.5.5 0 00-.5.5v11a.5.5 0 00.5.5H7V4H3.5zM8 4v12h8.5a.5.5 0 00.5-.5v-11a.5.5 0 00-.5-.5H8z"/>
       </svg>
     </button>
     <div id="tab-bar" class="tab-bar">
-      <button id="new-tab-btn" class="new-tab-btn" title="New Tab">+</button>
+      <button id="new-tab-btn" class="new-tab-btn" title="New Tab (⌘T)">+</button>
     </div>
     <div class="titlebar-drag-spacer"></div>
+    <button id="edit-toggle-btn" class="edit-toggle-btn" title="Toggle Edit Mode (⌘E)">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064l6.286-6.286z"/>
+      </svg>
+    </button>
   </div>
 
   <div class="main-container">
@@ -28,7 +33,7 @@
     <div id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
         <span class="sidebar-title">Files</span>
-        <button id="open-folder-btn" class="sidebar-btn" title="Open Folder">
+        <button id="open-folder-btn" class="sidebar-btn" title="Open Folder (⌘⇧O)">
           <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
             <path d="M3.75 3A1.75 1.75 0 002 4.75v10.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0018 15.25v-8.5A1.75 1.75 0 0016.25 5H9.414a.25.25 0 01-.177-.073l-.896-.897A1.75 1.75 0 006.586 3.5H3.75z"/>
           </svg>

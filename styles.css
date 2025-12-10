@@ -291,6 +291,32 @@ html, body {
   color: var(--text-color);
 }
 
+/* Edit toggle button */
+.edit-toggle-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.edit-toggle-btn:hover {
+  background: var(--code-bg);
+  color: var(--text-color);
+}
+
+.edit-toggle-btn.active {
+  background: var(--link-color);
+  color: white;
+}
+
 /* Hidden class */
 .hidden {
   display: none !important;
