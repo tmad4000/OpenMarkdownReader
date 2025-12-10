@@ -196,14 +196,14 @@ async function closeTab(tabId) {
   const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
   if (tabEl) tabEl.remove();
 
-  // If closing active tab, switch to another
+  // If closing active tab, switch to another or close window
   if (activeTabId === tabId) {
     if (tabs.length > 0) {
       const newIndex = Math.min(tabIndex, tabs.length - 1);
       switchToTab(tabs[newIndex].id);
     } else {
-      activeTabId = null;
-      createTab();
+      // Last tab closed - close the window
+      window.electronAPI.closeWindow();
     }
   }
 }
@@ -227,7 +227,20 @@ function updateTab(tabId, fileName, mdContent, filePath) {
 // Toggle edit mode
 function toggleEditMode() {
   const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.content) return;
+  if (!tab) return;
+
+  // If blank tab (no content), create a new file instead
+  if (!tab.content && tab.content !== '') {
+    tab.fileName = 'Untitled.md';
+    tab.content = '';
+    tab.isEditing = true;
+    tab.originalContent = '';
+    const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
+    if (tabEl) tabEl.textContent = tab.fileName;
+    showEditor('');
+    updateTabUI(activeTabId);
+    return;
+  }
 
   if (settings.readOnlyMode) {
     alert('Read-only mode is enabled. Disable it in the View menu to edit.');
@@ -308,6 +321,10 @@ async function saveFile() {
   if (tab.filePath) {
     await window.electronAPI.saveFile(tab.filePath, tab.content);
     tab.isModified = false;
+    // Update original content to match saved content, so 'Revert' goes back to this save
+    if (tab.isEditing) {
+      tab.originalContent = tab.content;
+    }
     updateTabUI(activeTabId);
     document.title = `${tab.fileName} - OpenMarkdownReader`;
   } else {
@@ -317,6 +334,10 @@ async function saveFile() {
       tab.filePath = result.filePath;
       tab.fileName = result.fileName;
       tab.isModified = false;
+      // Update original content here too
+      if (tab.isEditing) {
+        tab.originalContent = tab.content;
+      }
       const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
       if (tabEl) tabEl.textContent = tab.fileName;
       updateTabUI(activeTabId);

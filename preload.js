@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window controls
   toggleMaximize: () => ipcRenderer.invoke('toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
 
   // Settings
   onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data)),

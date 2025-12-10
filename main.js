@@ -564,8 +564,15 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
   return files;
 }
 
+// Close the current window (called when last tab is closed)
+ipcMain.handle('close-window', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    win.close();
+  }
+});
+
 // Toggle watch mode from renderer
-ipcMain.handle('toggle-watch-mode', () => {
   const menu = Menu.getApplicationMenu();
   const item = menu.getMenuItemById('watch-mode-item');
   if (item) {

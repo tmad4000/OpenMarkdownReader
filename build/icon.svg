@@ -1,18 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#6366f1"/>
-      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    <linearGradient id="bg-grad" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#0F172A" />
     </linearGradient>
+    <filter id="inset-shadow" x="0" y="0" width="200%" height="200%">
+      <feComponentTransfer in="SourceAlpha">
+        <feFuncA type="table" tableValues="1 0" />
+      </feComponentTransfer>
+      <feGaussianBlur stdDeviation="10" />
+      <feOffset dx="5" dy="5" result="offsetblur" />
+      <feFlood flood-color="rgb(255, 255, 255)" flood-opacity="0.2" />
+      <feComposite in2="offsetblur" operator="in" />
+      <feComposite in2="SourceAlpha" operator="in" />
+      <feMerge>
+        <feMergeNode in="SourceGraphic" />
+        <feMergeNode />
+      </feMerge>
+    </filter>
   </defs>
-  <!-- Rounded square background -->
-  <rect x="64" y="64" width="896" height="896" rx="180" ry="180" fill="url(#bg)"/>
-  <!-- Document shape -->
-  <path d="M280 200 h340 l160 160 v504 a40 40 0 0 1 -40 40 H280 a40 40 0 0 1 -40 -40 V240 a40 40 0 0 1 40 -40 z" fill="white"/>
-  <!-- Folded corner -->
-  <path d="M620 200 v120 a40 40 0 0 0 40 40 h120 z" fill="#e0e7ff"/>
-  <!-- Markdown M symbol -->
-  <path d="M320 480 v200 h50 v-140 l70 100 l70 -100 v140 h50 v-200 h-50 l-70 100 l-70 -100 z" fill="#6366f1"/>
-  <!-- Down arrow (markdown style) -->
-  <path d="M600 480 v120 h-40 l60 80 l60 -80 h-40 v-120 z" fill="#6366f1"/>
+
+  <!-- Background Squircle -->
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#bg-grad)" stroke="#3B82F6" stroke-width="8"/>
+
+  <!-- Content Group -->
+  <g transform="translate(192, 230)">
+    <!-- Paper Sheet -->
+    <rect x="0" y="0" width="640" height="600" rx="40" fill="white" fill-opacity="0.95"/>
+    
+    <!-- Code/Markdown Hints -->
+    <!-- Header # -->
+    <path d="M100 120 H200 M100 160 H200 M130 90 V190 M170 90 V190" stroke="#2563EB" stroke-width="16" stroke-linecap="round"/>
+    
+    <!-- Title Line -->
+    <rect x="240" y="125" width="300" height="30" rx="15" fill="#1E293B"/>
+    
+    <!-- Text Lines -->
+    <rect x="100" y="240" width="440" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="290" width="380" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="340" width="420" height="20" rx="10" fill="#94A3B8"/>
+    
+    <!-- Stylized M logo at bottom -->
+    <path d="M420 520 L420 420 L470 520 L520 420 L520 520" stroke="#2563EB" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    
+    <!-- Corner fold -->
+    <path d="M500 0 L640 0 L640 140 L500 0" fill="#E2E8F0"/>
+  </g>
 </svg>
