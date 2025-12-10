@@ -1,0 +1,17 @@
+{
+  "name": "markdown-reader",
+  "version": "1.0.0",
+  "description": "A beautiful Markdown file reader for Mac",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": ["markdown", "reader", "electron"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^39.2.6",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.1"
+  }
+}

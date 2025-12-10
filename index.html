@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Markdown Reader</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar"></div>
+
+  <div id="drop-zone" class="drop-zone">
+    <div class="welcome">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <h1>Markdown Reader</h1>
+      <p>Drop a markdown file here or</p>
+      <button id="open-btn">Open File</button>
+      <p class="hint">⌘O to open a file</p>
+    </div>
+  </div>
+
+  <div id="content" class="content hidden">
+    <article id="markdown-body" class="markdown-body"></article>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
