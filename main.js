@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const windows = new Set();
+let isReadOnlyMode = true; // Default to read-only
 
 function createWindow(filePath = null) {
   const win = new BrowserWindow({
@@ -84,13 +85,55 @@ function setupMenu() {
     {
       label: 'Edit',
       submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
         { role: 'copy' },
-        { role: 'selectAll' }
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Toggle Edit Mode',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('toggle-edit');
+          }
+        },
+        {
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('save');
+          }
+        }
       ]
     },
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Toggle Sidebar',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('toggle-sidebar');
+          }
+        },
+        {
+          label: 'Read-Only Mode',
+          type: 'checkbox',
+          checked: true,
+          click: (menuItem) => {
+            isReadOnlyMode = menuItem.checked;
+            windows.forEach(win => {
+              win.webContents.send('set-read-only', isReadOnlyMode);
+            });
+          }
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
@@ -185,3 +228,87 @@ app.on('activate', () => {
 
 // IPC handlers
 ipcMain.handle('open-file-dialog', () => openFile());
+
+// Save file to existing path
+ipcMain.handle('save-file', async (event, filePath, content) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return { success: true };
+  } catch (err) {
+    dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
+// Save file as (with dialog)
+ipcMain.handle('save-file-as', async (event, content, defaultName) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName,
+    filters: [
+      { name: 'Markdown Files', extensions: ['md', 'markdown'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePath) {
+    try {
+      fs.writeFileSync(result.filePath, content, 'utf-8');
+      return {
+        filePath: result.filePath,
+        fileName: path.basename(result.filePath)
+      };
+    } catch (err) {
+      dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
+      return null;
+    }
+  }
+  return null;
+});
+
+// Open folder
+ipcMain.handle('open-folder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory']
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    const dirPath = result.filePaths[0];
+    const files = getMarkdownFilesInDirectory(dirPath);
+    win.webContents.send('directory-loaded', { dirPath, files });
+  }
+});
+
+// Open file by path (from sidebar)
+ipcMain.handle('open-file-by-path', async (event, filePath) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  loadMarkdownFile(win, filePath);
+});
+
+// Get markdown files in directory
+function getMarkdownFilesInDirectory(dirPath) {
+  const markdownExtensions = ['.md', '.markdown', '.mdown', '.mkd', '.txt'];
+  const files = [];
+
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (markdownExtensions.includes(ext)) {
+          files.push({
+            name: entry.name,
+            path: path.join(dirPath, entry.name)
+          });
+        }
+      }
+    }
+    // Sort alphabetically
+    files.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    console.error('Error reading directory:', err);
+  }
+
+  return files;
+}

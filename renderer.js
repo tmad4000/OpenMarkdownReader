@@ -1,9 +1,19 @@
 // marked and hljs are loaded from CDN in index.html
 
+// Settings
+let settings = {
+  readOnlyMode: false,
+  sidebarVisible: false
+};
+
 // Tab management
 let tabs = [];
 let activeTabId = null;
 let tabIdCounter = 0;
+
+// Directory state
+let currentDirectory = null;
+let directoryFiles = [];
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -24,6 +34,12 @@ const dropZone = document.getElementById('drop-zone');
 const content = document.getElementById('content');
 const markdownBody = document.getElementById('markdown-body');
 const openBtn = document.getElementById('open-btn');
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const openFolderBtn = document.getElementById('open-folder-btn');
+const fileTree = document.getElementById('file-tree');
+const editorContainer = document.getElementById('editor-container');
+const editor = document.getElementById('editor');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
@@ -33,7 +49,9 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
     fileName,
     filePath,
     content: mdContent,
-    scrollPos: 0
+    scrollPos: 0,
+    isEditing: false,
+    isModified: false
   };
   tabs.push(tab);
 
@@ -68,11 +86,14 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
 
 // Switch to a tab
 function switchToTab(tabId) {
-  // Save current tab's scroll position
+  // Save current tab state
   if (activeTabId !== null) {
     const currentTab = tabs.find(t => t.id === activeTabId);
     if (currentTab) {
       currentTab.scrollPos = window.scrollY;
+      if (currentTab.isEditing) {
+        currentTab.content = editor.value;
+      }
     }
   }
 
@@ -87,22 +108,47 @@ function switchToTab(tabId) {
 
   // Show content
   if (tab && tab.content) {
-    renderMarkdown(tab.content, false);
-    document.title = `${tab.fileName} - Markdown Reader`;
-    // Restore scroll position
+    if (tab.isEditing) {
+      showEditor(tab.content);
+    } else {
+      hideEditor();
+      renderMarkdown(tab.content);
+    }
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - Markdown Reader`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
     // Show welcome screen
+    hideEditor();
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
     document.title = 'Markdown Reader';
+  }
+
+  updateTabUI(tabId);
+}
+
+// Update tab UI state
+function updateTabUI(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (tab && tabEl) {
+    tabEl.classList.toggle('editing', tab.isEditing);
+    tabEl.classList.toggle('modified', tab.isModified);
   }
 }
 
 // Close a tab
 function closeTab(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
   const tabIndex = tabs.findIndex(t => t.id === tabId);
   if (tabIndex === -1) return;
+
+  // Check for unsaved changes
+  if (tab && tab.isModified) {
+    if (!confirm(`"${tab.fileName}" has unsaved changes. Close anyway?`)) {
+      return;
+    }
+  }
 
   // Remove tab data
   tabs.splice(tabIndex, 1);
@@ -114,11 +160,9 @@ function closeTab(tabId) {
   // If closing active tab, switch to another
   if (activeTabId === tabId) {
     if (tabs.length > 0) {
-      // Switch to next tab, or previous if closing last
       const newIndex = Math.min(tabIndex, tabs.length - 1);
       switchToTab(tabs[newIndex].id);
     } else {
-      // No tabs left, create a new empty one
       activeTabId = null;
       createTab();
     }
@@ -133,11 +177,138 @@ function updateTab(tabId, fileName, mdContent, filePath) {
     tab.content = mdContent;
     tab.filePath = filePath;
     tab.scrollPos = 0;
+    tab.isModified = false;
 
-    // Update tab title
     const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"] .tab-title`);
     if (tabEl) tabEl.textContent = fileName;
+    updateTabUI(tabId);
   }
+}
+
+// Toggle edit mode
+function toggleEditMode() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.content) return;
+
+  if (settings.readOnlyMode) {
+    alert('Read-only mode is enabled. Disable it in the View menu to edit.');
+    return;
+  }
+
+  tab.isEditing = !tab.isEditing;
+
+  if (tab.isEditing) {
+    showEditor(tab.content);
+  } else {
+    tab.content = editor.value;
+    hideEditor();
+    renderMarkdown(tab.content);
+  }
+
+  updateTabUI(activeTabId);
+}
+
+function showEditor(content) {
+  editor.value = content;
+  editorContainer.classList.remove('hidden');
+  markdownBody.classList.add('hidden');
+  dropZone.classList.add('hidden');
+  document.getElementById('content').classList.remove('hidden');
+  editor.focus();
+}
+
+function hideEditor() {
+  editorContainer.classList.add('hidden');
+  markdownBody.classList.remove('hidden');
+}
+
+// Editor change handler
+editor.addEventListener('input', () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.isEditing) {
+    tab.isModified = true;
+    updateTabUI(activeTabId);
+    document.title = `${tab.fileName} * - Markdown Reader`;
+  }
+});
+
+// Save file
+async function saveFile() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  if (tab.isEditing) {
+    tab.content = editor.value;
+  }
+
+  if (tab.filePath) {
+    await window.electronAPI.saveFile(tab.filePath, tab.content);
+    tab.isModified = false;
+    updateTabUI(activeTabId);
+    document.title = `${tab.fileName} - Markdown Reader`;
+  } else {
+    // No file path, use save as
+    const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+    if (result) {
+      tab.filePath = result.filePath;
+      tab.fileName = result.fileName;
+      tab.isModified = false;
+      const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
+      if (tabEl) tabEl.textContent = tab.fileName;
+      updateTabUI(activeTabId);
+      document.title = `${tab.fileName} - Markdown Reader`;
+    }
+  }
+}
+
+// Sidebar toggle
+sidebarToggle.addEventListener('click', () => {
+  settings.sidebarVisible = !settings.sidebarVisible;
+  sidebar.classList.toggle('hidden', !settings.sidebarVisible);
+  sidebarToggle.classList.toggle('active', settings.sidebarVisible);
+});
+
+// Open folder
+openFolderBtn.addEventListener('click', () => {
+  window.electronAPI.openFolder();
+});
+
+// Listen for directory loaded
+window.electronAPI.onDirectoryLoaded((data) => {
+  currentDirectory = data.dirPath;
+  directoryFiles = data.files;
+  renderFileTree();
+
+  // Show sidebar if hidden
+  if (!settings.sidebarVisible) {
+    settings.sidebarVisible = true;
+    sidebar.classList.remove('hidden');
+    sidebarToggle.classList.add('active');
+  }
+});
+
+function renderFileTree() {
+  fileTree.innerHTML = '';
+
+  if (!directoryFiles.length) {
+    fileTree.innerHTML = '<div class="file-tree-item" style="opacity:0.5">No markdown files</div>';
+    return;
+  }
+
+  directoryFiles.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'file-tree-item';
+    item.innerHTML = `
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+      </svg>
+      <span>${escapeHtml(file.name)}</span>
+    `;
+    item.addEventListener('click', () => {
+      window.electronAPI.openFileByPath(file.path);
+    });
+    fileTree.appendChild(item);
+  });
 }
 
 // Open file button
@@ -154,13 +325,11 @@ newTabBtn.addEventListener('click', () => {
 window.electronAPI.onFileLoaded((data) => {
   const activeTab = tabs.find(t => t.id === activeTabId);
 
-  // If current tab is empty (no content), load into it
   if (activeTab && !activeTab.content) {
     updateTab(activeTabId, data.fileName, data.content, data.filePath);
     renderMarkdown(data.content);
     document.title = `${data.fileName} - Markdown Reader`;
   } else {
-    // Create new tab for this file
     createTab(data.fileName, data.content, data.filePath);
   }
 });
@@ -170,21 +339,49 @@ window.electronAPI.onNewTab(() => {
   createTab();
 });
 
-function renderMarkdown(mdContent, updateTitle = true) {
+// Listen for toggle edit mode
+window.electronAPI.onToggleEdit(() => {
+  toggleEditMode();
+});
+
+// Listen for save request
+window.electronAPI.onSave(() => {
+  saveFile();
+});
+
+// Listen for read-only mode toggle
+window.electronAPI.onSetReadOnly((isReadOnly) => {
+  settings.readOnlyMode = isReadOnly;
+  if (isReadOnly) {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing) {
+      tab.content = editor.value;
+      tab.isEditing = false;
+      hideEditor();
+      renderMarkdown(tab.content);
+      updateTabUI(activeTabId);
+    }
+  }
+});
+
+// Listen for toggle sidebar
+window.electronAPI.onToggleSidebar(() => {
+  sidebarToggle.click();
+});
+
+function renderMarkdown(mdContent) {
   try {
     const html = marked.parse(mdContent);
     markdownBody.innerHTML = html;
 
-    // Apply syntax highlighting to code blocks
     document.querySelectorAll('pre code').forEach((block) => {
       hljs.highlightElement(block);
     });
 
-    // Show content, hide welcome
     dropZone.classList.add('hidden');
     content.classList.remove('hidden');
+    markdownBody.classList.remove('hidden');
 
-    // Scroll to top
     window.scrollTo(0, 0);
   } catch (err) {
     console.error('Error rendering markdown:', err);
@@ -223,12 +420,10 @@ function handleFileDrop(files) {
         const activeTab = tabs.find(t => t.id === activeTabId);
 
         if (index === 0 && activeTab && !activeTab.content) {
-          // First file goes into current empty tab
           updateTab(activeTabId, file.name, event.target.result, null);
           renderMarkdown(event.target.result);
           document.title = `${file.name} - Markdown Reader`;
         } else {
-          // Additional files get new tabs
           createTab(file.name, event.target.result, null);
         }
       };
@@ -248,15 +443,29 @@ function isMarkdownFile(filename) {
   return ['md', 'markdown', 'mdown', 'mkd', 'txt'].includes(ext);
 }
 
-// Also allow dropping on the content area to open a new file
-content.addEventListener('dragover', (e) => {
+document.querySelector('.content-area').addEventListener('dragover', (e) => {
   e.preventDefault();
 });
 
-content.addEventListener('drop', (e) => {
+document.querySelector('.content-area').addEventListener('drop', (e) => {
   e.preventDefault();
   handleFileDrop(e.dataTransfer.files);
 });
+
+// Switch to next/previous tab
+function switchToNextTab() {
+  if (tabs.length <= 1) return;
+  const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+  const nextIndex = (currentIndex + 1) % tabs.length;
+  switchToTab(tabs[nextIndex].id);
+}
+
+function switchToPrevTab() {
+  if (tabs.length <= 1) return;
+  const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+  const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  switchToTab(tabs[prevIndex].id);
+}
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
@@ -267,9 +476,56 @@ document.addEventListener('keydown', (e) => {
       closeTab(activeTabId);
     }
   }
+
+  // Ctrl+Tab / Ctrl+Shift+Tab to switch tabs
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      switchToPrevTab();
+    } else {
+      switchToNextTab();
+    }
+  }
+
+  // Cmd+Shift+[ and Cmd+Shift+] to switch tabs (Mac style)
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+    if (e.key === '[' || e.code === 'BracketLeft') {
+      e.preventDefault();
+      switchToPrevTab();
+    } else if (e.key === ']' || e.code === 'BracketRight') {
+      e.preventDefault();
+      switchToNextTab();
+    }
+  }
+
+  // Cmd+S to save
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    e.preventDefault();
+    saveFile();
+  }
+
+  // Cmd+E to toggle edit
+  if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+    e.preventDefault();
+    toggleEditMode();
+  }
+
+  // Cmd+B to toggle sidebar
+  if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+    e.preventDefault();
+    sidebarToggle.click();
+  }
+
+  // Escape to exit edit mode
+  if (e.key === 'Escape') {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing) {
+      toggleEditMode();
+    }
+  }
 });
 
 // Initialize with one empty tab
 createTab();
 
-console.log('Renderer loaded with tabs support');
+console.log('Renderer loaded with editing and sidebar support');
