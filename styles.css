@@ -327,6 +327,33 @@ html, body {
   color: var(--text-color);
 }
 
+/* Save button */
+.save-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--link-color);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.save-btn:hover {
+  opacity: 0.9;
+}
+
+.save-btn svg {
+  flex-shrink: 0;
+}
+
 /* Edit toggle button */
 .edit-toggle-btn {
   -webkit-app-region: no-drag;

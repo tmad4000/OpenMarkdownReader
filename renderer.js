@@ -46,6 +46,7 @@ const editToggleBtn = document.getElementById('edit-toggle-btn');
 const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
+const saveBtn = document.getElementById('save-btn');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
@@ -141,9 +142,11 @@ function updateTabUI(tabId) {
     tabEl.classList.toggle('editing', tab.isEditing);
     tabEl.classList.toggle('modified', tab.isModified);
   }
-  // Update edit button state
+  // Update edit button and save button state
   if (tab && tabId === activeTabId) {
     editToggleBtn.classList.toggle('active', tab.isEditing);
+    // Show save button when editing with unsaved changes
+    saveBtn.classList.toggle('hidden', !(tab.isEditing && tab.isModified));
   }
 }
 
@@ -449,6 +452,11 @@ editToggleBtn.addEventListener('click', () => {
   toggleEditMode();
 });
 
+// Save button
+saveBtn.addEventListener('click', () => {
+  saveFile();
+});
+
 // Listen for file loaded from main process
 window.electronAPI.onFileLoaded((data) => {
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -731,15 +739,11 @@ document.addEventListener('keydown', (e) => {
     sidebarToggle.click();
   }
 
-  // Escape to cancel/exit edit mode or close command palette
+  // Escape to close command palette (edit mode revert is handled by menu accelerator)
   if (e.key === 'Escape') {
     if (!commandPalette.classList.contains('hidden')) {
+      e.preventDefault();
       hideCommandPalette();
-      return;
-    }
-    const tab = tabs.find(t => t.id === activeTabId);
-    if (tab && tab.isEditing) {
-      revertChanges();
     }
   }
 
