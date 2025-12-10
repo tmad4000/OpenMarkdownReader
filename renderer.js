@@ -586,6 +586,13 @@ window.electronAPI.onSetReadOnly((isReadOnly) => {
 // Listen for watch mode toggle
 window.electronAPI.onSetWatchMode((watchMode) => {
   settings.watchFileMode = watchMode;
+  
+  // Toggle UI indicator
+  const watchIndicator = document.getElementById('watch-indicator');
+  if (watchIndicator) {
+    watchIndicator.classList.toggle('hidden', !watchMode);
+  }
+
   // Start/stop watching current tab's file
   const tab = tabs.find(t => t.id === activeTabId);
   if (tab && tab.filePath) {

@@ -89,7 +89,7 @@ html, body {
 
 /* Draggable spacer at end of tab bar */
 .titlebar-drag-spacer {
-  flex: 1;
+  flex: 0 0 80px; /* Fixed draggable area */
   min-width: 50px;
   height: 100%;
   -webkit-app-region: drag;
@@ -304,8 +304,8 @@ html, body {
   cursor: pointer;
   white-space: nowrap;
   min-width: 80px;
-  /* max-width: 180px; Removed to allow filling space */
-  flex: 1 1 auto; /* Grow to fill space */
+  max-width: 240px; /* Prevent huge tabs */
+  flex: 1 1 auto; /* Grow to fill space up to max-width */
   transition: background 0.15s, color 0.15s;
 }
 
@@ -365,6 +365,30 @@ html, body {
 .new-tab-btn:hover {
   background: var(--code-bg);
   color: var(--text-color);
+}
+
+/* Watch indicator */
+.watch-indicator {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  margin-right: 8px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px; /* Pill shape */
+  color: var(--text-color);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+  opacity: 0.8;
+}
+
+.watch-indicator svg {
+  color: var(--link-color);
 }
 
 /* Save button */

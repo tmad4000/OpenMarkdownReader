@@ -60,6 +60,8 @@ function createWindow(filePath = null) {
   win.webContents.on('did-finish-load', () => {
     // Apply theme
     win.webContents.send('set-theme', config.theme);
+    // Apply watch mode
+    win.webContents.send('set-watch-mode', watchFileMode);
     
     if (filePath) {
       loadMarkdownFile(win, filePath);
