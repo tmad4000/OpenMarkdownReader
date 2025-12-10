@@ -229,6 +229,18 @@ app.on('activate', () => {
 // IPC handlers
 ipcMain.handle('open-file-dialog', () => openFile());
 
+// Toggle maximize/restore window (macOS zoom behavior)
+ipcMain.handle('toggle-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+  }
+});
+
 // Save file to existing path
 ipcMain.handle('save-file', async (event, filePath, content) => {
   try {

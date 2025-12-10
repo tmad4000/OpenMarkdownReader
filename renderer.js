@@ -525,6 +525,13 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Double-click on titlebar to maximize/restore
+document.getElementById('titlebar').addEventListener('dblclick', (e) => {
+  // Only trigger on draggable areas (not on buttons or tabs)
+  if (e.target.closest('.tab') || e.target.closest('button')) return;
+  window.electronAPI.toggleMaximize();
+});
+
 // Initialize with one empty tab
 createTab();
 

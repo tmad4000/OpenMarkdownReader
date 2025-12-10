@@ -53,7 +53,16 @@ html, body {
   display: flex;
   align-items: center;
   padding-left: 80px; /* Space for traffic lights */
+  padding-right: 12px;
   gap: 8px;
+}
+
+/* Draggable spacer at end of tab bar */
+.titlebar-drag-spacer {
+  flex: 1;
+  min-width: 50px;
+  height: 100%;
+  -webkit-app-region: drag;
 }
 
 /* Sidebar Toggle */

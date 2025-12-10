@@ -19,5 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: () => ipcRenderer.invoke('open-folder'),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
-  onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback())
+  onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
+
+  // Window controls
+  toggleMaximize: () => ipcRenderer.invoke('toggle-maximize')
 });
