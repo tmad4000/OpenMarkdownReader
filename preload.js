@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File operations
   onFileLoaded: (callback) => ipcRenderer.on('file-loaded', (event, data) => callback(data)),
   onNewTab: (callback) => ipcRenderer.on('new-tab', () => callback()),
+  onNewFile: (callback) => ipcRenderer.on('new-file', () => callback()),
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 
   // Save operations

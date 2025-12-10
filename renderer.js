@@ -492,6 +492,18 @@ window.electronAPI.onNewTab(() => {
   createTab();
 });
 
+// Listen for new file request - creates tab and enters edit mode
+window.electronAPI.onNewFile(() => {
+  const tabId = createTab('Untitled.md', '', null);
+  const tab = tabs.find(t => t.id === tabId);
+  if (tab) {
+    tab.isEditing = true;
+    tab.originalContent = '';
+    showEditor('');
+    updateTabUI(tabId);
+  }
+});
+
 // Listen for toggle edit mode
 window.electronAPI.onToggleEdit(() => {
   toggleEditMode();

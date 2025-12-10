@@ -56,6 +56,14 @@ function setupMenu() {
       label: 'File',
       submenu: [
         {
+          label: 'New File',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('new-file');
+          }
+        },
+        {
           label: 'New Tab',
           accelerator: 'CmdOrCtrl+T',
           click: () => {
