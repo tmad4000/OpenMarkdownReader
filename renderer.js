@@ -1,25 +1,5 @@
 // marked and hljs are loaded from CDN in index.html
 
-// Configure marked with syntax highlighting
-marked.setOptions({
-  gfm: true,
-  breaks: false,
-  highlight: function(code, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-      } catch (err) {
-        // Fall through
-      }
-    }
-    try {
-      return hljs.highlightAuto(code).value;
-    } catch (err) {
-      return escapeHtml(code);
-    }
-  }
-});
-
 function escapeHtml(text) {
   if (!text) return '';
   const map = {
@@ -40,29 +20,40 @@ const openBtn = document.getElementById('open-btn');
 
 // Open file button
 openBtn.addEventListener('click', () => {
+  console.log('Open button clicked');
   window.electronAPI.openFileDialog();
 });
 
 // Listen for file loaded from main process
 window.electronAPI.onFileLoaded((data) => {
+  console.log('File loaded:', data.fileName);
   renderMarkdown(data.content);
 });
 
 function renderMarkdown(mdContent) {
-  const html = marked.parse(mdContent);
-  markdownBody.innerHTML = html;
+  console.log('Rendering markdown, length:', mdContent.length);
+  try {
+    const html = marked.parse(mdContent);
+    console.log('Parsed HTML length:', html.length);
+    markdownBody.innerHTML = html;
 
-  // Apply syntax highlighting to code blocks
-  document.querySelectorAll('pre code').forEach((block) => {
-    hljs.highlightElement(block);
-  });
+    // Apply syntax highlighting to code blocks
+    document.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block);
+    });
 
-  // Show content, hide welcome
-  dropZone.classList.add('hidden');
-  content.classList.remove('hidden');
+    // Show content, hide welcome
+    dropZone.classList.add('hidden');
+    content.classList.remove('hidden');
 
-  // Scroll to top
-  window.scrollTo(0, 0);
+    // Scroll to top
+    window.scrollTo(0, 0);
+  } catch (err) {
+    console.error('Error rendering markdown:', err);
+    markdownBody.innerHTML = '<p style="color:red">Error rendering markdown: ' + escapeHtml(err.message) + '</p><pre>' + escapeHtml(mdContent) + '</pre>';
+    dropZone.classList.add('hidden');
+    content.classList.remove('hidden');
+  }
 }
 
 // Drag and drop handling
@@ -130,3 +121,6 @@ content.addEventListener('drop', (e) => {
     }
   }
 });
+
+console.log('Renderer loaded, marked available:', typeof marked !== 'undefined');
+console.log('hljs available:', typeof hljs !== 'undefined');

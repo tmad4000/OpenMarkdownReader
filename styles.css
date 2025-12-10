@@ -52,6 +52,11 @@ html, body {
   z-index: 100;
 }
 
+/* Hidden class */
+.hidden {
+  display: none !important;
+}
+
 /* Welcome / Drop Zone */
 .drop-zone {
   height: 100%;
