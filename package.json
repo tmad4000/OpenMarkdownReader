@@ -5,14 +5,93 @@
   "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:dmg": "electron-builder --mac dmg"
   },
-  "keywords": ["markdown", "reader", "editor", "electron", "open-source"],
-  "author": "",
+  "keywords": [
+    "markdown",
+    "reader",
+    "editor",
+    "electron",
+    "open-source"
+  ],
+  "author": "Jacob Cole",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tmad4000/OpenMarkdownReader.git"
+  },
   "dependencies": {
-    "electron": "^39.2.6",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.jacobcole.openmarkdownreader",
+    "productName": "OpenMarkdownReader",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "OpenMarkdownReader",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "files": [
+      "**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown Document",
+        "role": "Editor"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown Document",
+        "role": "Editor"
+      },
+      {
+        "ext": "mdown",
+        "name": "Markdown Document",
+        "role": "Editor"
+      }
+    ]
   }
 }
