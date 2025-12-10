@@ -1,12 +1,13 @@
 {
-  "name": "markdown-reader",
+  "name": "open-markdown-reader",
+  "productName": "OpenMarkdownReader",
   "version": "1.0.0",
-  "description": "A beautiful Markdown file reader for Mac",
+  "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
   },
-  "keywords": ["markdown", "reader", "electron"],
+  "keywords": ["markdown", "reader", "editor", "electron", "open-source"],
   "author": "",
   "license": "MIT",
   "dependencies": {

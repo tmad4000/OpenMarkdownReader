@@ -3,7 +3,8 @@
 // Settings
 let settings = {
   readOnlyMode: false,
-  sidebarVisible: false
+  sidebarVisible: false,
+  contentWidth: 900
 };
 
 // Tab management
@@ -115,14 +116,14 @@ function switchToTab(tabId) {
       hideEditor();
       renderMarkdown(tab.content);
     }
-    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - Markdown Reader`;
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
     // Show welcome screen
     hideEditor();
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
-    document.title = 'Markdown Reader';
+    document.title = 'OpenMarkdownReader';
   }
 
   updateTabUI(tabId);
@@ -203,6 +204,8 @@ function toggleEditMode() {
   tab.isEditing = !tab.isEditing;
 
   if (tab.isEditing) {
+    // Store original content for potential revert
+    tab.originalContent = tab.content;
     showEditor(tab.content);
   } else {
     tab.content = editor.value;
@@ -211,6 +214,29 @@ function toggleEditMode() {
   }
 
   updateTabUI(activeTabId);
+}
+
+// Cancel/revert edits
+function revertChanges() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.isEditing) return;
+
+  if (tab.isModified) {
+    if (!confirm('Discard all changes since last save?')) {
+      return;
+    }
+  }
+
+  // Revert to original content (before editing started)
+  if (tab.originalContent !== undefined) {
+    tab.content = tab.originalContent;
+  }
+  tab.isEditing = false;
+  tab.isModified = false;
+  hideEditor();
+  renderMarkdown(tab.content);
+  updateTabUI(activeTabId);
+  document.title = `${tab.fileName} - OpenMarkdownReader`;
 }
 
 function showEditor(content) {
@@ -233,7 +259,7 @@ editor.addEventListener('input', () => {
   if (tab && tab.isEditing) {
     tab.isModified = true;
     updateTabUI(activeTabId);
-    document.title = `${tab.fileName} * - Markdown Reader`;
+    document.title = `${tab.fileName} * - OpenMarkdownReader`;
   }
 });
 
@@ -250,7 +276,7 @@ async function saveFile() {
     await window.electronAPI.saveFile(tab.filePath, tab.content);
     tab.isModified = false;
     updateTabUI(activeTabId);
-    document.title = `${tab.fileName} - Markdown Reader`;
+    document.title = `${tab.fileName} - OpenMarkdownReader`;
   } else {
     // No file path, use save as
     const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
@@ -261,7 +287,7 @@ async function saveFile() {
       const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
       if (tabEl) tabEl.textContent = tab.fileName;
       updateTabUI(activeTabId);
-      document.title = `${tab.fileName} - Markdown Reader`;
+      document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
   }
 }
@@ -421,7 +447,7 @@ window.electronAPI.onFileLoaded((data) => {
   if (activeTab && !activeTab.content) {
     updateTab(activeTabId, data.fileName, data.content, data.filePath);
     renderMarkdown(data.content);
-    document.title = `${data.fileName} - Markdown Reader`;
+    document.title = `${data.fileName} - OpenMarkdownReader`;
   } else {
     createTab(data.fileName, data.content, data.filePath);
   }
@@ -435,6 +461,11 @@ window.electronAPI.onNewTab(() => {
 // Listen for toggle edit mode
 window.electronAPI.onToggleEdit(() => {
   toggleEditMode();
+});
+
+// Listen for revert request
+window.electronAPI.onRevert(() => {
+  revertChanges();
 });
 
 // Listen for save request
@@ -461,6 +492,23 @@ window.electronAPI.onSetReadOnly((isReadOnly) => {
 window.electronAPI.onToggleSidebar(() => {
   sidebarToggle.click();
 });
+
+// Listen for setting changes
+window.electronAPI.onSettingChanged(({ setting, value }) => {
+  if (setting === 'content-width') {
+    settings.contentWidth = value;
+    applyContentWidth();
+  }
+});
+
+function applyContentWidth() {
+  const contentEl = document.getElementById('content');
+  if (settings.contentWidth === 'full') {
+    contentEl.style.maxWidth = 'none';
+  } else {
+    contentEl.style.maxWidth = `${settings.contentWidth}px`;
+  }
+}
 
 function renderMarkdown(mdContent) {
   try {
@@ -515,7 +563,7 @@ function handleFileDrop(files) {
         if (index === 0 && activeTab && !activeTab.content) {
           updateTab(activeTabId, file.name, event.target.result, null);
           renderMarkdown(event.target.result);
-          document.title = `${file.name} - Markdown Reader`;
+          document.title = `${file.name} - OpenMarkdownReader`;
         } else {
           createTab(file.name, event.target.result, null);
         }
@@ -609,11 +657,11 @@ document.addEventListener('keydown', (e) => {
     sidebarToggle.click();
   }
 
-  // Escape to exit edit mode
+  // Escape to cancel/exit edit mode
   if (e.key === 'Escape') {
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab && tab.isEditing) {
-      toggleEditMode();
+      revertChanges();
     }
   }
 });

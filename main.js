@@ -39,7 +39,7 @@ function createWindow(filePath = null) {
 function setupMenu() {
   const template = [
     {
-      label: 'Markdown Reader',
+      label: 'OpenMarkdownReader',
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -108,6 +108,14 @@ function setupMenu() {
             const win = getFocusedWindow();
             if (win) win.webContents.send('save');
           }
+        },
+        {
+          label: 'Revert Changes',
+          accelerator: 'Escape',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('revert');
+          }
         }
       ]
     },
@@ -145,6 +153,37 @@ function setupMenu() {
       ]
     },
     {
+      label: 'Settings',
+      submenu: [
+        {
+          label: 'Content Width',
+          submenu: [
+            {
+              label: 'Narrow (700px)',
+              type: 'radio',
+              click: () => broadcastSetting('content-width', 700)
+            },
+            {
+              label: 'Medium (900px)',
+              type: 'radio',
+              checked: true,
+              click: () => broadcastSetting('content-width', 900)
+            },
+            {
+              label: 'Wide (1100px)',
+              type: 'radio',
+              click: () => broadcastSetting('content-width', 1100)
+            },
+            {
+              label: 'Full Width',
+              type: 'radio',
+              click: () => broadcastSetting('content-width', 'full')
+            }
+          ]
+        }
+      ]
+    },
+    {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
@@ -161,6 +200,12 @@ function setupMenu() {
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || [...windows][0];
+}
+
+function broadcastSetting(setting, value) {
+  windows.forEach(win => {
+    win.webContents.send('setting-changed', { setting, value });
+  });
 }
 
 async function openFile(targetWindow = null) {
@@ -188,7 +233,7 @@ function loadMarkdownFile(win, filePath) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const fileName = path.basename(filePath);
     win.webContents.send('file-loaded', { content, fileName, filePath });
-    win.setTitle(`${fileName} - Markdown Reader`);
+    win.setTitle(`${fileName} - OpenMarkdownReader`);
   } catch (err) {
     dialog.showErrorBox('Error', `Could not read file: ${err.message}`);
   }

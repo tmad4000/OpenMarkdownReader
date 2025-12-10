@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Edit mode
   onToggleEdit: (callback) => ipcRenderer.on('toggle-edit', () => callback()),
+  onRevert: (callback) => ipcRenderer.on('revert', () => callback()),
   onSetReadOnly: (callback) => ipcRenderer.on('set-read-only', (event, isReadOnly) => callback(isReadOnly)),
 
   // Folder/directory operations
@@ -23,5 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
   // Window controls
-  toggleMaximize: () => ipcRenderer.invoke('toggle-maximize')
+  toggleMaximize: () => ipcRenderer.invoke('toggle-maximize'),
+
+  // Settings
+  onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data))
 });
