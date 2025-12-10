@@ -208,14 +208,9 @@ html, body {
   /* Children are indented via --depth CSS variable */
 }
 
-/* Non-markdown files - muted appearance */
+/* Non-markdown files - muted appearance but still clickable */
 .file-tree-item.non-markdown {
   color: var(--text-secondary);
-  cursor: default;
-}
-
-.file-tree-item.non-markdown:hover {
-  background: transparent;
 }
 
 .file-tree-item.non-markdown svg {

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect x="64" y="64" width="896" height="896" rx="180" ry="180" fill="url(#bg)"/>
+  <!-- Document shape -->
+  <path d="M280 200 h340 l160 160 v504 a40 40 0 0 1 -40 40 H280 a40 40 0 0 1 -40 -40 V240 a40 40 0 0 1 40 -40 z" fill="white"/>
+  <!-- Folded corner -->
+  <path d="M620 200 v120 a40 40 0 0 0 40 40 h120 z" fill="#e0e7ff"/>
+  <!-- Markdown M symbol -->
+  <path d="M320 480 v200 h50 v-140 l70 100 l70 -100 v140 h50 v-200 h-50 l-70 100 l-70 -100 z" fill="#6366f1"/>
+  <!-- Down arrow (markdown style) -->
+  <path d="M600 480 v120 h-40 l60 80 l60 -80 h-40 v-120 z" fill="#6366f1"/>
+</svg>

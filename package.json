@@ -37,6 +37,12 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": "IdeaFlow, Inc. (JESMXK96LG)",
+      "notarize": true,
       "target": [
         {
           "target": "dmg",
@@ -80,17 +86,30 @@
       {
         "ext": "md",
         "name": "Markdown Document",
-        "role": "Editor"
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "icon": "build/icon.icns"
       },
       {
         "ext": "markdown",
         "name": "Markdown Document",
-        "role": "Editor"
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "icon": "build/icon.icns"
       },
       {
         "ext": "mdown",
         "name": "Markdown Document",
-        "role": "Editor"
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "icon": "build/icon.icns"
+      },
+      {
+        "ext": "mkd",
+        "name": "Markdown Document",
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "icon": "build/icon.icns"
       }
     ]
   }

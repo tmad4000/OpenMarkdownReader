@@ -371,11 +371,10 @@ function renderFileTreeItems(items, container, depth) {
         </svg>
         <span>${escapeHtml(item.name)}</span>
       `;
-      if (item.isMarkdown) {
-        el.addEventListener('click', () => {
-          window.electronAPI.openFileByPath(item.path);
-        });
-      }
+      // All files are clickable, non-markdown just shown with muted style
+      el.addEventListener('click', () => {
+        window.electronAPI.openFileByPath(item.path);
+      });
       container.appendChild(el);
     }
   });
