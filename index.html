@@ -11,7 +11,11 @@
   <link rel="icon" type="image/svg+xml" href="icon.svg">
 </head>
 <body>
-  <div class="titlebar"></div>
+  <div class="titlebar">
+    <div id="tab-bar" class="tab-bar">
+      <button id="new-tab-btn" class="new-tab-btn" title="New Tab">+</button>
+    </div>
+  </div>
 
   <div id="drop-zone" class="drop-zone">
     <div class="welcome">
@@ -21,7 +25,7 @@
       <h1>Markdown Reader</h1>
       <p>Drop a markdown file here or</p>
       <button id="open-btn">Open File</button>
-      <p class="hint">Cmd+O to open a file</p>
+      <p class="hint">Cmd+O to open a file | Cmd+T new tab</p>
     </div>
   </div>
 

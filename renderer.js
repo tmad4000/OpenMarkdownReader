@@ -1,5 +1,10 @@
 // marked and hljs are loaded from CDN in index.html
 
+// Tab management
+let tabs = [];
+let activeTabId = null;
+let tabIdCounter = 0;
+
 function escapeHtml(text) {
   if (!text) return '';
   const map = {
@@ -13,28 +18,161 @@ function escapeHtml(text) {
 }
 
 // DOM Elements
+const tabBar = document.getElementById('tab-bar');
+const newTabBtn = document.getElementById('new-tab-btn');
 const dropZone = document.getElementById('drop-zone');
 const content = document.getElementById('content');
 const markdownBody = document.getElementById('markdown-body');
 const openBtn = document.getElementById('open-btn');
 
+// Create a new tab
+function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
+  const tabId = ++tabIdCounter;
+  const tab = {
+    id: tabId,
+    fileName,
+    filePath,
+    content: mdContent,
+    scrollPos: 0
+  };
+  tabs.push(tab);
+
+  // Create tab element
+  const tabEl = document.createElement('div');
+  tabEl.className = 'tab';
+  tabEl.dataset.tabId = tabId;
+  tabEl.innerHTML = `
+    <span class="tab-title">${escapeHtml(fileName)}</span>
+    <span class="tab-close">×</span>
+  `;
+
+  // Insert before the + button
+  tabBar.insertBefore(tabEl, newTabBtn);
+
+  // Tab click handler
+  tabEl.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('tab-close')) {
+      switchToTab(tabId);
+    }
+  });
+
+  // Close button handler
+  tabEl.querySelector('.tab-close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeTab(tabId);
+  });
+
+  switchToTab(tabId);
+  return tabId;
+}
+
+// Switch to a tab
+function switchToTab(tabId) {
+  // Save current tab's scroll position
+  if (activeTabId !== null) {
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    if (currentTab) {
+      currentTab.scrollPos = window.scrollY;
+    }
+  }
+
+  // Update active tab
+  activeTabId = tabId;
+  const tab = tabs.find(t => t.id === tabId);
+
+  // Update tab UI
+  document.querySelectorAll('.tab').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.tabId) === tabId);
+  });
+
+  // Show content
+  if (tab && tab.content) {
+    renderMarkdown(tab.content, false);
+    document.title = `${tab.fileName} - Markdown Reader`;
+    // Restore scroll position
+    setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
+  } else {
+    // Show welcome screen
+    dropZone.classList.remove('hidden');
+    content.classList.add('hidden');
+    document.title = 'Markdown Reader';
+  }
+}
+
+// Close a tab
+function closeTab(tabId) {
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  // Remove tab data
+  tabs.splice(tabIndex, 1);
+
+  // Remove tab element
+  const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (tabEl) tabEl.remove();
+
+  // If closing active tab, switch to another
+  if (activeTabId === tabId) {
+    if (tabs.length > 0) {
+      // Switch to next tab, or previous if closing last
+      const newIndex = Math.min(tabIndex, tabs.length - 1);
+      switchToTab(tabs[newIndex].id);
+    } else {
+      // No tabs left, create a new empty one
+      activeTabId = null;
+      createTab();
+    }
+  }
+}
+
+// Update tab content
+function updateTab(tabId, fileName, mdContent, filePath) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (tab) {
+    tab.fileName = fileName;
+    tab.content = mdContent;
+    tab.filePath = filePath;
+    tab.scrollPos = 0;
+
+    // Update tab title
+    const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"] .tab-title`);
+    if (tabEl) tabEl.textContent = fileName;
+  }
+}
+
 // Open file button
 openBtn.addEventListener('click', () => {
-  console.log('Open button clicked');
   window.electronAPI.openFileDialog();
+});
+
+// New tab button
+newTabBtn.addEventListener('click', () => {
+  createTab();
 });
 
 // Listen for file loaded from main process
 window.electronAPI.onFileLoaded((data) => {
-  console.log('File loaded:', data.fileName);
-  renderMarkdown(data.content);
+  const activeTab = tabs.find(t => t.id === activeTabId);
+
+  // If current tab is empty (no content), load into it
+  if (activeTab && !activeTab.content) {
+    updateTab(activeTabId, data.fileName, data.content, data.filePath);
+    renderMarkdown(data.content);
+    document.title = `${data.fileName} - Markdown Reader`;
+  } else {
+    // Create new tab for this file
+    createTab(data.fileName, data.content, data.filePath);
+  }
 });
 
-function renderMarkdown(mdContent) {
-  console.log('Rendering markdown, length:', mdContent.length);
+// Listen for new tab request from main process
+window.electronAPI.onNewTab(() => {
+  createTab();
+});
+
+function renderMarkdown(mdContent, updateTitle = true) {
   try {
     const html = marked.parse(mdContent);
-    console.log('Parsed HTML length:', html.length);
     markdownBody.innerHTML = html;
 
     // Apply syntax highlighting to code blocks
@@ -77,22 +215,32 @@ dropZone.addEventListener('dragleave', (e) => {
   dropZone.classList.remove('dragover');
 });
 
-dropZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-
-  const files = e.dataTransfer.files;
-  if (files.length > 0) {
-    const file = files[0];
+function handleFileDrop(files) {
+  Array.from(files).forEach((file, index) => {
     if (isMarkdownFile(file.name)) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        renderMarkdown(event.target.result);
-        document.title = `${file.name} - Markdown Reader`;
+        const activeTab = tabs.find(t => t.id === activeTabId);
+
+        if (index === 0 && activeTab && !activeTab.content) {
+          // First file goes into current empty tab
+          updateTab(activeTabId, file.name, event.target.result, null);
+          renderMarkdown(event.target.result);
+          document.title = `${file.name} - Markdown Reader`;
+        } else {
+          // Additional files get new tabs
+          createTab(file.name, event.target.result, null);
+        }
       };
       reader.readAsText(file);
     }
-  }
+  });
+}
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  handleFileDrop(e.dataTransfer.files);
 });
 
 function isMarkdownFile(filename) {
@@ -107,20 +255,21 @@ content.addEventListener('dragover', (e) => {
 
 content.addEventListener('drop', (e) => {
   e.preventDefault();
+  handleFileDrop(e.dataTransfer.files);
+});
 
-  const files = e.dataTransfer.files;
-  if (files.length > 0) {
-    const file = files[0];
-    if (isMarkdownFile(file.name)) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        renderMarkdown(event.target.result);
-        document.title = `${file.name} - Markdown Reader`;
-      };
-      reader.readAsText(file);
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Cmd+W to close tab
+  if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+    e.preventDefault();
+    if (activeTabId !== null) {
+      closeTab(activeTabId);
     }
   }
 });
 
-console.log('Renderer loaded, marked available:', typeof marked !== 'undefined');
-console.log('hljs available:', typeof hljs !== 'undefined');
+// Initialize with one empty tab
+createTab();
+
+console.log('Renderer loaded with tabs support');

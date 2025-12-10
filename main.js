@@ -53,8 +53,16 @@ function setupMenu() {
       label: 'File',
       submenu: [
         {
+          label: 'New Tab',
+          accelerator: 'CmdOrCtrl+T',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('new-tab');
+          }
+        },
+        {
           label: 'New Window',
-          accelerator: 'CmdOrCtrl+N',
+          accelerator: 'CmdOrCtrl+Shift+N',
           click: () => createWindow()
         },
         {
@@ -63,6 +71,13 @@ function setupMenu() {
           click: () => openFile()
         },
         { type: 'separator' },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => {
+            // Let renderer handle tab closing
+          }
+        },
         { role: 'close' }
       ]
     },
@@ -116,12 +131,10 @@ async function openFile(targetWindow = null) {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    // Open first file in current window, rest in new windows
-    result.filePaths.forEach((filePath, index) => {
-      if (index === 0 && win) {
+    // All files open as tabs in current window
+    result.filePaths.forEach((filePath) => {
+      if (win) {
         loadMarkdownFile(win, filePath);
-      } else {
-        createWindow(filePath);
       }
     });
   }
@@ -142,7 +155,12 @@ function loadMarkdownFile(win, filePath) {
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
   if (app.isReady()) {
-    createWindow(filePath);
+    const win = getFocusedWindow();
+    if (win) {
+      loadMarkdownFile(win, filePath);
+    } else {
+      createWindow(filePath);
+    }
   } else {
     app.whenReady().then(() => createWindow(filePath));
   }
