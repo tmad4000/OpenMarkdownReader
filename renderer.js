@@ -43,6 +43,9 @@ const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
 const editToggleBtn = document.getElementById('edit-toggle-btn');
+const commandPalette = document.getElementById('command-palette');
+const commandPaletteInput = document.getElementById('command-palette-input');
+const commandPaletteResults = document.getElementById('command-palette-results');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
@@ -314,6 +317,7 @@ openFolderBtn.addEventListener('click', () => {
 window.electronAPI.onDirectoryLoaded((data) => {
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
+  allFilesCache = null; // Clear command palette cache
   renderFileTree();
 
   // Show sidebar if hidden
@@ -557,6 +561,20 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   }
 });
 
+// Listen for show command palette from menu
+window.electronAPI.onShowCommandPalette(() => {
+  showCommandPalette();
+});
+
+// Listen for export PDF request
+window.electronAPI.onExportPDF(async () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab) {
+    const defaultName = tab.fileName || 'document.md';
+    await window.electronAPI.exportPDF(defaultName);
+  }
+});
+
 function applyContentWidth() {
   const contentEl = document.getElementById('content');
   if (settings.contentWidth === 'full') {
@@ -713,12 +731,22 @@ document.addEventListener('keydown', (e) => {
     sidebarToggle.click();
   }
 
-  // Escape to cancel/exit edit mode
+  // Escape to cancel/exit edit mode or close command palette
   if (e.key === 'Escape') {
+    if (!commandPalette.classList.contains('hidden')) {
+      hideCommandPalette();
+      return;
+    }
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab && tab.isEditing) {
       revertChanges();
     }
+  }
+
+  // Cmd+P to open command palette
+  if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+    e.preventDefault();
+    showCommandPalette();
   }
 });
 
@@ -727,6 +755,174 @@ document.getElementById('titlebar').addEventListener('dblclick', (e) => {
   // Only trigger on draggable areas (not on buttons or tabs)
   if (e.target.closest('.tab') || e.target.closest('button')) return;
   window.electronAPI.toggleMaximize();
+});
+
+// Command Palette / File Search
+let commandPaletteSelectedIndex = 0;
+let commandPaletteFiles = [];
+let allFilesCache = null;
+
+async function showCommandPalette() {
+  commandPalette.classList.remove('hidden');
+  commandPaletteInput.value = '';
+  commandPaletteInput.focus();
+  commandPaletteSelectedIndex = 0;
+
+  // Load all files if we have a directory
+  if (currentDirectory && !allFilesCache) {
+    commandPaletteResults.innerHTML = '<div class="command-palette-empty">Loading files...</div>';
+    allFilesCache = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+  }
+
+  updateCommandPaletteResults();
+}
+
+function hideCommandPalette() {
+  commandPalette.classList.add('hidden');
+  commandPaletteInput.value = '';
+}
+
+function getAllFilesFlat(items, basePath = '') {
+  let files = [];
+  for (const item of items) {
+    if (item.type === 'file') {
+      files.push({
+        name: item.name,
+        path: item.path,
+        isMarkdown: item.isMarkdown
+      });
+    } else if (item.type === 'folder' && item.children) {
+      files = files.concat(getAllFilesFlat(item.children, item.path));
+    }
+  }
+  return files;
+}
+
+function updateCommandPaletteResults() {
+  const query = commandPaletteInput.value.toLowerCase().trim();
+
+  // Use cached files if available, otherwise use sidebar files
+  commandPaletteFiles = allFilesCache || getAllFilesFlat(directoryFiles);
+
+  // Filter based on query
+  let filteredFiles = commandPaletteFiles;
+  if (query) {
+    filteredFiles = commandPaletteFiles.filter(f =>
+      f.name.toLowerCase().includes(query) ||
+      f.path.toLowerCase().includes(query)
+    );
+  }
+
+  // Sort: exact name matches first, then partial matches
+  filteredFiles.sort((a, b) => {
+    const aNameMatch = a.name.toLowerCase().startsWith(query);
+    const bNameMatch = b.name.toLowerCase().startsWith(query);
+    if (aNameMatch && !bNameMatch) return -1;
+    if (!aNameMatch && bNameMatch) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Limit results
+  filteredFiles = filteredFiles.slice(0, 20);
+
+  // Reset selection if out of bounds
+  if (commandPaletteSelectedIndex >= filteredFiles.length) {
+    commandPaletteSelectedIndex = Math.max(0, filteredFiles.length - 1);
+  }
+
+  // Render results
+  if (filteredFiles.length === 0) {
+    if (!currentDirectory) {
+      commandPaletteResults.innerHTML = '<div class="command-palette-empty">Open a folder first (⌘⇧O)</div>';
+    } else {
+      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files found</div>';
+    }
+    return;
+  }
+
+  commandPaletteResults.innerHTML = filteredFiles.map((file, index) => {
+    const relativePath = currentDirectory ? file.path.replace(currentDirectory + '/', '') : file.path;
+    const pathDir = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
+    return `
+      <div class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-path="${escapeHtml(file.path)}">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+        </svg>
+        <div class="command-palette-item-info">
+          <div class="command-palette-item-name">${escapeHtml(file.name)}</div>
+          ${pathDir ? `<div class="command-palette-item-path">${escapeHtml(pathDir)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add click handlers
+  commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
+    el.addEventListener('click', () => {
+      selectCommandPaletteItem(index);
+    });
+    el.addEventListener('mouseenter', () => {
+      commandPaletteSelectedIndex = index;
+      updateSelectedItem();
+    });
+  });
+}
+
+function updateSelectedItem() {
+  commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
+    el.classList.toggle('selected', index === commandPaletteSelectedIndex);
+  });
+
+  // Scroll selected item into view
+  const selectedEl = commandPaletteResults.querySelector('.command-palette-item.selected');
+  if (selectedEl) {
+    selectedEl.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function selectCommandPaletteItem(index) {
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+  if (index >= 0 && index < items.length) {
+    const path = items[index].dataset.path;
+    hideCommandPalette();
+    window.electronAPI.openFileByPath(path);
+  }
+}
+
+// Command palette input handler
+commandPaletteInput.addEventListener('input', () => {
+  commandPaletteSelectedIndex = 0;
+  updateCommandPaletteResults();
+});
+
+// Command palette keyboard navigation
+commandPaletteInput.addEventListener('keydown', (e) => {
+  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (commandPaletteSelectedIndex < items.length - 1) {
+      commandPaletteSelectedIndex++;
+      updateSelectedItem();
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (commandPaletteSelectedIndex > 0) {
+      commandPaletteSelectedIndex--;
+      updateSelectedItem();
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    selectCommandPaletteItem(commandPaletteSelectedIndex);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    hideCommandPalette();
+  }
+});
+
+// Close on backdrop click
+document.querySelector('.command-palette-backdrop').addEventListener('click', () => {
+  hideCommandPalette();
 });
 
 // Initialize with one empty tab

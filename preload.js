@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
 
+  // Print/Export
+  exportPDF: (defaultName) => ipcRenderer.invoke('export-pdf', defaultName),
+  onExportPDF: (callback) => ipcRenderer.on('export-pdf', () => callback()),
+
   // Edit mode
   onToggleEdit: (callback) => ipcRenderer.on('toggle-edit', () => callback()),
   onRevert: (callback) => ipcRenderer.on('revert', () => callback()),
@@ -26,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: () => ipcRenderer.invoke('open-folder'),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
+  getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
@@ -33,5 +38,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximize: () => ipcRenderer.invoke('toggle-maximize'),
 
   // Settings
-  onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data))
+  onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data)),
+
+  // Command palette
+  onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback())
 });

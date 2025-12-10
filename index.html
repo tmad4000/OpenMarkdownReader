@@ -52,7 +52,7 @@
           <h1>OpenMarkdownReader</h1>
           <p>Drop a markdown file here or</p>
           <button id="open-btn">Open File</button>
-          <p class="hint">Cmd+O open | Cmd+T new tab | Cmd+E edit</p>
+          <p class="hint">⌘O open | ⌘T new tab | ⌘P quick open | ⌘E edit</p>
         </div>
       </div>
 
@@ -62,6 +62,15 @@
         </div>
         <article id="markdown-body" class="markdown-body"></article>
       </div>
+    </div>
+  </div>
+
+  <!-- Command Palette / File Search -->
+  <div id="command-palette" class="command-palette hidden">
+    <div class="command-palette-backdrop"></div>
+    <div class="command-palette-modal">
+      <input type="text" id="command-palette-input" class="command-palette-input" placeholder="Search files..." autocomplete="off">
+      <div id="command-palette-results" class="command-palette-results"></div>
     </div>
   </div>
 

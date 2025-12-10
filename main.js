@@ -73,6 +73,32 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: () => openFile()
         },
+        {
+          label: 'Quick Open...',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-command-palette');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Print...',
+          accelerator: 'CmdOrCtrl+P',
+          registerAccelerator: false, // Don't override Cmd+P (used for Quick Open)
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.print();
+          }
+        },
+        {
+          label: 'Export as PDF...',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('export-pdf');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Close Tab',
@@ -310,6 +336,38 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
   }
 });
 
+// Export to PDF
+ipcMain.handle('export-pdf', async (event, defaultName) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win, {
+    defaultPath: defaultName.replace(/\.[^/.]+$/, '.pdf'),
+    filters: [
+      { name: 'PDF Documents', extensions: ['pdf'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePath) {
+    try {
+      const pdfData = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'Letter',
+        margins: {
+          top: 0.75,
+          bottom: 0.75,
+          left: 0.75,
+          right: 0.75
+        }
+      });
+      fs.writeFileSync(result.filePath, pdfData);
+      return { success: true, filePath: result.filePath };
+    } catch (err) {
+      dialog.showErrorBox('Export Error', `Could not export PDF: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+  return null;
+});
+
 // Save file as (with dialog)
 ipcMain.handle('save-file-as', async (event, content, defaultName) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -360,6 +418,49 @@ ipcMain.handle('open-file-by-path', async (event, filePath) => {
 ipcMain.handle('get-directory-contents', async (event, dirPath) => {
   return getDirectoryContents(dirPath);
 });
+
+// Get all files recursively (for command palette search)
+ipcMain.handle('get-all-files-recursive', async (event, dirPath) => {
+  return getAllFilesRecursive(dirPath);
+});
+
+// Recursively get all files in directory
+function getAllFilesRecursive(dirPath, maxDepth = 5) {
+  const markdownExtensions = ['.md', '.markdown', '.mdown', '.mkd', '.txt'];
+  const files = [];
+
+  function scan(currentPath, depth) {
+    if (depth > maxDepth) return;
+
+    try {
+      const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+      for (const entry of entries) {
+        // Skip hidden files/folders
+        if (entry.name.startsWith('.')) continue;
+
+        const fullPath = path.join(currentPath, entry.name);
+
+        if (entry.isDirectory()) {
+          scan(fullPath, depth + 1);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const isMarkdown = markdownExtensions.includes(ext);
+          files.push({
+            name: entry.name,
+            path: fullPath,
+            type: 'file',
+            isMarkdown
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error scanning directory:', err);
+    }
+  }
+
+  scan(dirPath, 0);
+  return files;
+}
 
 // Watch a file for changes
 ipcMain.handle('watch-file', async (event, filePath) => {
