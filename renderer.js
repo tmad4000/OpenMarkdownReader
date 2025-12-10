@@ -851,8 +851,33 @@ function getAllFilesFlat(items, basePath = '') {
 function updateCommandPaletteResults() {
   const query = commandPaletteInput.value.toLowerCase().trim();
 
-  // Use cached files if available, otherwise use sidebar files
-  commandPaletteFiles = allFilesCache || getAllFilesFlat(directoryFiles);
+  // Build list of searchable items: folder files + open tabs
+  let allItems = [];
+
+  // Add files from folder if available
+  if (allFilesCache) {
+    allItems = [...allFilesCache];
+  } else if (directoryFiles.length > 0) {
+    allItems = getAllFilesFlat(directoryFiles);
+  }
+
+  // Add open tabs that have content (even without a folder open)
+  tabs.forEach(tab => {
+    if (tab.content !== null && tab.filePath) {
+      // Check if this file is already in the list
+      const exists = allItems.some(f => f.path === tab.filePath);
+      if (!exists) {
+        allItems.push({
+          name: tab.fileName,
+          path: tab.filePath,
+          isMarkdown: true,
+          isOpenTab: true
+        });
+      }
+    }
+  });
+
+  commandPaletteFiles = allItems;
 
   // Filter based on query
   let filteredFiles = commandPaletteFiles;
@@ -882,8 +907,10 @@ function updateCommandPaletteResults() {
 
   // Render results
   if (filteredFiles.length === 0) {
-    if (!currentDirectory) {
-      commandPaletteResults.innerHTML = '<div class="command-palette-empty">Open a folder first (⌘⇧O)</div>';
+    if (!currentDirectory && tabs.filter(t => t.filePath).length === 0) {
+      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files open yet<br><span style="font-size: 12px; opacity: 0.7;">Open a file or folder with ⌘O</span></div>';
+    } else if (query) {
+      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No matching files</div>';
     } else {
       commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files found</div>';
     }
