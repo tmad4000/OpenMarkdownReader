@@ -492,6 +492,27 @@ saveBtn.addEventListener('click', () => {
 
 // Listen for file loaded from main process
 window.electronAPI.onFileLoaded((data) => {
+  // Check if file is already open
+  if (data.filePath) {
+    const existingTab = tabs.find(t => t.filePath === data.filePath);
+    if (existingTab) {
+      switchToTab(existingTab.id);
+      
+      // Update content if no unsaved changes (fresh from disk)
+      if (!existingTab.isModified) {
+        existingTab.content = data.content;
+        
+        // Refresh UI
+        if (existingTab.isEditing) {
+          editor.value = data.content;
+        } else {
+          renderMarkdown(data.content);
+        }
+      }
+      return;
+    }
+  }
+
   const activeTab = tabs.find(t => t.id === activeTabId);
 
   if (activeTab && !activeTab.content) {
@@ -809,8 +830,13 @@ document.getElementById('titlebar').addEventListener('dblclick', (e) => {
 
 // Command Palette / File Search
 let commandPaletteSelectedIndex = 0;
-let commandPaletteFiles = [];
+let commandPaletteFiles = []; // This will hold the currently displayed (filtered) files
 let allFilesCache = null;
+let lastInputSource = 'mouse'; // Track input source to prevent mouse hover fighting keyboard
+
+document.addEventListener('mousemove', () => {
+  lastInputSource = 'mouse';
+});
 
 async function showCommandPalette() {
   commandPalette.classList.remove('hidden');
@@ -856,49 +882,64 @@ function updateCommandPaletteResults() {
 
   // Add files from folder if available
   if (allFilesCache) {
-    allItems = [...allFilesCache];
+    allItems = allFilesCache.map(f => ({ ...f })); // Clone to avoid modifying cache
   } else if (directoryFiles.length > 0) {
     allItems = getAllFilesFlat(directoryFiles);
   }
 
   // Add open tabs that have content (even without a folder open)
+  // We mark them as isOpenTab to prioritize them
   tabs.forEach(tab => {
-    if (tab.content !== null && tab.filePath) {
+    if (tab.content !== null) {
       // Check if this file is already in the list
-      const exists = allItems.some(f => f.path === tab.filePath);
-      if (!exists) {
+      const existingItem = tab.filePath ? allItems.find(f => f.path === tab.filePath) : null;
+      
+      if (existingItem) {
+        existingItem.isOpenTab = true;
+        existingItem.tabId = tab.id;
+      } else {
+        // Not in file list (or no file path), add it
         allItems.push({
           name: tab.fileName,
-          path: tab.filePath,
+          path: tab.filePath || 'Untitled',
           isMarkdown: true,
-          isOpenTab: true
+          isOpenTab: true,
+          tabId: tab.id
         });
       }
     }
   });
 
-  commandPaletteFiles = allItems;
-
   // Filter based on query
-  let filteredFiles = commandPaletteFiles;
+  let filteredFiles = allItems;
   if (query) {
-    filteredFiles = commandPaletteFiles.filter(f =>
+    filteredFiles = allItems.filter(f =>
       f.name.toLowerCase().includes(query) ||
       f.path.toLowerCase().includes(query)
     );
   }
 
-  // Sort: exact name matches first, then partial matches
+  // Sort: Open tabs first, then exact name matches, then partial matches
   filteredFiles.sort((a, b) => {
+    // 1. Open tabs first
+    if (a.isOpenTab && !b.isOpenTab) return -1;
+    if (!a.isOpenTab && b.isOpenTab) return 1;
+
+    // 2. Exact name match starts with query
     const aNameMatch = a.name.toLowerCase().startsWith(query);
     const bNameMatch = b.name.toLowerCase().startsWith(query);
     if (aNameMatch && !bNameMatch) return -1;
     if (!aNameMatch && bNameMatch) return 1;
+    
+    // 3. Alphabetical
     return a.name.localeCompare(b.name);
   });
 
   // Limit results
   filteredFiles = filteredFiles.slice(0, 20);
+  
+  // Update global variable for selection logic
+  commandPaletteFiles = filteredFiles;
 
   // Reset selection if out of bounds
   if (commandPaletteSelectedIndex >= filteredFiles.length) {
@@ -918,15 +959,31 @@ function updateCommandPaletteResults() {
   }
 
   commandPaletteResults.innerHTML = filteredFiles.map((file, index) => {
-    const relativePath = currentDirectory ? file.path.replace(currentDirectory + '/', '') : file.path;
+    const relativePath = currentDirectory && file.path.startsWith(currentDirectory) 
+      ? file.path.replace(currentDirectory + '/', '') 
+      : file.path;
     const pathDir = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
+    
+    const icon = file.isOpenTab ? 
+      // Tab icon
+      `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="opacity: 0.8;">
+         <path d="M0 3.75C0 2.784.784 2 1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 14H1.75A1.75 1.75 0 010 12.25v-8.5zm1.75-.25a.25.25 0 00-.25.25v8.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H1.75zM3.5 6.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75z"/>
+       </svg>` :
+      // File icon
+      `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="opacity: 0.5;">
+         <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+       </svg>`;
+
+    const isOpenBadge = file.isOpenTab ? '<span class="command-palette-badge">Open</span>' : '';
+
     return `
-      <div class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-path="${escapeHtml(file.path)}">
-        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-          <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
-        </svg>
+      <div class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-index="${index}">
+        ${icon}
         <div class="command-palette-item-info">
-          <div class="command-palette-item-name">${escapeHtml(file.name)}</div>
+          <div class="command-palette-item-name">
+            ${escapeHtml(file.name)}
+            ${isOpenBadge}
+          </div>
           ${pathDir ? `<div class="command-palette-item-path">${escapeHtml(pathDir)}</div>` : ''}
         </div>
       </div>
@@ -939,10 +996,17 @@ function updateCommandPaletteResults() {
       selectCommandPaletteItem(index);
     });
     el.addEventListener('mouseenter', () => {
-      commandPaletteSelectedIndex = index;
-      updateSelectedItem();
+      // Only update selection on mouse hover if the mouse is actually the source of input
+      // This prevents the selection from jumping when the list scrolls under the mouse due to keyboard nav
+      if (lastInputSource === 'mouse') {
+        commandPaletteSelectedIndex = index;
+        updateSelectedItem();
+      }
     });
   });
+  
+  // Ensure selected item is in view
+  updateSelectedItem();
 }
 
 function updateSelectedItem() {
@@ -958,11 +1022,15 @@ function updateSelectedItem() {
 }
 
 function selectCommandPaletteItem(index) {
-  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
-  if (index >= 0 && index < items.length) {
-    const path = items[index].dataset.path;
+  if (index >= 0 && index < commandPaletteFiles.length) {
+    const file = commandPaletteFiles[index];
     hideCommandPalette();
-    window.electronAPI.openFileByPath(path);
+    
+    if (file.isOpenTab && file.tabId) {
+      switchToTab(file.tabId);
+    } else {
+      window.electronAPI.openFileByPath(file.path);
+    }
   }
 }
 
@@ -974,22 +1042,25 @@ commandPaletteInput.addEventListener('input', () => {
 
 // Command palette keyboard navigation
 commandPaletteInput.addEventListener('keydown', (e) => {
-  const items = commandPaletteResults.querySelectorAll('.command-palette-item');
+  const items = commandPaletteFiles; // Use data source instead of DOM query
 
   if (e.key === 'ArrowDown') {
     e.preventDefault();
+    lastInputSource = 'keyboard';
     if (commandPaletteSelectedIndex < items.length - 1) {
       commandPaletteSelectedIndex++;
       updateSelectedItem();
     }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
+    lastInputSource = 'keyboard';
     if (commandPaletteSelectedIndex > 0) {
       commandPaletteSelectedIndex--;
       updateSelectedItem();
     }
   } else if (e.key === 'Enter') {
     e.preventDefault();
+    lastInputSource = 'keyboard';
     selectCommandPaletteItem(commandPaletteSelectedIndex);
   } else if (e.key === 'Escape') {
     e.preventDefault();
