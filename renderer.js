@@ -4,7 +4,8 @@
 let settings = {
   readOnlyMode: false,
   sidebarVisible: false,
-  contentWidth: 900
+  contentWidth: 900,
+  watchFileMode: false
 };
 
 // Tab management
@@ -154,6 +155,11 @@ function closeTab(tabId) {
     if (!confirm(`"${tab.fileName}" has unsaved changes. Close anyway?`)) {
       return;
     }
+  }
+
+  // Stop watching the file if we were watching it
+  if (tab && tab.filePath) {
+    window.electronAPI.unwatchFile(tab.filePath);
   }
 
   // Remove tab data
@@ -444,11 +450,23 @@ window.electronAPI.onFileLoaded((data) => {
   const activeTab = tabs.find(t => t.id === activeTabId);
 
   if (activeTab && !activeTab.content) {
+    // Stop watching old file if any
+    if (activeTab.filePath && settings.watchFileMode) {
+      window.electronAPI.unwatchFile(activeTab.filePath);
+    }
     updateTab(activeTabId, data.fileName, data.content, data.filePath);
     renderMarkdown(data.content);
     document.title = `${data.fileName} - OpenMarkdownReader`;
+    // Start watching new file
+    if (data.filePath && settings.watchFileMode) {
+      window.electronAPI.watchFile(data.filePath);
+    }
   } else {
     createTab(data.fileName, data.content, data.filePath);
+    // Start watching if watch mode is on
+    if (data.filePath && settings.watchFileMode) {
+      window.electronAPI.watchFile(data.filePath);
+    }
   }
 });
 
@@ -483,6 +501,45 @@ window.electronAPI.onSetReadOnly((isReadOnly) => {
       hideEditor();
       renderMarkdown(tab.content);
       updateTabUI(activeTabId);
+    }
+  }
+});
+
+// Listen for watch mode toggle
+window.electronAPI.onSetWatchMode((watchMode) => {
+  settings.watchFileMode = watchMode;
+  // Start/stop watching current tab's file
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.filePath) {
+    if (watchMode) {
+      window.electronAPI.watchFile(tab.filePath);
+    } else {
+      window.electronAPI.unwatchFile(tab.filePath);
+    }
+  }
+});
+
+// Listen for file changes from watcher
+window.electronAPI.onFileChanged(({ filePath, content }) => {
+  // Find the tab with this file
+  const tab = tabs.find(t => t.filePath === filePath);
+  if (!tab) return;
+
+  // Don't update if user is editing and has unsaved changes
+  if (tab.isEditing && tab.isModified) {
+    console.log('File changed externally but tab has unsaved edits, skipping update');
+    return;
+  }
+
+  // Update content
+  tab.content = content;
+
+  // If this is the active tab, re-render
+  if (tab.id === activeTabId) {
+    if (tab.isEditing) {
+      editor.value = content;
+    } else {
+      renderMarkdown(content);
     }
   }
 });

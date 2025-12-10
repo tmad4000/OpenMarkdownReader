@@ -4,6 +4,8 @@ const fs = require('fs');
 
 const windows = new Set();
 let isReadOnlyMode = true; // Default to read-only
+let watchFileMode = false; // Watch for external file changes
+const fileWatchers = new Map(); // Track active file watchers
 
 function createWindow(filePath = null) {
   const win = new BrowserWindow({
@@ -138,6 +140,17 @@ function setupMenu() {
             isReadOnlyMode = menuItem.checked;
             windows.forEach(win => {
               win.webContents.send('set-read-only', isReadOnlyMode);
+            });
+          }
+        },
+        {
+          label: 'Watch for File Changes',
+          type: 'checkbox',
+          checked: false,
+          click: (menuItem) => {
+            watchFileMode = menuItem.checked;
+            windows.forEach(win => {
+              win.webContents.send('set-watch-mode', watchFileMode);
             });
           }
         },
@@ -346,6 +359,46 @@ ipcMain.handle('open-file-by-path', async (event, filePath) => {
 // Get directory contents (for expanding folders in sidebar)
 ipcMain.handle('get-directory-contents', async (event, dirPath) => {
   return getDirectoryContents(dirPath);
+});
+
+// Watch a file for changes
+ipcMain.handle('watch-file', async (event, filePath) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const watchKey = `${win.id}:${filePath}`;
+
+  // Don't create duplicate watchers
+  if (fileWatchers.has(watchKey)) return;
+
+  try {
+    const watcher = fs.watch(filePath, (eventType) => {
+      if (eventType === 'change') {
+        // Debounce: wait a bit for write to complete
+        setTimeout(() => {
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            win.webContents.send('file-changed', { filePath, content });
+          } catch (err) {
+            console.error('Error reading changed file:', err);
+          }
+        }, 100);
+      }
+    });
+    fileWatchers.set(watchKey, watcher);
+  } catch (err) {
+    console.error('Error watching file:', err);
+  }
+});
+
+// Stop watching a file
+ipcMain.handle('unwatch-file', async (event, filePath) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const watchKey = `${win.id}:${filePath}`;
+
+  const watcher = fileWatchers.get(watchKey);
+  if (watcher) {
+    watcher.close();
+    fileWatchers.delete(watchKey);
+  }
 });
 
 // Get all files and folders in directory

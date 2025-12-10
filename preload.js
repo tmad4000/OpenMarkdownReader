@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRevert: (callback) => ipcRenderer.on('revert', () => callback()),
   onSetReadOnly: (callback) => ipcRenderer.on('set-read-only', (event, isReadOnly) => callback(isReadOnly)),
 
+  // File watching
+  onSetWatchMode: (callback) => ipcRenderer.on('set-watch-mode', (event, watchMode) => callback(watchMode)),
+  watchFile: (filePath) => ipcRenderer.invoke('watch-file', filePath),
+  unwatchFile: (filePath) => ipcRenderer.invoke('unwatch-file', filePath),
+  onFileChanged: (callback) => ipcRenderer.on('file-changed', (event, data) => callback(data)),
+
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
