@@ -71,8 +71,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
     <span class="tab-close">×</span>
   `;
 
-  // Insert before the + button
-  tabBar.insertBefore(tabEl, newTabBtn);
+  // Append to tab bar
+  tabBar.appendChild(tabEl);
 
   // Tab click handler
   tabEl.addEventListener('click', (e) => {

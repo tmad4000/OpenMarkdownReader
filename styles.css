@@ -234,6 +234,16 @@ html, body {
   position: relative;
 }
 
+/* Tab Bar Wrapper */
+.tab-bar-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
 /* Tab Bar */
 .tab-bar {
   display: flex;
@@ -243,7 +253,6 @@ html, body {
   min-width: 0; /* Allow shrinking */
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-app-region: no-drag;
   scrollbar-width: none; /* Firefox */
 }
 
@@ -264,9 +273,9 @@ html, body {
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-  min-width: 60px;
+  min-width: 80px;
   max-width: 180px;
-  flex-shrink: 1;
+  flex: 0 1 180px; /* Don't grow, can shrink, preferred 180px */
   transition: background 0.15s, color 0.15s;
 }
 
@@ -320,6 +329,7 @@ html, body {
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  flex-shrink: 0; /* Never shrink the + button */
 }
 
 .new-tab-btn:hover {
