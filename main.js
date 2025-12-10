@@ -298,29 +298,53 @@ ipcMain.handle('open-file-by-path', async (event, filePath) => {
   loadMarkdownFile(win, filePath);
 });
 
-// Get markdown files in directory
-function getMarkdownFilesInDirectory(dirPath) {
+// Get directory contents (for expanding folders in sidebar)
+ipcMain.handle('get-directory-contents', async (event, dirPath) => {
+  return getDirectoryContents(dirPath);
+});
+
+// Get all files and folders in directory
+function getDirectoryContents(dirPath) {
   const markdownExtensions = ['.md', '.markdown', '.mdown', '.mkd', '.txt'];
+  const folders = [];
   const files = [];
 
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isFile()) {
+      // Skip hidden files/folders
+      if (entry.name.startsWith('.')) continue;
+
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        folders.push({
+          name: entry.name,
+          path: fullPath,
+          type: 'folder'
+        });
+      } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (markdownExtensions.includes(ext)) {
-          files.push({
-            name: entry.name,
-            path: path.join(dirPath, entry.name)
-          });
-        }
+        const isMarkdown = markdownExtensions.includes(ext);
+        files.push({
+          name: entry.name,
+          path: fullPath,
+          type: 'file',
+          isMarkdown
+        });
       }
     }
-    // Sort alphabetically
+    // Sort: folders first (alphabetically), then files (alphabetically)
+    folders.sort((a, b) => a.name.localeCompare(b.name));
     files.sort((a, b) => a.name.localeCompare(b.name));
   } catch (err) {
     console.error('Error reading directory:', err);
   }
 
-  return files;
+  return [...folders, ...files];
+}
+
+// Legacy function for backwards compatibility
+function getMarkdownFilesInDirectory(dirPath) {
+  return getDirectoryContents(dirPath);
 }

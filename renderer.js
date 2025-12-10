@@ -292,28 +292,111 @@ window.electronAPI.onDirectoryLoaded((data) => {
   }
 });
 
+// Track expanded folders
+const expandedFolders = new Set();
+
 function renderFileTree() {
   fileTree.innerHTML = '';
 
   if (!directoryFiles.length) {
-    fileTree.innerHTML = '<div class="file-tree-item" style="opacity:0.5">No markdown files</div>';
+    fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">No files</div>';
     return;
   }
 
-  directoryFiles.forEach(file => {
-    const item = document.createElement('div');
-    item.className = 'file-tree-item';
-    item.innerHTML = `
-      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-        <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
-      </svg>
-      <span>${escapeHtml(file.name)}</span>
-    `;
-    item.addEventListener('click', () => {
-      window.electronAPI.openFileByPath(file.path);
-    });
-    fileTree.appendChild(item);
+  renderFileTreeItems(directoryFiles, fileTree, 0);
+}
+
+function renderFileTreeItems(items, container, depth) {
+  items.forEach(item => {
+    const el = document.createElement('div');
+    el.style.setProperty('--depth', depth);
+
+    if (item.type === 'folder') {
+      const isExpanded = expandedFolders.has(item.path);
+      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}`;
+      el.innerHTML = `
+        <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+          <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
+        </svg>
+        <svg class="folder-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
+        </svg>
+        <span>${escapeHtml(item.name)}</span>
+      `;
+      el.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await toggleFolder(item.path, el);
+      });
+      container.appendChild(el);
+
+      // If expanded, render children
+      if (isExpanded && item.children) {
+        const childContainer = document.createElement('div');
+        childContainer.className = 'file-tree-children';
+        container.appendChild(childContainer);
+        renderFileTreeItems(item.children, childContainer, depth + 1);
+      }
+    } else {
+      // File
+      el.className = `file-tree-item file-tree-file ${item.isMarkdown ? '' : 'non-markdown'}`;
+      el.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+        </svg>
+        <span>${escapeHtml(item.name)}</span>
+      `;
+      if (item.isMarkdown) {
+        el.addEventListener('click', () => {
+          window.electronAPI.openFileByPath(item.path);
+        });
+      }
+      container.appendChild(el);
+    }
   });
+}
+
+async function toggleFolder(folderPath, element) {
+  if (expandedFolders.has(folderPath)) {
+    // Collapse
+    expandedFolders.delete(folderPath);
+    element.classList.remove('expanded');
+    // Remove children container
+    const nextEl = element.nextElementSibling;
+    if (nextEl && nextEl.classList.contains('file-tree-children')) {
+      nextEl.remove();
+    }
+  } else {
+    // Expand - fetch contents
+    expandedFolders.add(folderPath);
+    element.classList.add('expanded');
+
+    const contents = await window.electronAPI.getDirectoryContents(folderPath);
+
+    // Store children in our data structure
+    const folderItem = findItemByPath(directoryFiles, folderPath);
+    if (folderItem) {
+      folderItem.children = contents;
+    }
+
+    // Insert children container after folder element
+    const childContainer = document.createElement('div');
+    childContainer.className = 'file-tree-children';
+    element.after(childContainer);
+
+    const depth = parseInt(element.style.getPropertyValue('--depth') || '0') + 1;
+    renderFileTreeItems(contents, childContainer, depth);
+  }
+}
+
+function findItemByPath(items, targetPath) {
+  for (const item of items) {
+    if (item.path === targetPath) return item;
+    if (item.children) {
+      const found = findItemByPath(item.children, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 // Open file button

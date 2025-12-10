@@ -159,6 +159,7 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
+  padding-left: calc(12px + var(--depth, 0) * 16px);
   font-size: 13px;
   color: var(--text-color);
   cursor: pointer;
@@ -173,10 +174,6 @@ html, body {
   background: var(--border-color);
 }
 
-.file-tree-item.folder {
-  font-weight: 500;
-}
-
 .file-tree-item svg {
   flex-shrink: 0;
   opacity: 0.6;
@@ -188,12 +185,51 @@ html, body {
   white-space: nowrap;
 }
 
+/* Folder items */
 .file-tree-folder {
-  padding-left: 0;
+  font-weight: 500;
 }
 
-.file-tree-folder .file-tree-item {
-  padding-left: calc(12px + var(--depth, 0) * 16px);
+.file-tree-folder .folder-chevron {
+  transition: transform 0.15s ease;
+}
+
+.file-tree-folder.expanded .folder-chevron {
+  transform: rotate(90deg);
+}
+
+.file-tree-folder .folder-icon {
+  color: var(--link-color);
+  opacity: 0.8;
+}
+
+/* Children container */
+.file-tree-children {
+  /* Children are indented via --depth CSS variable */
+}
+
+/* Non-markdown files - muted appearance */
+.file-tree-item.non-markdown {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.file-tree-item.non-markdown:hover {
+  background: transparent;
+}
+
+.file-tree-item.non-markdown svg {
+  opacity: 0.4;
+}
+
+/* Empty state */
+.file-tree-empty {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.file-tree-empty:hover {
+  background: transparent;
 }
 
 /* Content Area */

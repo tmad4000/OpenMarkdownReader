@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
   openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
+  getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
