@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -884,6 +884,16 @@ ipcMain.handle('get-recent-files', async () => {
     }
   });
   return validRecent;
+});
+
+// Open external URL in default browser
+ipcMain.handle('open-external', async (event, url) => {
+  // Only open http/https URLs for security
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
 });
 
 // Toggle watch mode from renderer

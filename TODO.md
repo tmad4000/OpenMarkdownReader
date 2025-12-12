@@ -31,3 +31,11 @@
 - [ ] **Distraction-Free Mode**: Toggle to hide all UI elements (sidebar, tab bar) for focused writing.
 - [ ] **Theme Customization**: Ability for users to define custom CSS for the preview.
 
+## Brainstorm / Maybe Later
+
+These are ideas that might be interesting but need more thought:
+
+- [ ] **In-App Web Browsing**: Option to open external links in an embedded browser view with back/forward navigation and "Open in Browser" button. Would need careful UX design to not confuse users about what's a local file vs web content. Could be useful for documentation that references external resources.
+- [ ] **Link Preview on Hover**: Show a tooltip preview when hovering over links.
+- [ ] **Vim Keybindings**: Optional vim-mode for power users.
+

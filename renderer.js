@@ -2065,3 +2065,37 @@ window.electronAPI.onFileLoaded(() => {
   }
 });
 
+// Handle link clicks - open external links in browser, handle internal links in-app
+markdownBody.addEventListener('click', (e) => {
+  const link = e.target.closest('a');
+  if (!link) return;
+
+  const href = link.getAttribute('href');
+  if (!href) return;
+
+  e.preventDefault();
+
+  // External links (http/https) - open in browser
+  if (href.startsWith('http://') || href.startsWith('https://')) {
+    window.electronAPI.openExternal(href);
+    return;
+  }
+
+  // Anchor links (same page)
+  if (href.startsWith('#')) {
+    const target = document.getElementById(href.slice(1));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+    return;
+  }
+
+  // Relative file links - try to open the file
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.filePath) {
+    const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
+    const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
+    window.electronAPI.openFileByPath(targetPath);
+  }
+});
+

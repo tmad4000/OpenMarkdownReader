@@ -63,5 +63,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Session restore
   onGetSessionState: (callback) => ipcRenderer.on('get-session-state', () => callback()),
   reportSessionState: (sessionData) => ipcRenderer.send('session-state', sessionData),
-  onRestoreSession: (callback) => ipcRenderer.on('restore-session', (event, data) => callback(data))
+  onRestoreSession: (callback) => ipcRenderer.on('restore-session', (event, data) => callback(data)),
+
+  // External links
+  openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });
