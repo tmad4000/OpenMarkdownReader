@@ -291,6 +291,7 @@ html, body {
 }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
