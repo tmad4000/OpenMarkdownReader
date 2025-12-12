@@ -1525,3 +1525,110 @@ mark.find-match.active {
 [data-theme="dark"] .hljs-regexp {
   color: #ff7b72;
 }
+
+/* ... existing styles ... */
+
+/* Rich Mode Button */
+.rich-mode-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  margin-right: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.rich-mode-btn:hover {
+  background: var(--code-bg);
+  color: var(--text-color);
+}
+
+.rich-mode-btn.active {
+  background: var(--link-color);
+  color: white;
+  border-color: var(--link-color);
+}
+
+.rich-mode-btn.hidden {
+  display: none;
+}
+
+/* EasyMDE Overrides for Dark/Light Theme */
+.EasyMDEContainer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color);
+}
+
+.editor-toolbar {
+  background-color: var(--code-bg) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-color) !important;
+}
+
+.editor-toolbar i.separator {
+  border-right-color: var(--border-color) !important;
+}
+
+.editor-toolbar button {
+  color: var(--text-secondary) !important;
+}
+
+.editor-toolbar button:hover, .editor-toolbar button.active {
+  background: var(--border-color) !important;
+  color: var(--text-color) !important;
+  border-color: transparent !important;
+}
+
+.CodeMirror {
+  background: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+  height: auto !important;
+  flex: 1;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace !important;
+  font-size: 14px;
+}
+
+.CodeMirror-cursor {
+  border-left-color: var(--text-color) !important;
+}
+
+.CodeMirror-selected {
+  background: var(--selection-bg) !important;
+}
+
+.CodeMirror-line::selection, .CodeMirror-line > span::selection, .CodeMirror-line > span > span::selection {
+  background: var(--selection-bg) !important;
+}
+
+/* Hide status bar */
+.editor-statusbar {
+  display: none !important;
+}
+
+/* Markdown styling in editor */
+.cm-header { color: var(--text-color); font-weight: bold; }
+.cm-strong { color: var(--text-color); font-weight: bold; }
+.cm-em { font-style: italic; }
+.cm-link { color: var(--link-color); }
+.cm-url { color: var(--link-color); text-decoration: underline; }
+.cm-quote { color: var(--text-secondary); font-style: italic; }
+
+/* EasyMDE Preview Side-by-Side fix */
+.editor-preview-side {
+  background: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}

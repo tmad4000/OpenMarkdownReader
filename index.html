@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
 </head>
 <body>
@@ -39,6 +40,12 @@
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M2 4a1 1 0 100-2 1 1 0 000 2zm3.75-1.5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zM3 8a1 1 0 11-2 0 1 1 0 012 0zm-1 6a1 1 0 100-2 1 1 0 000 2z"/>
       </svg>
+    </button>
+    <button id="rich-mode-btn" class="rich-mode-btn hidden" title="Toggle Rich Editor">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M2.5 2.5h11a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5ZM4 6h8v1H4V6Zm0 3h8v1H4V9Z"/>
+      </svg>
+      Rich
     </button>
     <button id="edit-toggle-btn" class="edit-toggle-btn" title="Toggle Edit Mode (⌘E)">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
@@ -171,6 +178,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

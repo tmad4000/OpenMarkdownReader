@@ -2346,3 +2346,267 @@ markdownBody.addEventListener('click', (e) => {
   }
 });
 
+
+// ==========================================
+// RICH EDITOR (EasyMDE) INTEGRATION
+// ==========================================
+
+let easyMDE = null;
+const richModeBtn = document.getElementById('rich-mode-btn');
+settings.richEditorMode = false; // Default to Plain
+
+function initRichEditor() {
+  if (easyMDE) return;
+  
+  easyMDE = new EasyMDE({
+    element: editor,
+    autoDownloadFontAwesome: true,
+    spellChecker: false,
+    status: false, // Hide status bar
+    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
+    styleSelectedText: false,
+    minHeight: "100%",
+    maxHeight: "100%"
+  });
+  
+  // Change handler to update tab status
+  easyMDE.codemirror.on('change', () => {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing) {
+      if (!tab.isModified) {
+        tab.isModified = true;
+        updateTabUI(activeTabId);
+        document.title = `${tab.fileName} * - OpenMarkdownReader`;
+      }
+    }
+  });
+}
+
+function destroyRichEditor() {
+  if (easyMDE) {
+    easyMDE.toTextArea();
+    easyMDE = null;
+  }
+}
+
+// Toggle Rich/Plain Mode
+richModeBtn.addEventListener('click', () => {
+  settings.richEditorMode = !settings.richEditorMode;
+  if (settings.richEditorMode) {
+    richModeBtn.classList.add('active');
+    initRichEditor();
+    if (easyMDE) easyMDE.value(editor.value);
+  } else {
+    richModeBtn.classList.remove('active');
+    if (easyMDE) editor.value = easyMDE.value();
+    destroyRichEditor();
+    editor.focus();
+  }
+});
+
+// ------------------------------------------
+// Overridden Functions to support EasyMDE
+// ------------------------------------------
+
+showEditor = function(content) {
+  editor.value = content;
+  editorContainer.classList.remove('hidden');
+  markdownBody.classList.add('hidden');
+  dropZone.classList.add('hidden');
+  document.getElementById('content').classList.remove('hidden');
+  editor.focus();
+
+  // Rich Mode Logic
+  richModeBtn.classList.remove('hidden');
+  
+  if (settings.richEditorMode) {
+    richModeBtn.classList.add('active');
+    initRichEditor();
+    if (easyMDE) {
+      easyMDE.value(content);
+      // Refresh to fix layout issues
+      setTimeout(() => {
+        if (easyMDE) easyMDE.codemirror.refresh();
+      }, 10);
+    }
+  } else {
+    richModeBtn.classList.remove('active');
+    destroyRichEditor();
+    editor.focus();
+  }
+};
+
+hideEditor = function() {
+  if (easyMDE) {
+    // Sync content back to textarea just in case
+    editor.value = easyMDE.value();
+  }
+  editorContainer.classList.add('hidden');
+  markdownBody.classList.remove('hidden');
+  richModeBtn.classList.add('hidden');
+};
+
+switchToTab = function(tabId) {
+  // Save current tab state
+  if (activeTabId !== null) {
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    if (currentTab) {
+      currentTab.scrollPos = window.scrollY;
+      if (currentTab.isEditing) {
+        // Capture content from EasyMDE if active
+        currentTab.content = easyMDE ? easyMDE.value() : editor.value;
+      }
+    }
+  }
+
+  // Update active tab
+  activeTabId = tabId;
+  const tab = tabs.find(t => t.id === tabId);
+
+  // Update tab UI
+  document.querySelectorAll('.tab').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.tabId) === tabId);
+  });
+
+  // Show content
+  if (tab && tab.content !== null && tab.content !== undefined) {
+    if (tab.isEditing) {
+      showEditor(tab.content);
+    } else {
+      hideEditor();
+      renderContent(tab.content, tab.fileName);
+    }
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+    setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
+  } else {
+    // Show welcome screen
+    hideEditor();
+    hideCSVView();
+    dropZone.classList.remove('hidden');
+    content.classList.add('hidden');
+    document.title = 'OpenMarkdownReader';
+  }
+
+  updateTabUI(tabId);
+  
+  // Re-run find if open
+  if (typeof updateFindResults === 'function' && findState && findState.isOpen) {
+     setTimeout(updateFindResults, 50);
+  }
+};
+
+toggleEditMode = function() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  // New file logic
+  if (!tab.content && tab.content !== '') {
+    tab.fileName = 'Untitled.md';
+    tab.content = '';
+    tab.isEditing = true;
+    tab.originalContent = '';
+    const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
+    if (tabEl) tabEl.textContent = tab.fileName;
+    showEditor('');
+    updateTabUI(activeTabId);
+    return;
+  }
+
+  if (settings.readOnlyMode) {
+    alert('Read-only mode is enabled. Disable it in the View menu to edit.');
+    return;
+  }
+
+  tab.isEditing = !tab.isEditing;
+
+  if (tab.isEditing) {
+    tab.originalContent = tab.content;
+    showEditor(tab.content);
+  } else {
+    // Capture content
+    tab.content = easyMDE ? easyMDE.value() : editor.value;
+    hideEditor();
+    renderContent(tab.content, tab.fileName);
+  }
+
+  updateTabUI(activeTabId);
+};
+
+saveFile = async function() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  if (tab.isEditing) {
+    tab.content = easyMDE ? easyMDE.value() : editor.value;
+  }
+
+  if (tab.filePath) {
+    await window.electronAPI.saveFile(tab.filePath, tab.content);
+    tab.isModified = false;
+    if (tab.isEditing) {
+      tab.originalContent = tab.content;
+    }
+    updateTabUI(activeTabId);
+    document.title = `${tab.fileName} - OpenMarkdownReader`;
+  } else {
+    const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+    if (result) {
+        tab.filePath = result.filePath;
+        tab.fileName = result.fileName;
+        tab.isModified = false;
+        if (tab.isEditing) tab.originalContent = tab.content;
+        
+        const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
+        if (tabEl) tabEl.textContent = tab.fileName;
+        
+        updateTabUI(activeTabId);
+        document.title = `${tab.fileName} - OpenMarkdownReader`;
+    }
+  }
+};
+
+closeTab = async function(tabId, silent = false) {
+  const tab = tabs.find(t => t.id === tabId);
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  // Check for unsaved changes
+  if (!silent && tab && tab.isModified) {
+    const result = await showSaveDialog(tab.fileName);
+    if (result === 'cancel') return;
+    if (result === 'save') {
+      if (tab.isEditing) {
+        if (activeTabId === tabId && easyMDE) {
+            tab.content = easyMDE.value();
+        } else if (activeTabId === tabId) {
+            tab.content = editor.value; 
+        }
+      }
+      if (tab.filePath) {
+        await window.electronAPI.saveFile(tab.filePath, tab.content);
+      } else {
+        const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+        if (!saveResult) return;
+      }
+    }
+  }
+  
+  // Remove tab
+  tabs.splice(tabIndex, 1);
+  const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (tabEl) tabEl.remove();
+
+  if (activeTabId === tabId) {
+    if (tabs.length > 0) {
+      const newIndex = Math.min(tabIndex, tabs.length - 1);
+      switchToTab(tabs[newIndex].id);
+    } else {
+      activeTabId = null;
+      hideEditor();
+      hideCSVView();
+      dropZone.classList.remove('hidden');
+      content.classList.add('hidden');
+      document.title = 'OpenMarkdownReader';
+    }
+  }
+};
