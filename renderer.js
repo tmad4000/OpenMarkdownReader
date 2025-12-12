@@ -1800,3 +1800,268 @@ window.electronAPI.onRestoreSession((data) => {
 });
 
 console.log('Renderer loaded with editing and sidebar support');
+// Find in File
+const findBar = document.getElementById('find-bar');
+const findInput = document.getElementById('find-input');
+const findCount = document.getElementById('find-count');
+const findPrevBtn = document.getElementById('find-prev-btn');
+const findNextBtn = document.getElementById('find-next-btn');
+const findCloseBtn = document.getElementById('find-close-btn');
+
+let findState = {
+  isOpen: false,
+  matches: [], // DOM elements (preview) or {start, end} objects (edit)
+  currentIndex: -1,
+  query: ''
+};
+
+function toggleFind() {
+  if (findState.isOpen) {
+    hideFindBar();
+  } else {
+    showFindBar();
+  }
+}
+
+function showFindBar() {
+  findState.isOpen = true;
+  findBar.classList.remove('hidden');
+  findInput.focus();
+  findInput.select();
+  updateFindResults();
+}
+
+function hideFindBar() {
+  findState.isOpen = false;
+  findBar.classList.add('hidden');
+  clearFindHighlights();
+  findCount.classList.add('hidden');
+  
+  // Return focus to content
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.isEditing) {
+    editor.focus();
+  }
+}
+
+function clearFindHighlights() {
+  // Clear preview highlights
+  const marks = document.querySelectorAll('mark.find-match');
+  marks.forEach(mark => {
+    const parent = mark.parentNode;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+      parent.normalize();
+    }
+  });
+  
+  findState.matches = [];
+  findState.currentIndex = -1;
+  findState.query = '';
+}
+
+function updateFindResults() {
+  if (!findState.isOpen) return;
+  
+  const query = findInput.value;
+  if (!query) {
+    clearFindHighlights();
+    findCount.classList.add('hidden');
+    return;
+  }
+  
+  clearFindHighlights();
+  findState.query = query;
+  
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+  
+  if (tab.isEditing) {
+    searchInEditor(query);
+  } else {
+    searchInPreview(query);
+  }
+  
+  updateFindCountUI();
+}
+
+function searchInEditor(query) {
+  const text = editor.value;
+  const regex = new RegExp(escapeRegExp(query), 'gi');
+  let match;
+  
+  findState.matches = [];
+  
+  while ((match = regex.exec(text)) !== null) {
+    findState.matches.push({
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+  
+  if (findState.matches.length > 0) {
+    findState.currentIndex = 0;
+    jumpToMatch(0);
+  }
+}
+
+function searchInPreview(query) {
+  if (!markdownBody) return;
+  
+  // TreeWalker to find text nodes
+  const walker = document.createTreeWalker(
+    markdownBody,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false
+  );
+  
+  const textNodes = [];
+  let node;
+  while (node = walker.nextNode()) {
+    textNodes.push(node);
+  }
+  
+  const regex = new RegExp(escapeRegExp(query), 'gi');
+  let allMatches = [];
+  
+  textNodes.forEach(textNode => {
+    const text = textNode.nodeValue;
+    let match;
+    regex.lastIndex = 0;
+    
+    while ((match = regex.exec(text)) !== null) {
+      allMatches.push({
+        node: textNode,
+        index: match.index,
+        length: match[0].length,
+        text: match[0]
+      });
+    }
+  });
+  
+  // Group matches by node
+  const matchesByNode = new Map();
+  allMatches.forEach(m => {
+    if (!matchesByNode.has(m.node)) matchesByNode.set(m.node, []);
+    matchesByNode.get(m.node).push(m);
+  });
+  
+  findState.matches = []; 
+  
+  // Process each node
+  matchesByNode.forEach((matches, node) => {
+    // Sort reverse order
+    matches.sort((a, b) => b.index - a.index);
+    
+    matches.forEach(m => {
+      const range = document.createRange();
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m.length);
+      
+      const mark = document.createElement('mark');
+      mark.className = 'find-match';
+      mark.textContent = m.text;
+      
+      range.deleteContents();
+      range.insertNode(mark);
+    });
+  });
+  
+  // Re-query to get marks in order
+  findState.matches = Array.from(document.querySelectorAll('mark.find-match'));
+  
+  if (findState.matches.length > 0) {
+    findState.currentIndex = 0;
+    jumpToMatch(0);
+  }
+}
+
+function jumpToMatch(index) {
+  if (findState.matches.length === 0) return;
+  
+  // Wrap index
+  if (index < 0) index = findState.matches.length - 1;
+  if (index >= findState.matches.length) index = 0;
+  
+  findState.currentIndex = index;
+  updateFindCountUI();
+  
+  const tab = tabs.find(t => t.id === activeTabId);
+  
+  if (tab.isEditing) {
+    const match = findState.matches[index];
+    editor.focus();
+    editor.setSelectionRange(match.start, match.end);
+    // Note: scrolling to cursor in textarea is automatic on focus/selection usually
+  } else {
+    // Preview
+    const mark = findState.matches[index];
+    
+    // Remove active class from all
+    findState.matches.forEach(m => m.classList.remove('active'));
+    
+    mark.classList.add('active');
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function updateFindCountUI() {
+  if (findState.matches.length > 0) {
+    findCount.textContent = `${findState.currentIndex + 1}/${findState.matches.length}`;
+    findCount.classList.remove('hidden');
+    findNextBtn.disabled = false;
+    findPrevBtn.disabled = false;
+  } else {
+    findCount.textContent = '0/0';
+    if (findInput.value) {
+      findCount.classList.remove('hidden');
+    } else {
+      findCount.classList.add('hidden');
+    }
+    findNextBtn.disabled = true;
+    findPrevBtn.disabled = true;
+  }
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\\]/g, '\\$&');
+}
+
+// Event Listeners for Find
+findInput.addEventListener('input', () => {
+  updateFindResults();
+});
+
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      jumpToMatch(findState.currentIndex - 1);
+    } else {
+      jumpToMatch(findState.currentIndex + 1);
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    hideFindBar();
+  }
+});
+
+findNextBtn.addEventListener('click', () => {
+  jumpToMatch(findState.currentIndex + 1);
+});
+
+findPrevBtn.addEventListener('click', () => {
+  jumpToMatch(findState.currentIndex - 1);
+});
+
+findCloseBtn.addEventListener('click', hideFindBar);
+
+window.electronAPI.onFindInFile(toggleFind);
+
+window.electronAPI.onFileLoaded(() => {
+  if (findState.isOpen) {
+    setTimeout(updateFindResults, 50);
+  }
+});
+
