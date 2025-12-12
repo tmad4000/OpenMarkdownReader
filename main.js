@@ -10,7 +10,9 @@ const fileWatchers = new Map(); // Track active file watchers
 // Configuration Management
 const configPath = path.join(app.getPath('userData'), 'config.json');
 let config = {
-  theme: 'system' // 'system', 'light', 'dark'
+  theme: 'system', // 'system', 'light', 'dark'
+  recentFiles: [], // Array of { path, type: 'file' | 'folder', timestamp }
+  maxRecentFiles: 10
 };
 
 function loadConfig() {
@@ -30,6 +32,34 @@ function saveConfig() {
   } catch (err) {
     console.error('Error saving config:', err);
   }
+}
+
+// Add a file/folder to recent list
+function addToRecent(filePath, type = 'file') {
+  // Remove if already exists
+  config.recentFiles = config.recentFiles.filter(item => item.path !== filePath);
+
+  // Add to beginning
+  config.recentFiles.unshift({
+    path: filePath,
+    type: type,
+    timestamp: Date.now()
+  });
+
+  // Trim to max
+  if (config.recentFiles.length > config.maxRecentFiles) {
+    config.recentFiles = config.recentFiles.slice(0, config.maxRecentFiles);
+  }
+
+  saveConfig();
+  setupMenu(); // Rebuild menu to update recent files list
+}
+
+// Clear recent files
+function clearRecentFiles() {
+  config.recentFiles = [];
+  saveConfig();
+  setupMenu();
 }
 
 // Load config on startup
@@ -80,6 +110,61 @@ function setTheme(theme) {
   setupMenu(); // Rebuild menu to update checkmarks
 }
 
+// Build the recent files submenu
+function buildRecentFilesMenu() {
+  const recentItems = [];
+
+  if (config.recentFiles && config.recentFiles.length > 0) {
+    // Filter out files/folders that no longer exist
+    const validRecent = config.recentFiles.filter(item => {
+      try {
+        return fs.existsSync(item.path);
+      } catch {
+        return false;
+      }
+    });
+
+    validRecent.forEach(item => {
+      const icon = item.type === 'folder' ? '📁 ' : '';
+      const displayName = path.basename(item.path);
+      const displayPath = item.path.replace(process.env.HOME, '~');
+
+      recentItems.push({
+        label: `${icon}${displayName}`,
+        sublabel: displayPath,
+        click: () => {
+          const win = getFocusedWindow();
+          if (item.type === 'folder') {
+            // Open folder in sidebar
+            if (win) {
+              const files = getDirectoryContents(item.path);
+              win.webContents.send('directory-loaded', { dirPath: item.path, files });
+              addToRecent(item.path, 'folder');
+            }
+          } else {
+            // Open file
+            if (win) {
+              loadMarkdownFile(win, item.path);
+            } else {
+              createWindow(item.path);
+            }
+          }
+        }
+      });
+    });
+
+    recentItems.push({ type: 'separator' });
+  }
+
+  recentItems.push({
+    label: 'Clear Recent',
+    enabled: config.recentFiles && config.recentFiles.length > 0,
+    click: () => clearRecentFiles()
+  });
+
+  return recentItems;
+}
+
 function setupMenu() {
   const template = [
     {
@@ -122,6 +207,10 @@ function setupMenu() {
           label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
           click: () => openFileOrFolder()
+        },
+        {
+          label: 'Open Recent',
+          submenu: buildRecentFilesMenu()
         },
         {
           label: 'Quick Open...',
@@ -361,6 +450,7 @@ async function openFileOrFolder(targetWindow = null) {
           // Load as folder in sidebar
           const files = getDirectoryContents(filePath);
           win.webContents.send('directory-loaded', { dirPath: filePath, files });
+          addToRecent(filePath, 'folder');
         } else {
           // Load as file in tab
           loadMarkdownFile(win, filePath);
@@ -376,6 +466,7 @@ function loadMarkdownFile(win, filePath) {
     const fileName = path.basename(filePath);
     win.webContents.send('file-loaded', { content, fileName, filePath });
     win.setTitle(`${fileName} - OpenMarkdownReader`);
+    addToRecent(filePath, 'file');
   } catch (err) {
     dialog.showErrorBox('Error', `Could not read file: ${err.message}`);
   }
