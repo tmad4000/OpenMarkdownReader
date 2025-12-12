@@ -561,6 +561,82 @@ html, body {
   opacity: 0.6;
 }
 
+/* Recent files on welcome screen */
+.recent-files-section {
+  margin-top: 24px;
+  text-align: left;
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.recent-files-section.hidden {
+  display: none;
+}
+
+.recent-files-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  padding-left: 8px;
+}
+
+.recent-files-list {
+  background: var(--code-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.recent-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.recent-file-item:last-child {
+  border-bottom: none;
+}
+
+.recent-file-item:hover {
+  background: var(--border-color);
+}
+
+.recent-file-item svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.recent-file-item.folder svg {
+  color: var(--link-color);
+}
+
+.recent-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-file-name {
+  font-size: 13px;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-file-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Content Area */
 .content {
   padding: 20px;

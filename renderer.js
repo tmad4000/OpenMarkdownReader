@@ -1554,7 +1554,78 @@ csvToggleRawBtn.addEventListener('click', () => {
   }
 });
 
+// Load and display recent files on welcome screen
+async function loadRecentFiles() {
+  const recentFilesSection = document.getElementById('recent-files-section');
+  const recentFilesList = document.getElementById('recent-files-list');
+
+  try {
+    const recentFiles = await window.electronAPI.getRecentFiles();
+
+    if (recentFiles && recentFiles.length > 0) {
+      recentFilesSection.classList.remove('hidden');
+
+      // Show up to 5 recent items on welcome screen
+      const displayFiles = recentFiles.slice(0, 5);
+
+      recentFilesList.innerHTML = displayFiles.map(item => {
+        const fileName = item.path.split('/').pop();
+        const displayPath = item.path.replace(/^\/Users\/[^/]+/, '~');
+        const isFolder = item.type === 'folder';
+
+        const icon = isFolder
+          ? `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+               <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
+             </svg>`
+          : `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+               <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+             </svg>`;
+
+        return `
+          <div class="recent-file-item ${isFolder ? 'folder' : ''}" data-path="${escapeHtml(item.path)}" data-type="${item.type}">
+            ${icon}
+            <div class="recent-file-info">
+              <div class="recent-file-name">${escapeHtml(fileName)}</div>
+              <div class="recent-file-path">${escapeHtml(displayPath)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Add click handlers
+      recentFilesList.querySelectorAll('.recent-file-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const filePath = item.dataset.path;
+          const fileType = item.dataset.type;
+
+          if (fileType === 'folder') {
+            // For folders, we need to trigger directory loading
+            window.electronAPI.getDirectoryContents(filePath).then(files => {
+              // Manually trigger the directory loaded flow
+              const event = { dirPath: filePath, files };
+              window.electronAPI.onDirectoryLoaded(() => {}); // No-op, just need to open
+              // Use openFileByPath which will handle folder detection
+            });
+            // Actually open the folder properly
+            window.electronAPI.openFileByPath(filePath);
+          } else {
+            window.electronAPI.openFileByPath(filePath);
+          }
+        });
+      });
+    } else {
+      recentFilesSection.classList.add('hidden');
+    }
+  } catch (err) {
+    console.error('Error loading recent files:', err);
+    recentFilesSection.classList.add('hidden');
+  }
+}
+
 // Initialize with one empty tab
 createTab();
+
+// Load recent files for welcome screen
+loadRecentFiles();
 
 console.log('Renderer loaded with editing and sidebar support');

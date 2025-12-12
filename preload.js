@@ -47,5 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSetTheme: (callback) => ipcRenderer.on('set-theme', (event, theme) => callback(theme)),
 
   // Command palette
-  onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback())
+  onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback()),
+
+  // Recent files
+  getRecentFiles: () => ipcRenderer.invoke('get-recent-files')
 });

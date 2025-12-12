@@ -695,6 +695,19 @@ ipcMain.handle('close-window', (event) => {
   }
 });
 
+// Get recent files for welcome screen
+ipcMain.handle('get-recent-files', async () => {
+  // Filter out files that no longer exist
+  const validRecent = (config.recentFiles || []).filter(item => {
+    try {
+      return fs.existsSync(item.path);
+    } catch {
+      return false;
+    }
+  });
+  return validRecent;
+});
+
 // Toggle watch mode from renderer
 ipcMain.handle('toggle-watch-mode', async () => {
   const menu = Menu.getApplicationMenu();
