@@ -127,6 +127,12 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
     closeTab(tabId);
   });
 
+  // Double-click to rename
+  tabEl.querySelector('.tab-title').addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    startTabRename(tabId);
+  });
+
   // Drag handlers for reordering
   tabEl.addEventListener('dragstart', handleTabDragStart);
   tabEl.addEventListener('dragover', handleTabDragOver);
@@ -152,17 +158,32 @@ function handleTabDragStart(e) {
 function handleTabDragOver(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
+  
+  if (this === draggedTab) return;
+
+  const rect = this.getBoundingClientRect();
+  const midpoint = rect.x + rect.width / 2;
+  
+  if (e.clientX < midpoint) {
+    this.classList.add('drag-over-left');
+    this.classList.remove('drag-over-right');
+  } else {
+    this.classList.add('drag-over-right');
+    this.classList.remove('drag-over-left');
+  }
 }
 
 function handleTabDragEnter(e) {
   e.preventDefault();
-  if (this !== draggedTab) {
-    this.classList.add('drag-over');
-  }
 }
 
 function handleTabDragLeave(e) {
-  this.classList.remove('drag-over');
+  // Avoid flickering when entering children
+  const relatedTarget = e.relatedTarget;
+  if (this.contains(relatedTarget)) return;
+
+  this.classList.remove('drag-over-left');
+  this.classList.remove('drag-over-right');
 }
 
 function handleTabDrop(e) {
@@ -170,13 +191,11 @@ function handleTabDrop(e) {
   e.stopPropagation();
 
   if (draggedTab && this !== draggedTab) {
-    // Get positions
-    const allTabs = Array.from(tabBar.querySelectorAll('.tab'));
-    const draggedIndex = allTabs.indexOf(draggedTab);
-    const targetIndex = allTabs.indexOf(this);
+    // Determine insertion based on visual feedback
+    const insertAfter = this.classList.contains('drag-over-right');
 
     // Reorder DOM
-    if (draggedIndex < targetIndex) {
+    if (insertAfter) {
       this.parentNode.insertBefore(draggedTab, this.nextSibling);
     } else {
       this.parentNode.insertBefore(draggedTab, this);
@@ -185,26 +204,126 @@ function handleTabDrop(e) {
     // Reorder tabs array
     const draggedTabId = parseInt(draggedTab.dataset.tabId);
     const draggedTabData = tabs.find(t => t.id === draggedTabId);
-    const draggedArrayIndex = tabs.indexOf(draggedTabData);
-
+    
     // Remove from old position
-    tabs.splice(draggedArrayIndex, 1);
-
-    // Find new position based on DOM order
+    const oldIndex = tabs.indexOf(draggedTabData);
+    if (oldIndex > -1) tabs.splice(oldIndex, 1);
+    
+    // Calculate new index
     const newAllTabs = Array.from(tabBar.querySelectorAll('.tab'));
     const newIndex = newAllTabs.indexOf(draggedTab);
+    
+    // Insert at new position
     tabs.splice(newIndex, 0, draggedTabData);
   }
 
-  this.classList.remove('drag-over');
+  this.classList.remove('drag-over-left');
+  this.classList.remove('drag-over-right');
 }
 
 function handleTabDragEnd(e) {
   this.classList.remove('dragging');
   document.querySelectorAll('.tab').forEach(tab => {
-    tab.classList.remove('drag-over');
+    tab.classList.remove('drag-over-left');
+    tab.classList.remove('drag-over-right');
   });
   draggedTab = null;
+}
+
+// Global drop handler for the tab bar to allow appending to the end
+if (tabBar) {
+  tabBar.addEventListener('dragover', (e) => {
+    if (draggedTab && e.target === tabBar) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+
+  tabBar.addEventListener('drop', (e) => {
+    if (draggedTab && e.target === tabBar) {
+      e.preventDefault();
+      tabBar.appendChild(draggedTab);
+      
+      // Update tabs array
+      const draggedTabId = parseInt(draggedTab.dataset.tabId);
+      const draggedTabData = tabs.find(t => t.id === draggedTabId);
+      
+      const oldIndex = tabs.indexOf(draggedTabData);
+      if (oldIndex > -1) tabs.splice(oldIndex, 1);
+      
+      tabs.push(draggedTabData);
+    }
+  });
+}
+
+// Tab rename functionality
+function startTabRename(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (!tabEl || !tab) return;
+
+  const titleEl = tabEl.querySelector('.tab-title');
+  const currentName = tab.fileName;
+
+  // Create input element
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-rename-input';
+  input.value = currentName;
+  input.style.width = `${Math.max(titleEl.offsetWidth, 60)}px`;
+
+  // Replace title with input
+  titleEl.style.display = 'none';
+  tabEl.insertBefore(input, titleEl);
+  input.focus();
+
+  // Select filename without extension
+  const dotIndex = currentName.lastIndexOf('.');
+  if (dotIndex > 0) {
+    input.setSelectionRange(0, dotIndex);
+  } else {
+    input.select();
+  }
+
+  // Handle completion
+  const finishRename = async (save) => {
+    if (save && input.value && input.value !== currentName) {
+      const newName = input.value.trim();
+
+      if (tab.filePath) {
+        // Rename actual file
+        const result = await window.electronAPI.renameFile(tab.filePath, newName);
+        if (result.success) {
+          tab.filePath = result.newPath;
+          tab.fileName = newName;
+          titleEl.textContent = newName;
+        } else {
+          alert(`Could not rename file: ${result.error}`);
+        }
+      } else {
+        // Just update the tab name for unsaved files
+        tab.fileName = newName;
+        titleEl.textContent = newName;
+      }
+    }
+
+    input.remove();
+    titleEl.style.display = '';
+  };
+
+  input.addEventListener('blur', () => finishRename(true));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      finishRename(false);
+    }
+  });
+
+  // Prevent drag while renaming
+  input.addEventListener('mousedown', (e) => e.stopPropagation());
 }
 
 // Switch to a tab
@@ -1627,5 +1746,11 @@ createTab();
 
 // Load recent files for welcome screen
 loadRecentFiles();
+
+// Handle unsaved changes check from main process
+window.electronAPI.onCheckUnsaved(() => {
+  const hasUnsaved = tabs.some(tab => tab.isModified);
+  window.electronAPI.reportUnsavedState(hasUnsaved);
+});
 
 console.log('Renderer loaded with editing and sidebar support');
