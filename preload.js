@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save operations
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+  renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', oldPath, newName),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
   showSaveDialog: (fileName) => ipcRenderer.invoke('show-save-dialog', fileName),
@@ -48,7 +49,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Command palette
   onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback()),
+  
+  // Find
+  onFindInFile: (callback) => ipcRenderer.on('find-in-file', () => callback()),
 
   // Recent files
-  getRecentFiles: () => ipcRenderer.invoke('get-recent-files')
+  getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
+
+  // Unsaved changes check
+  onCheckUnsaved: (callback) => ipcRenderer.on('check-unsaved', () => callback()),
+  reportUnsavedState: (hasUnsaved) => ipcRenderer.send('unsaved-state', hasUnsaved),
+
+  // Session restore
+  onGetSessionState: (callback) => ipcRenderer.on('get-session-state', () => callback()),
+  reportSessionState: (sessionData) => ipcRenderer.send('session-state', sessionData),
+  onRestoreSession: (callback) => ipcRenderer.on('restore-session', (event, data) => callback(data))
 });

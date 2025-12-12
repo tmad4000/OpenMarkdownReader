@@ -392,13 +392,13 @@ function updateTabUI(tabId) {
 }
 
 // Close a tab
-async function closeTab(tabId) {
+async function closeTab(tabId, silent = false) {
   const tab = tabs.find(t => t.id === tabId);
   const tabIndex = tabs.findIndex(t => t.id === tabId);
   if (tabIndex === -1) return;
 
   // Check for unsaved changes - offer Save/Don't Save/Cancel
-  if (tab && tab.isModified) {
+  if (!silent && tab && tab.isModified) {
     const result = await showSaveDialog(tab.fileName);
     if (result === 'cancel') {
       return; // User cancelled, don't close
@@ -1751,6 +1751,52 @@ loadRecentFiles();
 window.electronAPI.onCheckUnsaved(() => {
   const hasUnsaved = tabs.some(tab => tab.isModified);
   window.electronAPI.reportUnsavedState(hasUnsaved);
+});
+
+// Handle session state request from main process
+window.electronAPI.onGetSessionState(() => {
+  const sessionData = {
+    tabs: tabs.map(t => ({
+      filePath: t.filePath,
+      fileName: t.fileName
+    })).filter(t => t.filePath), // Only save tabs with files
+    directory: currentDirectory,
+    activeTabIndex: tabs.findIndex(t => t.id === activeTabId)
+  };
+  window.electronAPI.reportSessionState(sessionData);
+});
+
+// Handle session restore from main process
+window.electronAPI.onRestoreSession((data) => {
+  if (!data) return;
+
+  // Restore directory/sidebar
+  if (data.directory) {
+    currentDirectory = data.directory;
+    window.electronAPI.getDirectoryContents(data.directory).then(files => {
+      directoryFiles = files;
+      buildFileTree(files, data.directory);
+      if (!settings.sidebarVisible) {
+        toggleSidebar();
+      }
+    }).catch(console.error);
+  }
+
+  // Restore tabs
+  if (data.tabs && data.tabs.length > 0) {
+    // Close the default empty tab
+    const firstTab = tabs[0];
+    if (firstTab && !firstTab.filePath && !firstTab.content) {
+      closeTab(firstTab.id, true); // silent close
+    }
+
+    // Open each saved tab
+    data.tabs.forEach((tabData, index) => {
+      if (tabData.filePath) {
+        window.electronAPI.openFileByPath(tabData.filePath);
+      }
+    });
+  }
 });
 
 console.log('Renderer loaded with editing and sidebar support');

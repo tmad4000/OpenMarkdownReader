@@ -128,6 +128,31 @@
     </div>
   </div>
 
+  <!-- Find Bar -->
+  <div id="find-bar" class="find-bar hidden">
+    <div class="find-bar-input-wrapper">
+      <input type="text" id="find-input" class="find-input" placeholder="Find" autocomplete="off">
+      <div id="find-count" class="find-count hidden">0/0</div>
+    </div>
+    <div class="find-bar-buttons">
+      <button id="find-prev-btn" class="find-btn" title="Previous Match (Shift+Enter)">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M8 3.5a.5.5 0 01.354.146l4 4a.5.5 0 01-.708.708L8.5 5.207V12.5a.5.5 0 01-1 0V5.207L4.354 8.354a.5.5 0 11-.708-.708l4-4A.5.5 0 018 3.5z"/>
+        </svg>
+      </button>
+      <button id="find-next-btn" class="find-btn" title="Next Match (Enter)">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M8 12.5a.5.5 0 01-.354-.146l-4-4a.5.5 0 11.708-.708L7.5 10.793V3.5a.5.5 0 011 0v7.293l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.354.146z"/>
+        </svg>
+      </button>
+      <button id="find-close-btn" class="find-btn find-close-btn" title="Close (Esc)">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <!-- Command Palette / File Search -->
   <div id="command-palette" class="command-palette hidden">
     <div class="command-palette-backdrop"></div>

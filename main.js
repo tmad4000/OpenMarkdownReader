@@ -12,7 +12,9 @@ const configPath = path.join(app.getPath('userData'), 'config.json');
 let config = {
   theme: 'system', // 'system', 'light', 'dark'
   recentFiles: [], // Array of { path, type: 'file' | 'folder', timestamp }
-  maxRecentFiles: 10
+  maxRecentFiles: 10,
+  restoreSession: true, // Whether to restore previous session on launch
+  session: null // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
 };
 
 function loadConfig() {
@@ -83,6 +85,63 @@ function createWindow(filePath = null) {
 
   windows.add(win);
   win.on('closed', () => windows.delete(win));
+
+  // Handle close with unsaved changes check
+  let forceClose = false;
+  win.on('close', async (e) => {
+    if (forceClose) return;
+
+    e.preventDefault();
+
+    // Ask renderer if there are unsaved changes
+    return new Promise((resolve) => {
+      const responseHandler = (event, hasUnsaved) => {
+        if (event.sender !== win.webContents) return;
+        ipcMain.removeListener('unsaved-state', responseHandler);
+
+        if (hasUnsaved) {
+          const choice = dialog.showMessageBoxSync(win, {
+            type: 'warning',
+            buttons: ['Save', "Don't Save", 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            message: 'You have unsaved changes.',
+            detail: 'Do you want to save your changes before closing?'
+          });
+
+          if (choice === 0) {
+            // Save - tell renderer to save, then close
+            win.webContents.send('save');
+            // Give it a moment to save
+            setTimeout(() => {
+              forceClose = true;
+              win.close();
+            }, 500);
+          } else if (choice === 1) {
+            // Don't Save - close without saving
+            forceClose = true;
+            win.close();
+          }
+          // Cancel (choice === 2) - do nothing, window stays open
+        } else {
+          forceClose = true;
+          win.close();
+        }
+        resolve();
+      };
+
+      ipcMain.on('unsaved-state', responseHandler);
+      win.webContents.send('check-unsaved');
+
+      // Timeout in case renderer doesn't respond
+      setTimeout(() => {
+        ipcMain.removeListener('unsaved-state', responseHandler);
+        forceClose = true;
+        win.close();
+        resolve();
+      }, 2000);
+    });
+  });
 
   win.loadFile('index.html');
 
@@ -246,7 +305,14 @@ function setupMenu() {
             // Let renderer handle tab closing
           }
         },
-        { role: 'close' }
+        {
+          label: 'Close Window',
+          accelerator: 'CmdOrCtrl+Shift+W',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.close();
+          }
+        }
       ]
     },
     {
@@ -259,6 +325,15 @@ function setupMenu() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Find',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('find-in-file');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Toggle Edit Mode',
@@ -382,6 +457,16 @@ function setupMenu() {
               click: () => broadcastSetting('content-width', 'full')
             }
           ]
+        },
+        { type: 'separator' },
+        {
+          label: 'Restore Previous Session on Launch',
+          type: 'checkbox',
+          checked: config.restoreSession,
+          click: (menuItem) => {
+            config.restoreSession = menuItem.checked;
+            saveConfig();
+          }
         }
       ]
     },
@@ -487,9 +572,84 @@ app.on('open-file', (event, filePath) => {
   }
 });
 
+// Save session state from all windows before quit
+async function saveSession() {
+  if (!config.restoreSession) return;
+
+  const sessionWindows = [];
+
+  for (const win of windows) {
+    try {
+      const sessionData = await new Promise((resolve) => {
+        const responseHandler = (event, data) => {
+          if (event.sender !== win.webContents) return;
+          ipcMain.removeListener('session-state', responseHandler);
+          resolve(data);
+        };
+
+        ipcMain.on('session-state', responseHandler);
+        win.webContents.send('get-session-state');
+
+        // Timeout fallback
+        setTimeout(() => {
+          ipcMain.removeListener('session-state', responseHandler);
+          resolve(null);
+        }, 1000);
+      });
+
+      if (sessionData && (sessionData.tabs.length > 0 || sessionData.directory)) {
+        sessionWindows.push(sessionData);
+      }
+    } catch (err) {
+      console.error('Error getting session state from window:', err);
+    }
+  }
+
+  config.session = sessionWindows.length > 0 ? { windows: sessionWindows } : null;
+  saveConfig();
+}
+
+// Restore previous session
+function restoreSession() {
+  if (!config.restoreSession || !config.session || !config.session.windows) {
+    return false;
+  }
+
+  const sessionWindows = config.session.windows;
+  if (sessionWindows.length === 0) return false;
+
+  // Create windows and restore their state
+  sessionWindows.forEach((windowData, index) => {
+    const win = createWindow();
+
+    win.webContents.on('did-finish-load', () => {
+      // Wait a bit for renderer to initialize
+      setTimeout(() => {
+        win.webContents.send('restore-session', windowData);
+      }, 100);
+    });
+  });
+
+  return true;
+}
+
 app.whenReady().then(() => {
   setupMenu();
-  createWindow();
+
+  // Try to restore session, otherwise create empty window
+  if (!restoreSession()) {
+    createWindow();
+  }
+});
+
+// Save session before quitting
+app.on('before-quit', async (e) => {
+  // Only save on normal quit (not file-triggered launch)
+  if (windows.size > 0) {
+    e.preventDefault();
+    await saveSession();
+    app.exit(0);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -545,6 +705,24 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
     return { success: true };
   } catch (err) {
     dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
+// Rename file
+ipcMain.handle('rename-file', async (event, oldPath, newName) => {
+  try {
+    const dir = path.dirname(oldPath);
+    const newPath = path.join(dir, newName);
+
+    // Check if file already exists
+    if (fs.existsSync(newPath)) {
+      return { success: false, error: 'A file with that name already exists' };
+    }
+
+    fs.renameSync(oldPath, newPath);
+    return { success: true, newPath };
+  } catch (err) {
     return { success: false, error: err.message };
   }
 });

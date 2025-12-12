@@ -359,6 +359,18 @@ html, body {
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* Find Matches */
+mark.find-match {
+  background-color: rgba(255, 255, 0, 0.4);
+  color: inherit;
+  border-radius: 2px;
+}
+
+mark.find-match.active {
+  background-color: rgba(255, 150, 0, 0.8);
+  box-shadow: 0 0 0 2px rgba(255, 150, 0, 0.4);
+}
+
 /* Tab drag states */
 .tab.dragging {
   opacity: 0.5;
@@ -977,6 +989,90 @@ html, body {
 }
 
 /* Command Palette / File Search */
+.find-bar {
+  position: absolute;
+  top: 38px; /* Just below titlebar */
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.find-bar.hidden {
+  display: none;
+}
+
+.find-bar-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.find-input {
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  padding-right: 50px; /* Space for count */
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  font-size: 13px;
+  outline: none;
+}
+
+.find-input:focus {
+  border-color: var(--link-color);
+}
+
+.find-count {
+  position: absolute;
+  right: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.find-bar-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.find-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.find-btn:hover {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.find-close-btn {
+  margin-left: 4px;
+}
+
 .command-palette {
   position: fixed;
   inset: 0;
