@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFileByPath: (filePath, options = {}) => ipcRenderer.invoke('open-file-by-path', filePath, options),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
+  createFileInDirectory: (dirPath, fileName) => ipcRenderer.invoke('create-file-in-directory', dirPath, fileName),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
@@ -63,6 +64,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Unsaved changes check
   onCheckUnsaved: (callback) => ipcRenderer.on('check-unsaved', () => callback()),
   reportUnsavedState: (hasUnsaved) => ipcRenderer.send('unsaved-state', hasUnsaved),
+
+  // Review unsaved tabs one by one
+  onReviewUnsavedTab: (callback) => ipcRenderer.on('review-unsaved-tab', (event, tabInfo) => callback(tabInfo)),
+  reportReviewDecision: (decision) => ipcRenderer.send('review-decision', decision),
+  saveTabById: (tabId) => ipcRenderer.invoke('save-tab-by-id', tabId),
 
   // Session restore
   onGetSessionState: (callback) => ipcRenderer.on('get-session-state', () => callback()),

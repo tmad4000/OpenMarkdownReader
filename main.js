@@ -13,9 +13,10 @@ let config = {
   theme: 'system', // 'system', 'light', 'dark'
   recentFiles: [], // Array of { path, type: 'file' | 'folder', timestamp }
   maxRecentFiles: 10,
+  contentWidth: 900,
+  contentPadding: 20,
   restoreSession: true, // Whether to restore previous session on launch
-  session: null, // Saved session state
-  autoSave: false // Auto-save enabled
+  session: null // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
 };
 
 function loadConfig() {
@@ -37,41 +38,191 @@ function saveConfig() {
   }
 }
 
-// ... existing code ...
+// Review unsaved tabs one by one (standard macOS pattern)
+// Shows a dialog for each unsaved document: Save / Don't Save / Cancel
+// Returns 'close' if all documents were handled, 'cancel' if user cancelled
+async function reviewUnsavedTabsOneByOne(win, unsavedTabs) {
+  for (let i = 0; i < unsavedTabs.length; i++) {
+    const tab = unsavedTabs[i];
+    if (win.isDestroyed()) return 'cancel';
+
+    const remaining = unsavedTabs.length - i;
+    const message = `Do you want to save the changes you made to "${tab.fileName}"?`;
+    const detail = remaining > 1
+      ? `${remaining} documents with unsaved changes. Your changes will be lost if you don't save them.`
+      : 'Your changes will be lost if you don\'t save them.';
+
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Save', "Don't Save", 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      message: message,
+      detail: detail
+    });
+
+    if (choice === 0) {
+      // Save - tell renderer to save this specific tab
+      const saved = await saveTabInRenderer(win, tab);
+      if (!saved) {
+        // Save was cancelled (e.g., user cancelled Save As dialog)
+        return 'cancel';
+      }
+    } else if (choice === 1) {
+      // Don't Save - continue to next tab
+      continue;
+    } else {
+      // Cancel - abort the close operation
+      return 'cancel';
+    }
+  }
+
+  return 'close';
+}
+
+// Helper to save a specific tab via IPC
+function saveTabInRenderer(win, tabInfo) {
+  return new Promise((resolve) => {
+    if (win.isDestroyed()) {
+      resolve(false);
+      return;
+    }
+
+    let timeoutId = null;
+
+    const responseHandler = (event, data) => {
+      if (event.sender !== win.webContents) return;
+
+      if (timeoutId) clearTimeout(timeoutId);
+      ipcMain.removeListener('review-decision', responseHandler);
+
+      if (data.success) {
+        resolve(true);
+      } else if (data.cancelled) {
+        resolve(false); // User cancelled Save As dialog
+      } else {
+        resolve(true); // Error but continue anyway
+      }
+    };
+
+    ipcMain.on('review-decision', responseHandler);
+    win.webContents.send('review-unsaved-tab', tabInfo);
+
+    // Timeout in case renderer doesn't respond
+    timeoutId = setTimeout(() => {
+      ipcMain.removeListener('review-decision', responseHandler);
+      resolve(true); // Assume saved on timeout
+    }, 30000); // 30 second timeout for save operations
+  });
+}
+
+// Add a file/folder to recent list
+function addToRecent(filePath, type = 'file') {
+  // Remove if already exists
+  config.recentFiles = config.recentFiles.filter(item => item.path !== filePath);
+
+  // Add to beginning
+  config.recentFiles.unshift({
+    path: filePath,
+    type: type,
+    timestamp: Date.now()
+  });
+
+  // Trim to max
+  if (config.recentFiles.length > config.maxRecentFiles) {
+    config.recentFiles = config.recentFiles.slice(0, config.maxRecentFiles);
+  }
+
+  saveConfig();
+  setupMenu(); // Rebuild menu to update recent files list
+}
+
+// Clear recent files
+function clearRecentFiles() {
+  config.recentFiles = [];
+  saveConfig();
+  setupMenu();
+}
+
+// Load config on startup
+loadConfig();
+
+function createWindow(filePath = null) {
+  const win = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 400,
+    minHeight: 300,
+    titleBarStyle: 'hiddenInset',
+    // backgroundColor: '#ffffff', // Removed to respect system theme
+    icon: path.join(__dirname, 'build', 'icon.png'),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  windows.add(win);
+  win.on('closed', () => windows.delete(win));
 
   // Handle close with unsaved changes check
   let forceClose = false;
   win.on('close', async (e) => {
     if (forceClose) return;
+    if (win.isDestroyed()) return;
 
     e.preventDefault();
 
-    // Ask renderer if there are unsaved changes AND get session state
+    // Ask renderer if there are unsaved changes
     return new Promise((resolve) => {
-      const responseHandler = (event, data) => {
+      let responded = false;
+      let timeoutId = null;
+
+      const responseHandler = async (event, data) => {
+        if (win.isDestroyed()) {
+          ipcMain.removeListener('unsaved-state', responseHandler);
+          resolve();
+          return;
+        }
         if (event.sender !== win.webContents) return;
+
+        responded = true;
+        if (timeoutId) clearTimeout(timeoutId);
         ipcMain.removeListener('unsaved-state', responseHandler);
 
-        // Handle both boolean (legacy/simple) and object responses
+        // Handle both boolean (legacy) and object responses
         let hasUnsaved = false;
+        let unsavedTabs = [];
         let sessionData = null;
-
         if (typeof data === 'boolean') {
           hasUnsaved = data;
-        } else if (typeof data === 'object') {
+        } else if (typeof data === 'object' && data !== null) {
           hasUnsaved = data.hasUnsaved;
+          unsavedTabs = data.unsavedTabs || [];
           sessionData = data.sessionData;
         }
 
-        // Save session state
+        // Save session state if available (keep schema consistent with restore)
         if (config.restoreSession && sessionData) {
-          // Only save if this is the last window or main window? 
-          // For now, simpler to just save. If multiple windows, last one closed wins.
-          config.session = sessionData;
+          config.session = { windows: [sessionData] };
           saveConfig();
         }
 
-        if (hasUnsaved) {
+        if (hasUnsaved && unsavedTabs.length > 0) {
+          // Review each unsaved tab one by one (standard macOS pattern)
+          const result = await reviewUnsavedTabsOneByOne(win, unsavedTabs);
+
+          if (result === 'close') {
+            // All tabs handled (saved or discarded), close the window
+            forceClose = true;
+            if (!win.isDestroyed()) {
+              win.close();
+            }
+          }
+          // result === 'cancel' means user cancelled, window stays open
+        } else if (hasUnsaved) {
+          // Legacy path - show the old dialog if we don't have unsavedTabs list
           const choice = dialog.showMessageBoxSync(win, {
             type: 'warning',
             buttons: ['Save All', "Don't Save", 'Cancel'],
@@ -116,7 +267,8 @@ function saveConfig() {
       }
 
       // Timeout in case renderer doesn't respond
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
+        if (responded) return; // Already handled
         ipcMain.removeListener('unsaved-state', responseHandler);
         forceClose = true;
         // Check if window still exists before trying to close
@@ -137,12 +289,13 @@ function saveConfig() {
     // Apply watch mode
     win.webContents.send('set-watch-mode', watchFileMode);
     // Apply auto-save setting
-    win.webContents.send('set-auto-save', config.autoSave);
-    
+    win.webContents.send('set-auto-save', config.autoSave || false);
+    // Apply content layout settings
+    win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
+    win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
+
     if (filePath) {
       loadMarkdownFile(win, filePath);
-    } else if (config.restoreSession && config.session) {
-      win.webContents.send('restore-session', config.session);
     }
   });
 
@@ -158,27 +311,9 @@ function setTheme(theme) {
   setupMenu(); // Rebuild menu to update checkmarks
 }
 
-function setAutoSave(enabled) {
-  config.autoSave = enabled;
-  saveConfig();
-  windows.forEach(win => {
-    win.webContents.send('set-auto-save', enabled);
-  });
-}
-
 // Build the recent files submenu
 function buildRecentFilesMenu() {
   const recentItems = [];
-
-  recentItems.push({
-    label: 'Show All...',
-    accelerator: 'CmdOrCtrl+Shift+R',
-    click: () => {
-      const win = getFocusedWindow();
-      if (win) win.webContents.send('show-recent-palette');
-    }
-  });
-  recentItems.push({ type: 'separator' });
 
   if (config.recentFiles && config.recentFiles.length > 0) {
     // Filter out files/folders that no longer exist
@@ -311,13 +446,6 @@ function setupMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Auto Save',
-          type: 'checkbox',
-          checked: config.autoSave,
-          click: (menuItem) => setAutoSave(menuItem.checked)
-        },
-        { type: 'separator' },
-        {
           label: 'Close Tab',
           accelerator: 'CmdOrCtrl+W',
           click: () => {
@@ -373,7 +501,6 @@ function setupMenu() {
         },
         {
           label: 'Revert Changes',
-          accelerator: 'Escape',
           click: () => {
             const win = getFocusedWindow();
             if (win) win.webContents.send('revert');
@@ -458,23 +585,77 @@ function setupMenu() {
             {
               label: 'Narrow (700px)',
               type: 'radio',
-              click: () => broadcastSetting('content-width', 700)
+              checked: config.contentWidth === 700,
+              click: () => {
+                config.contentWidth = 700;
+                saveConfig();
+                broadcastSetting('content-width', 700);
+              }
             },
             {
               label: 'Medium (900px)',
               type: 'radio',
-              checked: true,
-              click: () => broadcastSetting('content-width', 900)
+              checked: config.contentWidth === 900,
+              click: () => {
+                config.contentWidth = 900;
+                saveConfig();
+                broadcastSetting('content-width', 900);
+              }
             },
             {
               label: 'Wide (1100px)',
               type: 'radio',
-              click: () => broadcastSetting('content-width', 1100)
+              checked: config.contentWidth === 1100,
+              click: () => {
+                config.contentWidth = 1100;
+                saveConfig();
+                broadcastSetting('content-width', 1100);
+              }
             },
             {
               label: 'Full Width',
               type: 'radio',
-              click: () => broadcastSetting('content-width', 'full')
+              checked: config.contentWidth === 'full',
+              click: () => {
+                config.contentWidth = 'full';
+                saveConfig();
+                broadcastSetting('content-width', 'full');
+              }
+            }
+          ]
+        },
+        {
+          label: 'Content Margins',
+          submenu: [
+            {
+              label: 'Compact',
+              type: 'radio',
+              checked: config.contentPadding === 16,
+              click: () => {
+                config.contentPadding = 16;
+                saveConfig();
+                broadcastSetting('content-padding', 16);
+              }
+            },
+            {
+              label: 'Comfortable',
+              type: 'radio',
+              checked: config.contentPadding === 20,
+              click: () => {
+                config.contentPadding = 20;
+                saveConfig();
+                broadcastSetting('content-padding', 20);
+              }
+            },
+            {
+              label: 'Spacious',
+              type: 'radio',
+              checked: config.contentPadding === 28,
+              click: () => {
+                config.contentPadding = 28;
+                saveConfig();
+                broadcastSetting('content-padding', 28);
+              }
             }
           ]
         },
@@ -486,6 +667,19 @@ function setupMenu() {
           click: (menuItem) => {
             config.restoreSession = menuItem.checked;
             saveConfig();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Auto Save',
+          type: 'checkbox',
+          checked: config.autoSave || false,
+          click: (menuItem) => {
+            config.autoSave = menuItem.checked;
+            saveConfig();
+            windows.forEach(win => {
+              win.webContents.send('set-auto-save', menuItem.checked);
+            });
           }
         }
       ]
@@ -668,6 +862,14 @@ app.whenReady().then(() => {
   if (!restoreSession()) {
     createWindow();
   }
+
+  // Auto-save session periodically (survives crashes/force-kills)
+  // We use a short interval since saveSession is lightweight
+  setInterval(() => {
+    if (windows.size > 0) {
+      saveSession();
+    }
+  }, 5000); // Every 5 seconds
 });
 
 // Save session before quitting
@@ -733,6 +935,24 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
     return { success: true };
   } catch (err) {
     dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
+// Create file in directory
+ipcMain.handle('create-file-in-directory', async (event, dirPath, fileName) => {
+  try {
+    const filePath = path.join(dirPath, fileName);
+
+    // Check if file already exists
+    if (fs.existsSync(filePath)) {
+      return { success: false, error: 'A file with that name already exists' };
+    }
+
+    // Create empty file
+    fs.writeFileSync(filePath, '', 'utf-8');
+    return { success: true, filePath, fileName };
+  } catch (err) {
     return { success: false, error: err.message };
   }
 });
@@ -824,23 +1044,29 @@ ipcMain.handle('open-folder', async (event) => {
     const dirPath = result.filePaths[0];
     const files = getMarkdownFilesInDirectory(dirPath);
     win.webContents.send('directory-loaded', { dirPath, files });
+    addToRecent(dirPath, 'folder');
   }
 });
 
-// Open file by path (from sidebar or recent)
+// Open file by path (from sidebar or recent palette)
 ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
+
   try {
     const stats = fs.statSync(filePath);
     if (stats.isDirectory()) {
+      // Open as folder in sidebar
       const files = getDirectoryContents(filePath);
       win.webContents.send('directory-loaded', { dirPath: filePath, files });
       addToRecent(filePath, 'folder');
     } else {
+      // Open as file in tab
       loadMarkdownFile(win, filePath, options);
     }
   } catch (err) {
-    console.error(`Error opening path ${filePath}:`, err);
+    console.error('Error opening path:', err);
+    // Try loading as file anyway
+    loadMarkdownFile(win, filePath, options);
   }
 });
 
@@ -869,6 +1095,16 @@ function isMarkdownFileExt(filename) {
 // Recursively get all files in directory
 function getAllFilesRecursive(dirPath, maxDepth = 5) {
   const files = [];
+  const ignoredDirs = new Set([
+    'node_modules',
+    'dist',
+    'build',
+    'out',
+    'coverage',
+    'target',
+    'vendor',
+    '.git' // extra safety if ever passed through
+  ]);
 
   function scan(currentPath, depth) {
     if (depth > maxDepth) return;
@@ -878,10 +1114,12 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
       for (const entry of entries) {
         // Skip hidden files/folders
         if (entry.name.startsWith('.')) continue;
+        if (entry.isSymbolicLink && entry.isSymbolicLink()) continue;
 
         const fullPath = path.join(currentPath, entry.name);
 
         if (entry.isDirectory()) {
+          if (ignoredDirs.has(entry.name)) continue;
           scan(fullPath, depth + 1);
         } else if (entry.isFile()) {
           const isMarkdown = isMarkdownFileExt(entry.name);

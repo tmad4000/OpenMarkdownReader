@@ -5,10 +5,18 @@ let settings = {
   readOnlyMode: false,
   sidebarVisible: false,
   contentWidth: 900,
+  contentPadding: 20,
   watchFileMode: false,
   tocVisible: false,
-  csvViewAsTable: true // Default to showing CSV as table
+  csvViewAsTable: true, // Default to showing CSV as table
+  richEditorMode: true, // Default to Rich
+  richToolbarVisible: true // Show formatting toolbar
 };
+
+// Platform helpers
+const isMac = typeof navigator !== 'undefined' &&
+  typeof navigator.platform === 'string' &&
+  navigator.platform.toUpperCase().includes('MAC');
 
 // Text file extensions that can be opened
 const textFileExtensions = [
@@ -48,6 +56,9 @@ let tabIdCounter = 0;
 // Directory state
 let currentDirectory = null;
 let directoryFiles = [];
+// Command palette file cache (prefetched per directory)
+let allFilesCache = null;
+let allFilesCachePromise = null;
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -421,13 +432,15 @@ function updateTabUI(tabId) {
     tabEl.classList.toggle('editing', tab.isEditing);
     tabEl.classList.toggle('modified', tab.isModified);
   }
-  // Update edit button and save button state
-  if (tab && tabId === activeTabId) {
-    editToggleBtn.classList.toggle('active', tab.isEditing);
-    // Show save button when editing with unsaved changes
-    saveBtn.classList.toggle('hidden', !(tab.isEditing && tab.isModified));
-  }
-}
+	  // Update edit button and save button state
+	  if (tab && tabId === activeTabId) {
+	    editToggleBtn.classList.toggle('active', tab.isEditing);
+	    // Show save button whenever in edit mode; disable when no changes
+	    saveBtn.classList.toggle('hidden', !tab.isEditing);
+	    saveBtn.disabled = !tab.isModified;
+	    saveBtn.classList.toggle('disabled', !tab.isModified);
+	  }
+	}
 
 // Close a tab
 async function closeTab(tabId, silent = false) {
@@ -634,16 +647,67 @@ openFolderBtn.addEventListener('click', () => {
 
 // New file from sidebar
 sidebarNewFileBtn.addEventListener('click', () => {
-  // Create a new untitled file and enter edit mode
-  const tabId = createTab('Untitled.md', '', null);
-  const tab = tabs.find(t => t.id === tabId);
-  if (tab) {
-    tab.isEditing = true;
-    tab.originalContent = '';
-    showEditor('');
-    updateTabUI(tabId);
+  if (currentDirectory) {
+    // Create file in directory with editable name
+    createNewFileInDirectory(currentDirectory);
+  } else {
+    // No directory open, create untitled tab
+    const tabId = createTab('Untitled.md', '', null);
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.isEditing = true;
+      tab.originalContent = '';
+      showEditor('');
+      updateTabUI(tabId);
+    }
   }
 });
+
+// Create a new file in the directory with inline editing
+function createNewFileInDirectory(dirPath) {
+  // Generate a unique default name
+  let defaultName = 'Untitled.md';
+  let counter = 1;
+  const existingNames = new Set();
+
+  // Collect existing file names in root directory
+  for (const item of directoryFiles) {
+    if (item.type === 'file') {
+      existingNames.add(item.name.toLowerCase());
+    }
+  }
+
+  while (existingNames.has(defaultName.toLowerCase())) {
+    defaultName = `Untitled ${counter}.md`;
+    counter++;
+  }
+
+  // Create a temporary item in the file tree for editing
+  const tempItem = {
+    name: defaultName,
+    path: null, // Will be set after creation
+    type: 'file',
+    isNew: true,
+    isMarkdown: true,
+    isTextFile: true
+  };
+
+  // Add to beginning of directoryFiles temporarily
+  directoryFiles.unshift(tempItem);
+
+  // Re-render the file tree
+  renderFileTree();
+
+  // Find the new file element and start editing
+  const newFileEl = fileTree.querySelector('.file-tree-file.new-file');
+  if (newFileEl) {
+    // Scroll into view
+    newFileEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Start inline editing
+    startNewFileRename(newFileEl, tempItem, dirPath, defaultName);
+  }
+}
 
 // Listen for directory loaded
 window.electronAPI.onDirectoryLoaded((data) => {
@@ -652,13 +716,23 @@ window.electronAPI.onDirectoryLoaded((data) => {
   
   // Pre-fetch all files for command palette
   allFilesCache = null;
-  window.electronAPI.getAllFilesRecursive(currentDirectory).then(files => {
-    allFilesCache = files;
-    // If palette is open, update results immediately
-    if (!commandPalette.classList.contains('hidden')) {
-      updateCommandPaletteResults();
-    }
-  });
+  allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
+    .then(files => {
+      allFilesCache = files;
+      // If palette is open, update results immediately
+      if (!commandPalette.classList.contains('hidden')) {
+        updateCommandPaletteResults();
+      }
+      return files;
+    })
+    .catch(err => {
+      console.error('Error prefetching files for command palette:', err);
+      allFilesCache = [];
+      return [];
+    })
+    .finally(() => {
+      allFilesCachePromise = null;
+    });
 
   renderFileTree();
 
@@ -717,8 +791,8 @@ function renderFileTreeItems(items, container, depth) {
     } else {
       // File - show text files normally, other files muted
       const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
-      el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}`;
-      el.dataset.path = item.path;
+      el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}${item.isNew ? ' new-file' : ''}`;
+      if (item.path) el.dataset.path = item.path;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
@@ -726,20 +800,22 @@ function renderFileTreeItems(items, container, depth) {
         <span>${escapeHtml(item.name)}</span>
       `;
       // All files are clickable, non-text just shown with muted style
-      el.addEventListener('click', (e) => {
-        // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
-        const options = {};
-        if (e.metaKey) {
-          options.newTab = true;
-          options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
-        }
-        window.electronAPI.openFileByPath(item.path, options);
-      });
-      // Double-click to rename
-      el.querySelector('span').addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        startSidebarRename(el, item);
-      });
+      if (!item.isNew) {
+        el.addEventListener('click', (e) => {
+          // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+          const options = {};
+          if (e.metaKey) {
+            options.newTab = true;
+            options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+          }
+          window.electronAPI.openFileByPath(item.path, options);
+        });
+        // Double-click to rename
+        el.querySelector('span').addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          startSidebarRename(el, item);
+        });
+      }
       container.appendChild(el);
     }
   });
@@ -890,6 +966,84 @@ function startSidebarRename(el, item) {
   });
 }
 
+// Create new file in directory with inline editing
+function startNewFileRename(el, tempItem, dirPath, defaultName) {
+  el.classList.add('renaming');
+  const span = el.querySelector('span');
+
+  // Create input element
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rename-input';
+  input.value = defaultName;
+
+  // Select name without extension
+  const dotIndex = defaultName.lastIndexOf('.');
+
+  span.replaceWith(input);
+  input.focus();
+  if (dotIndex > 0) {
+    input.setSelectionRange(0, dotIndex);
+  } else {
+    input.select();
+  }
+
+  let completed = false;
+
+  async function finishNewFile() {
+    if (completed) return;
+    completed = true;
+
+    const fileName = input.value.trim();
+
+    if (!fileName) {
+      // Cancel - remove from directoryFiles and re-render
+      const idx = directoryFiles.indexOf(tempItem);
+      if (idx !== -1) directoryFiles.splice(idx, 1);
+      renderFileTree();
+      return;
+    }
+
+    // Ensure .md extension
+    const finalName = fileName.endsWith('.md') ? fileName : fileName + '.md';
+
+    // Create the file on disk
+    const result = await window.electronAPI.createFileInDirectory(dirPath, finalName);
+
+    if (result.success) {
+      // Update tempItem with real path and remove isNew flag
+      tempItem.name = finalName;
+      tempItem.path = result.filePath;
+      delete tempItem.isNew;
+
+      // Re-render the file tree to reflect actual state
+      renderFileTree();
+
+      // Open the file in a new tab in edit mode
+      window.electronAPI.openFileByPath(result.filePath);
+    } else {
+      // Show error and remove temp item
+      alert(`Could not create file: ${result.error}`);
+      const idx = directoryFiles.indexOf(tempItem);
+      if (idx !== -1) directoryFiles.splice(idx, 1);
+      renderFileTree();
+    }
+  }
+
+  input.addEventListener('blur', finishNewFile);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      // Cancel - clear input so finishNewFile will remove it
+      input.value = '';
+      input.blur();
+    }
+  });
+}
+
 // New file button on welcome screen
 document.getElementById('new-file-btn').addEventListener('click', () => {
   const tabId = createTab('Untitled.md', '', null);
@@ -965,7 +1119,8 @@ window.electronAPI.onFileLoaded((data) => {
     if (!openInBackground) {
       switchToTab(newTabId);
     }
-  } else if (activeTab && !activeTab.content) {
+  } else if (activeTab && activeTab.content === null && !activeTab.filePath && !activeTab.isModified) {
+    // Only reuse tab if it's truly blank (no content, no file, not modified)
     // Stop watching old file if any
     if (activeTab.filePath && settings.watchFileMode) {
       window.electronAPI.unwatchFile(activeTab.filePath);
@@ -1138,6 +1293,9 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   if (setting === 'content-width') {
     settings.contentWidth = value;
     applyContentWidth();
+  } else if (setting === 'content-padding') {
+    settings.contentPadding = value;
+    applyContentPadding();
   }
 });
 
@@ -1186,6 +1344,13 @@ function applyContentWidth() {
   } else {
     contentEl.style.maxWidth = `${settings.contentWidth}px`;
   }
+}
+
+function applyContentPadding() {
+  const base = typeof settings.contentPadding === 'number'
+    ? settings.contentPadding
+    : 20;
+  document.documentElement.style.setProperty('--content-padding-base', `${base}px`);
 }
 
 // Table of Contents functions
@@ -1376,6 +1541,8 @@ function renderMarkdown(mdContent) {
       hljs.highlightElement(block);
     });
 
+    applyLinkTooltips();
+
     dropZone.classList.add('hidden');
     content.classList.remove('hidden');
     markdownBody.classList.remove('hidden');
@@ -1391,6 +1558,29 @@ function renderMarkdown(mdContent) {
     dropZone.classList.add('hidden');
     content.classList.remove('hidden');
   }
+}
+
+function applyLinkTooltips() {
+  if (!markdownBody) return;
+  const modifier = isMac ? '⌘-click' : 'Ctrl+click';
+
+  markdownBody.querySelectorAll('a[href]').forEach((a) => {
+    const href = a.getAttribute('href');
+    if (!href) return;
+
+    let hint = '';
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      hint = 'Click to open link in browser';
+    } else if (href.startsWith('#')) {
+      hint = 'Click to jump to section';
+    } else {
+      hint = `Click to open file. ${modifier} to open in new tab`;
+    }
+
+    const existingTitle = a.getAttribute('title');
+    const title = existingTitle ? `${existingTitle}\n${hint}` : hint;
+    a.setAttribute('title', title);
+  });
 }
 
 // Render content based on file type
@@ -1597,11 +1787,25 @@ document.addEventListener('keydown', (e) => {
     sidebarToggle.click();
   }
 
-  // Escape to close command palette (edit mode revert is handled by menu accelerator)
+  // Escape handling: close overlays first, then revert edits if in edit mode
   if (e.key === 'Escape') {
     if (!commandPalette.classList.contains('hidden')) {
       e.preventDefault();
       hideCommandPalette();
+      return;
+    }
+
+    const findBarEl = document.getElementById('find-bar');
+    if (findBarEl && !findBarEl.classList.contains('hidden')) {
+      e.preventDefault();
+      hideFindBar();
+      return;
+    }
+
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing && editorContainer.contains(e.target)) {
+      e.preventDefault();
+      revertChanges();
     }
   }
 
@@ -1622,7 +1826,6 @@ document.getElementById('titlebar').addEventListener('dblclick', (e) => {
 // Command Palette / File Search
 let commandPaletteSelectedIndex = 0;
 let commandPaletteFiles = []; // This will hold the currently displayed (filtered) files
-let allFilesCache = null;
 let lastInputSource = 'mouse'; // Track input source to prevent mouse hover fighting keyboard
 
 document.addEventListener('mousemove', () => {
@@ -1638,7 +1841,22 @@ async function showCommandPalette() {
   // Load all files if we have a directory
   if (currentDirectory && !allFilesCache) {
     commandPaletteResults.innerHTML = '<div class="command-palette-empty">Loading files...</div>';
-    allFilesCache = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+    if (!allFilesCachePromise) {
+      allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
+        .then(files => {
+          allFilesCache = files;
+          return files;
+        })
+        .catch(err => {
+          console.error('Error loading files for command palette:', err);
+          allFilesCache = [];
+          return [];
+        })
+        .finally(() => {
+          allFilesCachePromise = null;
+        });
+    }
+    await allFilesCachePromise;
   }
 
   updateCommandPaletteResults();
@@ -1987,19 +2205,93 @@ createTab();
 loadRecentFiles();
 
 // Handle unsaved changes check from main process
-window.electronAPI.onCheckUnsaved(() => {
-  const hasUnsaved = tabs.some(tab => tab.isModified);
-  
+window.electronAPI.onCheckUnsaved(async () => {
+  // If auto-save is enabled, save all modified files with paths first
+  if (settings.autoSave) {
+    clearTimeout(autoSaveTimer); // Cancel any pending auto-save
+    const savePromises = tabs
+      .filter(tab => tab.isModified && tab.filePath)
+      .map(tab => window.electronAPI.saveFile(tab.filePath, tab.content).then(() => {
+        tab.isModified = false;
+        updateTabUI(tab.id);
+      }));
+    await Promise.all(savePromises);
+  }
+
+  // Build list of unsaved tabs
+  const unsavedTabs = tabs
+    .filter(tab => {
+      // With auto-save, only untitled files count as unsaved
+      if (settings.autoSave) {
+        return tab.isModified && !tab.filePath;
+      }
+      return tab.isModified;
+    })
+    .map(tab => ({
+      id: tab.id,
+      fileName: tab.fileName,
+      filePath: tab.filePath,
+      isModified: tab.isModified
+    }));
+
   const sessionData = {
     tabs: tabs.map(t => ({
       filePath: t.filePath,
       fileName: t.fileName
     })).filter(t => t.filePath),
     directory: currentDirectory,
-    activeTabIndex: tabs.findIndex(t => t.id === activeTabId)
+    activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
+    sidebarVisible: settings.sidebarVisible,
+    richToolbarVisible: settings.richToolbarVisible
   };
-  
-  window.electronAPI.reportUnsavedState({ hasUnsaved, sessionData });
+
+  window.electronAPI.reportUnsavedState({
+    hasUnsaved: unsavedTabs.length > 0,
+    unsavedTabs,
+    sessionData
+  });
+});
+
+// Handle review unsaved tab request - save a specific tab by ID
+window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
+  const tab = tabs.find(t => t.id === tabInfo.id);
+  if (!tab) {
+    window.electronAPI.reportReviewDecision({ success: false, error: 'Tab not found' });
+    return;
+  }
+
+  // Make sure we have the latest content if this tab is being edited
+  if (tab.isEditing && tab.id === activeTabId) {
+    tab.content = editor.value;
+  }
+
+  try {
+    if (tab.filePath) {
+      await window.electronAPI.saveFile(tab.filePath, tab.content);
+      tab.isModified = false;
+      tab.originalContent = tab.content;
+      updateTabUI(tab.id);
+      window.electronAPI.reportReviewDecision({ success: true, tabId: tab.id });
+    } else {
+      // No file path, need Save As dialog
+      const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+      if (result) {
+        tab.filePath = result.filePath;
+        tab.fileName = result.fileName;
+        tab.isModified = false;
+        tab.originalContent = tab.content;
+        const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
+        if (tabEl) tabEl.textContent = tab.fileName;
+        updateTabUI(tab.id);
+        window.electronAPI.reportReviewDecision({ success: true, tabId: tab.id, saved: true });
+      } else {
+        // User cancelled save as dialog
+        window.electronAPI.reportReviewDecision({ success: false, tabId: tab.id, cancelled: true });
+      }
+    }
+  } catch (error) {
+    window.electronAPI.reportReviewDecision({ success: false, tabId: tab.id, error: error.message });
+  }
 });
 
 // Handle session state request from main process
@@ -2010,7 +2302,9 @@ window.electronAPI.onGetSessionState(() => {
       fileName: t.fileName
     })).filter(t => t.filePath), // Only save tabs with files
     directory: currentDirectory,
-    activeTabIndex: tabs.findIndex(t => t.id === activeTabId)
+    activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
+    sidebarVisible: settings.sidebarVisible,
+    richToolbarVisible: settings.richToolbarVisible
   };
   window.electronAPI.reportSessionState(sessionData);
 });
@@ -2019,15 +2313,25 @@ window.electronAPI.onGetSessionState(() => {
 window.electronAPI.onRestoreSession((data) => {
   if (!data) return;
 
+  // Restore sidebar visibility (fallback: show if a directory is restored)
+  const shouldShowSidebar = (typeof data.sidebarVisible === 'boolean')
+    ? data.sidebarVisible
+    : Boolean(data.directory);
+  settings.sidebarVisible = shouldShowSidebar;
+  sidebar.classList.toggle('hidden', !shouldShowSidebar);
+  sidebarToggle.classList.toggle('active', shouldShowSidebar);
+
+  if (typeof data.richToolbarVisible === 'boolean') {
+    settings.richToolbarVisible = data.richToolbarVisible;
+  }
+  updateRichToolbarUI();
+
   // Restore directory/sidebar
   if (data.directory) {
     currentDirectory = data.directory;
     window.electronAPI.getDirectoryContents(data.directory).then(files => {
       directoryFiles = files;
       buildFileTree(files, data.directory);
-      if (!settings.sidebarVisible) {
-        toggleSidebar();
-      }
     }).catch(console.error);
   }
 
@@ -2039,12 +2343,35 @@ window.electronAPI.onRestoreSession((data) => {
       closeTab(firstTab.id, true); // silent close
     }
 
-    // Open each saved tab
-    data.tabs.forEach((tabData, index) => {
+    // Open each saved tab in background to preserve ordering/focus
+    data.tabs.forEach((tabData) => {
       if (tabData.filePath) {
-        window.electronAPI.openFileByPath(tabData.filePath);
+        window.electronAPI.openFileByPath(tabData.filePath, { newTab: true, background: true });
       }
     });
+
+    // Restore focus to previously active tab once loads settle
+    const activeIndex = typeof data.activeTabIndex === 'number' ? data.activeTabIndex : -1;
+    const activeTabData = activeIndex >= 0 && activeIndex < data.tabs.length
+      ? data.tabs[activeIndex]
+      : null;
+
+    const focusByPath = (filePath, attempts = 10) => {
+      const target = tabs.find(t => t.filePath === filePath);
+      if (target) {
+        switchToTab(target.id);
+        return;
+      }
+      if (attempts > 0) {
+        setTimeout(() => focusByPath(filePath, attempts - 1), 100);
+      }
+    };
+
+    if (activeTabData && activeTabData.filePath) {
+      focusByPath(activeTabData.filePath);
+    } else if (data.tabs[0] && data.tabs[0].filePath) {
+      focusByPath(data.tabs[0].filePath);
+    }
   }
 });
 
@@ -2345,9 +2672,9 @@ markdownBody.addEventListener('click', (e) => {
     const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
     const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
 
-    // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+    // Cmd+click (Mac) / Ctrl+click (Win/Linux) = new tab in background, +Shift = focus
     const options = {};
-    if (e.metaKey) {
+    if (e.metaKey || (!isMac && e.ctrlKey)) {
       options.newTab = true;
       options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
     }
@@ -2363,14 +2690,72 @@ markdownBody.addEventListener('click', (e) => {
 
 let easyMDE = null;
 const richModeBtn = document.getElementById('rich-mode-btn');
-settings.richEditorMode = false; // Default to Plain
+const richToolbarBtn = document.getElementById('rich-toolbar-btn');
+
+// Detect markdown links under a given cursor position (single line)
+function findRegexMatchAt(re, text, ch) {
+  re.lastIndex = 0;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (ch >= start && ch <= end) return match;
+  }
+  return null;
+}
+
+function extractMarkdownLinkAt(lineText, ch) {
+  // Inline links/images: [label](href "title") or ![alt](href)
+  let m = findRegexMatchAt(/!?\[[^\]]*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, lineText, ch);
+  if (m) return m[1];
+
+  // Autolinks: <https://example.com>
+  m = findRegexMatchAt(/<(https?:\/\/[^>]+)>/g, lineText, ch);
+  if (m) return m[1];
+
+  // Bare URLs
+  m = findRegexMatchAt(/(https?:\/\/[^\s)]+)/g, lineText, ch);
+  if (m) return m[1];
+
+  // Wiki-style links: [[file.md]]
+  m = findRegexMatchAt(/\[\[([^\]]+)\]\]/g, lineText, ch);
+  if (m) return m[1];
+
+  return null;
+}
+
+function openLinkFromEditor(href, e) {
+  if (!href) return;
+
+  if (href.startsWith('http://') || href.startsWith('https://')) {
+    window.electronAPI.openExternal(href);
+    return;
+  }
+
+  if (href.startsWith('#')) {
+    return; // anchors don't do much in edit mode
+  }
+
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.filePath) {
+    const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
+    const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
+
+    const options = {
+      newTab: true,
+      background: !e.shiftKey
+    };
+
+    window.electronAPI.openFileByPath(targetPath, options);
+  }
+}
 
 function initRichEditor() {
   if (easyMDE) return;
   
   easyMDE = new EasyMDE({
     element: editor,
-    autoDownloadFontAwesome: true,
+	    autoDownloadFontAwesome: false,
     spellChecker: false,
     status: false, // Hide status bar
     toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
@@ -2405,14 +2790,49 @@ richModeBtn.addEventListener('click', () => {
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
     initRichEditor();
-    if (easyMDE) easyMDE.value(editor.value);
+    if (easyMDE) {
+      easyMDE.value(editor.value);
+      setTimeout(() => {
+        if (easyMDE) {
+          easyMDE.codemirror.refresh();
+          easyMDE.codemirror.focus();
+        }
+      }, 10);
+    }
+    if (richToolbarBtn) {
+      richToolbarBtn.classList.remove('hidden');
+      updateRichToolbarUI();
+    }
   } else {
     richModeBtn.classList.remove('active');
     if (easyMDE) editor.value = easyMDE.value();
     destroyRichEditor();
+    if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
     editor.focus();
   }
 });
+
+function updateRichToolbarUI() {
+  if (!editorContainer) return;
+  const shouldShow = settings.richEditorMode && settings.richToolbarVisible;
+  editorContainer.classList.toggle('hide-rich-toolbar', !shouldShow);
+  if (richToolbarBtn) {
+    richToolbarBtn.classList.toggle('active', settings.richToolbarVisible);
+    richToolbarBtn.title = settings.richToolbarVisible
+      ? 'Hide Formatting Toolbar'
+      : 'Show Formatting Toolbar';
+  }
+}
+
+if (richToolbarBtn) {
+  richToolbarBtn.addEventListener('click', () => {
+    settings.richToolbarVisible = !settings.richToolbarVisible;
+    updateRichToolbarUI();
+    if (easyMDE) {
+      easyMDE.codemirror.focus();
+    }
+  });
+}
 
 // ------------------------------------------
 // Overridden Functions to support EasyMDE
@@ -2432,15 +2852,21 @@ showEditor = function(content) {
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
     initRichEditor();
+    if (richToolbarBtn) richToolbarBtn.classList.remove('hidden');
+    updateRichToolbarUI();
     if (easyMDE) {
       easyMDE.value(content);
-      // Refresh to fix layout issues
+      // Refresh to fix layout issues and focus editor
       setTimeout(() => {
-        if (easyMDE) easyMDE.codemirror.refresh();
+        if (easyMDE) {
+          easyMDE.codemirror.refresh();
+          easyMDE.codemirror.focus();
+        }
       }, 10);
     }
   } else {
     richModeBtn.classList.remove('active');
+    if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
     destroyRichEditor();
     editor.focus();
   }
@@ -2454,6 +2880,7 @@ hideEditor = function() {
   editorContainer.classList.add('hidden');
   markdownBody.classList.remove('hidden');
   richModeBtn.classList.add('hidden');
+  if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
 };
 
 switchToTab = function(tabId) {
@@ -2652,36 +3079,58 @@ function triggerAutoSave() {
 editor.addEventListener('input', triggerAutoSave);
 
 // Redefine initRichEditor to add auto-save hook
-initRichEditor = function() {
-  if (easyMDE) return;
-  
-  easyMDE = new EasyMDE({
-    element: editor,
-    autoDownloadFontAwesome: true,
-    spellChecker: false,
-    status: false,
-    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-    styleSelectedText: false,
-    minHeight: "100%",
-    maxHeight: "100%"
-  });
-  
-  easyMDE.codemirror.on('change', () => {
-    const tab = tabs.find(t => t.id === activeTabId);
-    if (tab && tab.isEditing) {
-      if (!tab.isModified) {
-        tab.isModified = true;
-        updateTabUI(activeTabId);
-        document.title = `${tab.fileName} * - OpenMarkdownReader`;
-      }
-      triggerAutoSave();
-    }
-  });
-};
+	initRichEditor = function() {
+	  if (easyMDE) return;
+	  
+	  easyMDE = new EasyMDE({
+	    element: editor,
+		    autoDownloadFontAwesome: false,
+	    spellChecker: false,
+	    status: false,
+	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
+	    styleSelectedText: false,
+	    minHeight: "100%",
+	    maxHeight: "100%"
+	  });
+	  
+	  // Cmd/Ctrl+click links inside editor (Obsidian-style)
+	  const cm = easyMDE.codemirror;
+	  cm.on('mousedown', (cmInstance, e) => {
+	    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+	    const pos = cmInstance.coordsChar({ left: e.clientX, top: e.clientY }, 'window');
+	    const lineText = cmInstance.getLine(pos.line);
+	    const href = extractMarkdownLinkAt(lineText, pos.ch);
+	    if (!href) return;
+
+	    e.preventDefault();
+	    e.stopPropagation();
+	    openLinkFromEditor(href, e);
+	  });
+	  
+		  easyMDE.codemirror.on('change', () => {
+		    const tab = tabs.find(t => t.id === activeTabId);
+		    if (tab && tab.isEditing) {
+		      if (!tab.isModified) {
+	        tab.isModified = true;
+	        updateTabUI(activeTabId);
+	        document.title = `${tab.fileName} * - OpenMarkdownReader`;
+	      }
+	      triggerAutoSave();
+	    }
+	  });
+
+		  updateRichToolbarUI();
+	};
 
 window.electronAPI.onSetAutoSave((enabled) => {
   settings.autoSave = enabled;
   if (!enabled) clearTimeout(autoSaveTimer);
+
+  // Show/hide the auto-save indicator
+  const autosaveIndicator = document.getElementById('autosave-indicator');
+  if (autosaveIndicator) {
+    autosaveIndicator.classList.toggle('hidden', !enabled);
+  }
 });
 
 // Recent Palette Logic
@@ -2771,51 +3220,8 @@ selectCommandPaletteItem = function(index) {
          if (index >= 0 && index < commandPaletteFiles.length) {
             const file = commandPaletteFiles[index];
             hideCommandPalette();
-            
-            if (file.type === 'folder') {
-                // Open folder
-                window.electronAPI.getDirectoryContents(file.path).then(files => {
-                    const event = { dirPath: file.path, files };
-                    // We need to call logic to load directory.
-                    // window.electronAPI.onDirectoryLoaded... callback?
-                    // We can reuse buildFileTree directly?
-                    // Actually, sending 'directory-loaded' IPC from main is how we usually do it.
-                    // But we are in renderer.
-                    // We can just call the logic directly if we have access.
-                    // or ask main to open it?
-                    // window.electronAPI.openFileByPath handles both?
-                    // Let's check openFileByPath in main.
-                    window.electronAPI.openFileByPath(file.path);
-                });
-                // openFileByPath should handle it if main.js checks isDirectory.
-                // Main.js openFileByPath calls loadMarkdownFile.
-                // It does NOT check isDirectory. 
-                // We should fix main.js open-file-by-path or use openFolder logic.
-                // But openFolder opens dialog.
-                
-                // Let's rely on the fact that recent files list knows it's a folder.
-                // In main.js, `open-file-by-path` loads file.
-                // I need to update main.js `open-file-by-path` to handle folders?
-                // Or just use `openFileOrFolder` without dialog?
-                
-                // For now, let's call `openFileByPath` and update `main.js` to be smarter?
-                // Or use the renderer logic I wrote in `loadRecentFiles`?
-                // In `loadRecentFiles`:
-                /*
-                 window.electronAPI.getDirectoryContents(filePath).then(files => {
-                    // Manually trigger the directory loaded flow
-                    // ...
-                 });
-                 window.electronAPI.openFileByPath(filePath); 
-                */
-                // The `loadRecentFiles` logic was:
-                // `window.electronAPI.openFileByPath(filePath)`
-                // But wait, `openFileByPath` in main.js calls `loadMarkdownFile` which tries to read file. It will fail on folder.
-                
-                // I must update `main.js` `open-file-by-path` handler to check if directory.
-            } else {
-                window.electronAPI.openFileByPath(file.path);
-            }
+            // openFileByPath now handles both files and directories
+            window.electronAPI.openFileByPath(file.path);
          }
     } else {
         originalSelectCommandPaletteItem(index);
