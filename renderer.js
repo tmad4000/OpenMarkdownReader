@@ -88,7 +88,7 @@ const csvTableContainer = document.getElementById('csv-table-container');
 const csvToggleRawBtn = document.getElementById('csv-toggle-raw');
 
 // Create a new tab
-function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
+function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true) {
   const tabId = ++tabIdCounter;
   const tab = {
     id: tabId,
@@ -141,8 +141,15 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
   tabEl.addEventListener('drop', handleTabDrop);
   tabEl.addEventListener('dragend', handleTabDragEnd);
 
-  switchToTab(tabId);
+  if (switchTo) {
+    switchToTab(tabId);
+  }
   return tabId;
+}
+
+// Create tab in background (doesn't switch to it)
+function createTabBackground(fileName, mdContent, filePath) {
+  return createTab(fileName, mdContent, filePath, false);
 }
 
 // Tab drag-to-reorder
@@ -242,7 +249,33 @@ if (tabBar) {
   tabBar.addEventListener('drop', (e) => {
     if (draggedTab && e.target === tabBar) {
       e.preventDefault();
-      tabBar.appendChild(draggedTab);
+      
+      const children = Array.from(tabBar.querySelectorAll('.tab:not(.dragging)'));
+      
+      // Find closest tab
+      let closestTab = null;
+      let minDist = Infinity;
+      
+      children.forEach(child => {
+        const rect = child.getBoundingClientRect();
+        const center = rect.left + rect.width / 2;
+        const dist = Math.abs(e.clientX - center);
+        if (dist < minDist) {
+          minDist = dist;
+          closestTab = child;
+        }
+      });
+      
+      if (closestTab) {
+        const rect = closestTab.getBoundingClientRect();
+        if (e.clientX < rect.left + rect.width / 2) {
+          tabBar.insertBefore(draggedTab, closestTab);
+        } else {
+          tabBar.insertBefore(draggedTab, closestTab.nextSibling);
+        }
+      } else {
+        tabBar.appendChild(draggedTab);
+      }
       
       // Update tabs array
       const draggedTabId = parseInt(draggedTab.dataset.tabId);
@@ -251,7 +284,11 @@ if (tabBar) {
       const oldIndex = tabs.indexOf(draggedTabData);
       if (oldIndex > -1) tabs.splice(oldIndex, 1);
       
-      tabs.push(draggedTabData);
+      // Find new position based on DOM order
+      const newAllTabs = Array.from(tabBar.querySelectorAll('.tab'));
+      const newIndex = newAllTabs.indexOf(draggedTab);
+      
+      tabs.splice(newIndex, 0, draggedTabData);
     }
   });
 }
@@ -674,8 +711,14 @@ function renderFileTreeItems(items, container, depth) {
         <span>${escapeHtml(item.name)}</span>
       `;
       // All files are clickable, non-text just shown with muted style
-      el.addEventListener('click', () => {
-        window.electronAPI.openFileByPath(item.path);
+      el.addEventListener('click', (e) => {
+        // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+        const options = {};
+        if (e.metaKey) {
+          options.newTab = true;
+          options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+        }
+        window.electronAPI.openFileByPath(item.path, options);
       });
       container.appendChild(el);
     }
@@ -760,21 +803,28 @@ saveBtn.addEventListener('click', () => {
 
 // Listen for file loaded from main process
 window.electronAPI.onFileLoaded((data) => {
+  const openInBackground = data.openInBackground || false;
+  const forceNewTab = data.forceNewTab || false;
+
   // Check if file is already open
   if (data.filePath) {
     const existingTab = tabs.find(t => t.filePath === data.filePath);
     if (existingTab) {
-      switchToTab(existingTab.id);
+      if (!openInBackground) {
+        switchToTab(existingTab.id);
+      }
 
       // Update content if no unsaved changes (fresh from disk)
       if (!existingTab.isModified) {
         existingTab.content = data.content;
 
-        // Refresh UI
-        if (existingTab.isEditing) {
-          editor.value = data.content;
-        } else {
-          renderContent(data.content, data.fileName);
+        // Refresh UI only if it's the active tab
+        if (existingTab.id === activeTabId) {
+          if (existingTab.isEditing) {
+            editor.value = data.content;
+          } else {
+            renderContent(data.content, data.fileName);
+          }
         }
       }
       return;
@@ -783,7 +833,18 @@ window.electronAPI.onFileLoaded((data) => {
 
   const activeTab = tabs.find(t => t.id === activeTabId);
 
-  if (activeTab && !activeTab.content) {
+  // If forcing new tab or opening in background, always create new tab
+  if (forceNewTab || openInBackground) {
+    const newTabId = createTabBackground(data.fileName, data.content, data.filePath);
+    // Start watching if watch mode is on
+    if (data.filePath && settings.watchFileMode) {
+      window.electronAPI.watchFile(data.filePath);
+    }
+    // If not background, switch to the new tab
+    if (!openInBackground) {
+      switchToTab(newTabId);
+    }
+  } else if (activeTab && !activeTab.content) {
     // Stop watching old file if any
     if (activeTab.filePath && settings.watchFileMode) {
       window.electronAPI.unwatchFile(activeTab.filePath);
@@ -1558,8 +1619,8 @@ function updateCommandPaletteResults() {
 
   // Add click handlers
   commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
-    el.addEventListener('click', () => {
-      selectCommandPaletteItem(index);
+    el.addEventListener('click', (e) => {
+      selectCommandPaletteItem(index, e);
     });
     el.addEventListener('mouseenter', () => {
       // Only update selection on mouse hover if the mouse is actually the source of input
@@ -1587,15 +1648,22 @@ function updateSelectedItem() {
   }
 }
 
-function selectCommandPaletteItem(index) {
+function selectCommandPaletteItem(index, event = null) {
   if (index >= 0 && index < commandPaletteFiles.length) {
     const file = commandPaletteFiles[index];
     hideCommandPalette();
-    
-    if (file.isOpenTab && file.tabId) {
+
+    // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+    const options = {};
+    if (event && event.metaKey) {
+      options.newTab = true;
+      options.background = !event.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+    }
+
+    if (file.isOpenTab && file.tabId && !options.newTab) {
       switchToTab(file.tabId);
     } else {
-      window.electronAPI.openFileByPath(file.path);
+      window.electronAPI.openFileByPath(file.path, options);
     }
   }
 }
@@ -1713,9 +1781,16 @@ async function loadRecentFiles() {
 
       // Add click handlers
       recentFilesList.querySelectorAll('.recent-file-item').forEach(item => {
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
           const filePath = item.dataset.path;
           const fileType = item.dataset.type;
+
+          // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+          const options = {};
+          if (e.metaKey) {
+            options.newTab = true;
+            options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+          }
 
           if (fileType === 'folder') {
             // For folders, we need to trigger directory loading
@@ -1726,9 +1801,9 @@ async function loadRecentFiles() {
               // Use openFileByPath which will handle folder detection
             });
             // Actually open the folder properly
-            window.electronAPI.openFileByPath(filePath);
+            window.electronAPI.openFileByPath(filePath, options);
           } else {
-            window.electronAPI.openFileByPath(filePath);
+            window.electronAPI.openFileByPath(filePath, options);
           }
         });
       });
@@ -2095,7 +2170,15 @@ markdownBody.addEventListener('click', (e) => {
   if (tab && tab.filePath) {
     const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
     const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
-    window.electronAPI.openFileByPath(targetPath);
+
+    // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
+    const options = {};
+    if (e.metaKey) {
+      options.newTab = true;
+      options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+    }
+
+    window.electronAPI.openFileByPath(targetPath, options);
   }
 });
 
