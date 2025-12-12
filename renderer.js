@@ -924,6 +924,25 @@ function hideCSVView() {
   markdownBody.classList.remove('hidden');
 }
 
+// Configure marked to generate heading IDs
+const markedRenderer = new marked.Renderer();
+markedRenderer.heading = function(text, level) {
+  // Handle both old and new marked API
+  const headingText = typeof text === 'object' ? text.text : text;
+  const headingLevel = typeof text === 'object' ? text.depth : level;
+
+  const id = headingText.toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-');
+  return `<h${headingLevel} id="${id}">${headingText}</h${headingLevel}>`;
+};
+
+marked.setOptions({
+  renderer: markedRenderer,
+  gfm: true,
+  breaks: false
+});
+
 function renderMarkdown(mdContent) {
   try {
     // Hide CSV view if it was showing
