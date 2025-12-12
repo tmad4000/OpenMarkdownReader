@@ -24,7 +24,7 @@
 - [ ] **Frontmatter Support**: better visualization or hiding of YAML frontmatter.
 
 ### Application Features
-- [ ] **Auto-Save**: Option to automatically save changes after a delay or on focus loss.
+- [ ] **Auto-Save**: (Needs thought - potentially dangerous/annoying) Option to automatically save changes after a delay or on focus loss.
 - [ ] **Spell Checker**: Integrated spell checking for the editor.
 - [ ] **Word Count & Stats**: Status bar display for words, characters, and reading time.
 - [ ] **Search & Replace**: Full find/replace functionality within the editor (current "Find" is read-only highlighting).
