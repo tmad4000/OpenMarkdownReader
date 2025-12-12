@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onFileLoaded: (callback) => ipcRenderer.on('file-loaded', (event, data) => callback(data)),
   onNewTab: (callback) => ipcRenderer.on('new-tab', () => callback()),
   onNewFile: (callback) => ipcRenderer.on('new-file', () => callback()),
+  onCloseTab: (callback) => ipcRenderer.on('close-tab', () => callback()),
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   openFileOrFolder: () => ipcRenderer.invoke('open-file-or-folder'),
 
@@ -13,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', oldPath, newName),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
+  onSaveAll: (callback) => ipcRenderer.on('save-all', () => callback()),
   showSaveDialog: (fileName) => ipcRenderer.invoke('show-save-dialog', fileName),
 
   // Print/Export
@@ -33,7 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
-  openFileByPath: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
+  openFileByPath: (filePath, options = {}) => ipcRenderer.invoke('open-file-by-path', filePath, options),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),

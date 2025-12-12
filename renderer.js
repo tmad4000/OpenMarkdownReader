@@ -71,6 +71,7 @@ const openBtn = document.getElementById('open-btn');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const openFolderBtn = document.getElementById('open-folder-btn');
+const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
@@ -631,6 +632,19 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
+// New file from sidebar
+sidebarNewFileBtn.addEventListener('click', () => {
+  // Create a new untitled file and enter edit mode
+  const tabId = createTab('Untitled.md', '', null);
+  const tab = tabs.find(t => t.id === tabId);
+  if (tab) {
+    tab.isEditing = true;
+    tab.originalContent = '';
+    showEditor('');
+    updateTabUI(tabId);
+  }
+});
+
 // Listen for directory loaded
 window.electronAPI.onDirectoryLoaded((data) => {
   currentDirectory = data.dirPath;
@@ -704,6 +718,7 @@ function renderFileTreeItems(items, container, depth) {
       // File - show text files normally, other files muted
       const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
       el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}`;
+      el.dataset.path = item.path;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
@@ -719,6 +734,11 @@ function renderFileTreeItems(items, container, depth) {
           options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
         }
         window.electronAPI.openFileByPath(item.path, options);
+      });
+      // Double-click to rename
+      el.querySelector('span').addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startSidebarRename(el, item);
       });
       container.appendChild(el);
     }
@@ -767,6 +787,107 @@ function findItemByPath(items, targetPath) {
     }
   }
   return null;
+}
+
+// Rename file from sidebar
+function startSidebarRename(el, item) {
+  el.classList.add('renaming');
+  const span = el.querySelector('span');
+  const oldName = item.name;
+
+  // Create input element
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rename-input';
+  input.value = oldName;
+
+  // Select name without extension
+  const dotIndex = oldName.lastIndexOf('.');
+
+  span.replaceWith(input);
+  input.focus();
+  if (dotIndex > 0) {
+    input.setSelectionRange(0, dotIndex);
+  } else {
+    input.select();
+  }
+
+  async function finishRename() {
+    const newName = input.value.trim();
+
+    if (!newName || newName === oldName) {
+      // Cancel rename
+      const newSpan = document.createElement('span');
+      newSpan.textContent = oldName;
+      input.replaceWith(newSpan);
+      el.classList.remove('renaming');
+      // Re-attach dblclick handler
+      newSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startSidebarRename(el, item);
+      });
+      return;
+    }
+
+    // Attempt the rename
+    const result = await window.electronAPI.renameFile(item.path, newName);
+
+    if (result.success) {
+      // Update the item
+      const oldPath = item.path;
+      item.path = result.newPath;
+      item.name = newName;
+      el.dataset.path = result.newPath;
+
+      // Update any open tabs with this file
+      for (const tab of tabs) {
+        if (tab.filePath === oldPath) {
+          tab.filePath = result.newPath;
+          tab.fileName = newName;
+          const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
+          if (tabEl) tabEl.textContent = newName;
+          if (tab.id === activeTabId) {
+            document.title = `${newName} - OpenMarkdownReader`;
+          }
+        }
+      }
+
+      // Update the span with new name
+      const newSpan = document.createElement('span');
+      newSpan.textContent = newName;
+      input.replaceWith(newSpan);
+      el.classList.remove('renaming');
+      // Re-attach dblclick handler
+      newSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startSidebarRename(el, item);
+      });
+    } else {
+      // Show error and revert
+      alert(`Could not rename file: ${result.error}`);
+      const newSpan = document.createElement('span');
+      newSpan.textContent = oldName;
+      input.replaceWith(newSpan);
+      el.classList.remove('renaming');
+      // Re-attach dblclick handler
+      newSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startSidebarRename(el, item);
+      });
+    }
+  }
+
+  input.addEventListener('blur', finishRename);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      input.value = oldName; // Revert to original name
+      input.blur();
+    }
+  });
 }
 
 // New file button on welcome screen
@@ -870,6 +991,13 @@ window.electronAPI.onNewTab(() => {
   createTab();
 });
 
+// Listen for close tab request from menu
+window.electronAPI.onCloseTab(() => {
+  if (activeTabId !== null) {
+    closeTab(activeTabId);
+  }
+});
+
 // Listen for new file request - creates tab and enters edit mode
 window.electronAPI.onNewFile(() => {
   const tabId = createTab('Untitled.md', '', null);
@@ -896,6 +1024,42 @@ window.electronAPI.onRevert(() => {
 window.electronAPI.onSave(() => {
   saveFile();
 });
+
+// Listen for save all request (when closing window with unsaved changes)
+window.electronAPI.onSaveAll(async () => {
+  await saveAllFiles();
+});
+
+// Save all modified files
+async function saveAllFiles() {
+  for (const tab of tabs) {
+    if (tab.isModified) {
+      // Make sure to get latest content if editing
+      if (tab.isEditing && tab.id === activeTabId) {
+        tab.content = editor.value;
+      }
+
+      if (tab.filePath) {
+        await window.electronAPI.saveFile(tab.filePath, tab.content);
+        tab.isModified = false;
+        tab.originalContent = tab.content;
+        updateTabUI(tab.id);
+      } else {
+        // No file path, need Save As dialog
+        const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+        if (result) {
+          tab.filePath = result.filePath;
+          tab.fileName = result.fileName;
+          tab.isModified = false;
+          tab.originalContent = tab.content;
+          const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
+          if (tabEl) tabEl.textContent = tab.fileName;
+          updateTabUI(tab.id);
+        }
+      }
+    }
+  }
+}
 
 // Listen for read-only mode toggle
 window.electronAPI.onSetReadOnly((isReadOnly) => {
@@ -1386,8 +1550,8 @@ function switchToPrevTab() {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  // Cmd+W to close tab
-  if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+  // Cmd+W to close tab (without Shift - Cmd+Shift+W closes the window via menu)
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
     if (activeTabId !== null) {
       closeTab(activeTabId);

@@ -90,19 +90,25 @@ function createWindow(filePath = null) {
   let forceClose = false;
   win.on('close', async (e) => {
     if (forceClose) return;
+    if (win.isDestroyed()) return;
 
     e.preventDefault();
 
     // Ask renderer if there are unsaved changes
     return new Promise((resolve) => {
       const responseHandler = (event, hasUnsaved) => {
+        if (win.isDestroyed()) {
+          ipcMain.removeListener('unsaved-state', responseHandler);
+          resolve();
+          return;
+        }
         if (event.sender !== win.webContents) return;
         ipcMain.removeListener('unsaved-state', responseHandler);
 
         if (hasUnsaved) {
           const choice = dialog.showMessageBoxSync(win, {
             type: 'warning',
-            buttons: ['Save', "Don't Save", 'Cancel'],
+            buttons: ['Save All', "Don't Save", 'Cancel'],
             defaultId: 0,
             cancelId: 2,
             message: 'You have unsaved changes.',
@@ -110,34 +116,47 @@ function createWindow(filePath = null) {
           });
 
           if (choice === 0) {
-            // Save - tell renderer to save, then close
-            win.webContents.send('save');
-            // Give it a moment to save
-            setTimeout(() => {
-              forceClose = true;
-              win.close();
-            }, 500);
+            // Save All - tell renderer to save all tabs, then close
+            if (!win.isDestroyed()) {
+              win.webContents.send('save-all');
+              // Give it a moment to save all
+              setTimeout(() => {
+                forceClose = true;
+                if (!win.isDestroyed()) {
+                  win.close();
+                }
+              }, 1000);
+            }
           } else if (choice === 1) {
             // Don't Save - close without saving
             forceClose = true;
-            win.close();
+            if (!win.isDestroyed()) {
+              win.close();
+            }
           }
           // Cancel (choice === 2) - do nothing, window stays open
         } else {
           forceClose = true;
-          win.close();
+          if (!win.isDestroyed()) {
+            win.close();
+          }
         }
         resolve();
       };
 
       ipcMain.on('unsaved-state', responseHandler);
-      win.webContents.send('check-unsaved');
+      if (!win.isDestroyed()) {
+        win.webContents.send('check-unsaved');
+      }
 
       // Timeout in case renderer doesn't respond
       setTimeout(() => {
         ipcMain.removeListener('unsaved-state', responseHandler);
         forceClose = true;
-        win.close();
+        // Check if window still exists before trying to close
+        if (!win.isDestroyed()) {
+          win.close();
+        }
         resolve();
       }, 2000);
     });
@@ -246,7 +265,12 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+N',
           click: () => {
             const win = getFocusedWindow();
-            if (win) win.webContents.send('new-file');
+            if (win) {
+              win.webContents.send('new-file');
+            } else {
+              // No windows open, create one
+              createWindow();
+            }
           }
         },
         {
@@ -302,7 +326,8 @@ function setupMenu() {
           label: 'Close Tab',
           accelerator: 'CmdOrCtrl+W',
           click: () => {
-            // Let renderer handle tab closing
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('close-tab');
           }
         },
         {
@@ -545,12 +570,20 @@ async function openFileOrFolder(targetWindow = null) {
   }
 }
 
-function loadMarkdownFile(win, filePath) {
+function loadMarkdownFile(win, filePath, options = {}) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     const fileName = path.basename(filePath);
-    win.webContents.send('file-loaded', { content, fileName, filePath });
-    win.setTitle(`${fileName} - OpenMarkdownReader`);
+    win.webContents.send('file-loaded', {
+      content,
+      fileName,
+      filePath,
+      openInBackground: options.background || false,
+      forceNewTab: options.newTab || false
+    });
+    if (!options.background) {
+      win.setTitle(`${fileName} - OpenMarkdownReader`);
+    }
     addToRecent(filePath, 'file');
   } catch (err) {
     dialog.showErrorBox('Error', `Could not read file: ${err.message}`);
@@ -800,9 +833,9 @@ ipcMain.handle('open-folder', async (event) => {
 });
 
 // Open file by path (from sidebar)
-ipcMain.handle('open-file-by-path', async (event, filePath) => {
+ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-  loadMarkdownFile(win, filePath);
+  loadMarkdownFile(win, filePath, options);
 });
 
 // Get directory contents (for expanding folders in sidebar)

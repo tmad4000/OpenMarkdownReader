@@ -178,6 +178,11 @@ html, body {
   color: var(--text-color);
 }
 
+.sidebar-header-buttons {
+  display: flex;
+  gap: 4px;
+}
+
 .file-tree {
   flex: 1;
   overflow-y: auto;
@@ -236,6 +241,24 @@ html, body {
 /* Children container */
 .file-tree-children {
   /* Children are indented via --depth CSS variable */
+}
+
+/* Rename input for file tree items */
+.file-tree-item .rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--link-color);
+  border-radius: 3px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  outline: none;
+}
+
+.file-tree-item.renaming {
+  background: var(--border-color);
 }
 
 /* Non-markdown files - muted appearance but still clickable */
