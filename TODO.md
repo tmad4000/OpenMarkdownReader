@@ -5,3 +5,29 @@
 - [ ] Make a proper Markdown editor (syntax highlighting, toolbar, live preview side-by-side)
 - [ ] Auto-update functionality (using electron-updater with GitHub Releases)
 - [ ] Mac App Store submission
+
+## Missing Features Analysis (Gap Analysis)
+
+### Core Editor Experience
+- [ ] **Syntax Highlighting**: The current `textarea` lacks code coloring. Need to integrate a proper code editor component (e.g., CodeMirror, Monaco, or Ace) to support markdown syntax highlighting.
+- [ ] **Split View**: Ability to view Editor and Preview side-by-side (currently only toggle).
+- [ ] **Scroll Sync**: Synchronized scrolling between Editor and Preview panes.
+- [ ] **Editing Toolbar**: Buttons for common formatting (Bold, Italic, Lists, Links, Images) to assist users unfamiliar with Markdown syntax.
+- [ ] **Smart Editing**: Auto-closing brackets/quotes, auto-continuation of lists.
+- [ ] **Line Numbers**: Essential for code editing and error tracking.
+
+### Content Handling
+- [ ] **Image Handling**: Drag-and-drop images into editor, paste images from clipboard (automatically saving them to an `assets` folder).
+- [ ] **Math Support**: Rendering LaTeX equations (e.g., KaTeX or MathJax).
+- [ ] **Diagrams**: Support for Mermaid.js or PlantUML for code-defined diagrams.
+- [ ] **Task Lists**: Interactive checkboxes in Preview mode that update the source text.
+- [ ] **Frontmatter Support**: better visualization or hiding of YAML frontmatter.
+
+### Application Features
+- [ ] **Auto-Save**: Option to automatically save changes after a delay or on focus loss.
+- [ ] **Spell Checker**: Integrated spell checking for the editor.
+- [ ] **Word Count & Stats**: Status bar display for words, characters, and reading time.
+- [ ] **Search & Replace**: Full find/replace functionality within the editor (current "Find" is read-only highlighting).
+- [ ] **Distraction-Free Mode**: Toggle to hide all UI elements (sidebar, tab bar) for focused writing.
+- [ ] **Theme Customization**: Ability for users to define custom CSS for the preview.
+

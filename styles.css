@@ -279,7 +279,7 @@ html, body {
   display: flex;
   align-items: center;
   height: 100%;
-  flex: 1;
+  flex: 0 1 auto; /* Don't grow aggressively, but allow shrinking */
   min-width: 0; /* Allow shrinking */
   overflow-x: auto;
   overflow-y: hidden;
