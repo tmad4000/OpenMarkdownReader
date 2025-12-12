@@ -345,6 +345,16 @@ html, body {
   background: rgba(0, 0, 0, 0.15);
 }
 
+/* Tab drag states */
+.tab.dragging {
+  opacity: 0.5;
+}
+
+.tab.drag-over {
+  border-left: 2px solid var(--link-color);
+  margin-left: -2px;
+}
+
 .new-tab-btn {
   display: flex;
   align-items: center;

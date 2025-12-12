@@ -105,6 +105,7 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
   const tabEl = document.createElement('div');
   tabEl.className = 'tab';
   tabEl.dataset.tabId = tabId;
+  tabEl.draggable = true;
   tabEl.innerHTML = `
     <span class="tab-title">${escapeHtml(fileName)}</span>
     <span class="tab-close">×</span>
@@ -126,8 +127,84 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
     closeTab(tabId);
   });
 
+  // Drag handlers for reordering
+  tabEl.addEventListener('dragstart', handleTabDragStart);
+  tabEl.addEventListener('dragover', handleTabDragOver);
+  tabEl.addEventListener('dragenter', handleTabDragEnter);
+  tabEl.addEventListener('dragleave', handleTabDragLeave);
+  tabEl.addEventListener('drop', handleTabDrop);
+  tabEl.addEventListener('dragend', handleTabDragEnd);
+
   switchToTab(tabId);
   return tabId;
+}
+
+// Tab drag-to-reorder
+let draggedTab = null;
+
+function handleTabDragStart(e) {
+  draggedTab = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.tabId);
+}
+
+function handleTabDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function handleTabDragEnter(e) {
+  e.preventDefault();
+  if (this !== draggedTab) {
+    this.classList.add('drag-over');
+  }
+}
+
+function handleTabDragLeave(e) {
+  this.classList.remove('drag-over');
+}
+
+function handleTabDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (draggedTab && this !== draggedTab) {
+    // Get positions
+    const allTabs = Array.from(tabBar.querySelectorAll('.tab'));
+    const draggedIndex = allTabs.indexOf(draggedTab);
+    const targetIndex = allTabs.indexOf(this);
+
+    // Reorder DOM
+    if (draggedIndex < targetIndex) {
+      this.parentNode.insertBefore(draggedTab, this.nextSibling);
+    } else {
+      this.parentNode.insertBefore(draggedTab, this);
+    }
+
+    // Reorder tabs array
+    const draggedTabId = parseInt(draggedTab.dataset.tabId);
+    const draggedTabData = tabs.find(t => t.id === draggedTabId);
+    const draggedArrayIndex = tabs.indexOf(draggedTabData);
+
+    // Remove from old position
+    tabs.splice(draggedArrayIndex, 1);
+
+    // Find new position based on DOM order
+    const newAllTabs = Array.from(tabBar.querySelectorAll('.tab'));
+    const newIndex = newAllTabs.indexOf(draggedTab);
+    tabs.splice(newIndex, 0, draggedTabData);
+  }
+
+  this.classList.remove('drag-over');
+}
+
+function handleTabDragEnd(e) {
+  this.classList.remove('dragging');
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.remove('drag-over');
+  });
+  draggedTab = null;
 }
 
 // Switch to a tab
