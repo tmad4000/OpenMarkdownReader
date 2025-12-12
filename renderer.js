@@ -5,8 +5,40 @@ let settings = {
   readOnlyMode: false,
   sidebarVisible: false,
   contentWidth: 900,
-  watchFileMode: false
+  watchFileMode: false,
+  tocVisible: false,
+  csvViewAsTable: true // Default to showing CSV as table
 };
+
+// Text file extensions that can be opened
+const textFileExtensions = [
+  // Markdown
+  '.md', '.markdown', '.mdown', '.mkd',
+  // Plain text
+  '.txt', '.text',
+  // Data formats
+  '.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.toml',
+  // Config files
+  '.conf', '.config', '.ini', '.cfg', '.env', '.properties',
+  // Code/Script files
+  '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
+  '.py', '.rb', '.php', '.java', '.c', '.cpp', '.h', '.hpp',
+  '.cs', '.go', '.rs', '.swift', '.kt', '.scala',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  '.sql', '.graphql', '.gql',
+  // Web files
+  '.html', '.htm', '.css', '.scss', '.sass', '.less',
+  '.svg',
+  // Documentation
+  '.rst', '.adoc', '.asciidoc', '.org', '.tex', '.latex',
+  // Log files
+  '.log',
+  // Other common text files
+  '.gitignore', '.dockerignore', '.editorconfig',
+  '.eslintrc', '.prettierrc', '.babelrc',
+  'Makefile', 'Dockerfile', 'Vagrantfile', 'Gemfile', 'Rakefile',
+  '.htaccess', '.npmrc', '.nvmrc'
+];
 
 // Tab management
 let tabs = [];
@@ -47,6 +79,13 @@ const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
 const saveBtn = document.getElementById('save-btn');
+const tocPanel = document.getElementById('toc-panel');
+const tocContent = document.getElementById('toc-content');
+const tocToggleBtn = document.getElementById('toc-toggle-btn');
+const tocCloseBtn = document.getElementById('toc-close');
+const csvView = document.getElementById('csv-view');
+const csvTableContainer = document.getElementById('csv-table-container');
+const csvToggleRawBtn = document.getElementById('csv-toggle-raw');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null) {
@@ -114,18 +153,19 @@ function switchToTab(tabId) {
   });
 
   // Show content
-  if (tab && tab.content) {
+  if (tab && tab.content !== null && tab.content !== undefined) {
     if (tab.isEditing) {
       showEditor(tab.content);
     } else {
       hideEditor();
-      renderMarkdown(tab.content);
+      renderContent(tab.content, tab.fileName);
     }
     document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
     // Show welcome screen
     hideEditor();
+    hideCSVView();
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
     document.title = 'OpenMarkdownReader';
@@ -256,7 +296,7 @@ function toggleEditMode() {
   } else {
     tab.content = editor.value;
     hideEditor();
-    renderMarkdown(tab.content);
+    renderContent(tab.content, tab.fileName);
   }
 
   updateTabUI(activeTabId);
@@ -280,7 +320,7 @@ function revertChanges() {
   tab.isEditing = false;
   tab.isModified = false;
   hideEditor();
-  renderMarkdown(tab.content);
+  renderContent(tab.content, tab.fileName);
   updateTabUI(activeTabId);
   document.title = `${tab.fileName} - OpenMarkdownReader`;
 }
@@ -428,15 +468,16 @@ function renderFileTreeItems(items, container, depth) {
         renderFileTreeItems(item.children, childContainer, depth + 1);
       }
     } else {
-      // File
-      el.className = `file-tree-item file-tree-file ${item.isMarkdown ? '' : 'non-markdown'}`;
+      // File - show text files normally, other files muted
+      const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
+      el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}`;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
         </svg>
         <span>${escapeHtml(item.name)}</span>
       `;
-      // All files are clickable, non-markdown just shown with muted style
+      // All files are clickable, non-text just shown with muted style
       el.addEventListener('click', () => {
         window.electronAPI.openFileByPath(item.path);
       });
@@ -528,16 +569,16 @@ window.electronAPI.onFileLoaded((data) => {
     const existingTab = tabs.find(t => t.filePath === data.filePath);
     if (existingTab) {
       switchToTab(existingTab.id);
-      
+
       // Update content if no unsaved changes (fresh from disk)
       if (!existingTab.isModified) {
         existingTab.content = data.content;
-        
+
         // Refresh UI
         if (existingTab.isEditing) {
           editor.value = data.content;
         } else {
-          renderMarkdown(data.content);
+          renderContent(data.content, data.fileName);
         }
       }
       return;
@@ -552,7 +593,7 @@ window.electronAPI.onFileLoaded((data) => {
       window.electronAPI.unwatchFile(activeTab.filePath);
     }
     updateTab(activeTabId, data.fileName, data.content, data.filePath);
-    renderMarkdown(data.content);
+    renderContent(data.content, data.fileName);
     document.title = `${data.fileName} - OpenMarkdownReader`;
     // Start watching new file
     if (data.filePath && settings.watchFileMode) {
@@ -608,7 +649,7 @@ window.electronAPI.onSetReadOnly((isReadOnly) => {
       tab.content = editor.value;
       tab.isEditing = false;
       hideEditor();
-      renderMarkdown(tab.content);
+      renderContent(tab.content, tab.fileName);
       updateTabUI(activeTabId);
     }
   }
@@ -655,7 +696,7 @@ window.electronAPI.onFileChanged(({ filePath, content }) => {
     if (tab.isEditing) {
       editor.value = content;
     } else {
-      renderMarkdown(content);
+      renderContent(content, tab.fileName);
     }
   }
 });
@@ -726,8 +767,168 @@ function applyContentWidth() {
   }
 }
 
+// Table of Contents functions
+function extractHeadings(content) {
+  const headings = [];
+  // Match markdown headings (# style)
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+
+  lines.forEach((line, index) => {
+    // Track code blocks
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      return;
+    }
+    if (inCodeBlock) return;
+
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].trim();
+      // Generate ID similar to how marked does it
+      const id = text.toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-');
+      headings.push({ level, text, id, line: index });
+    }
+  });
+
+  return headings;
+}
+
+function renderTOC(headings) {
+  if (!headings || headings.length === 0) {
+    tocContent.innerHTML = '<div class="toc-empty">No headings found</div>';
+    return;
+  }
+
+  tocContent.innerHTML = headings.map(h => `
+    <a class="toc-item" data-level="${h.level}" data-id="${escapeHtml(h.id)}">
+      ${escapeHtml(h.text)}
+    </a>
+  `).join('');
+
+  // Add click handlers
+  tocContent.querySelectorAll('.toc-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.dataset.id;
+      const target = document.getElementById(id);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Highlight briefly
+        target.style.background = 'var(--code-bg)';
+        setTimeout(() => target.style.background = '', 1500);
+      }
+    });
+  });
+}
+
+function toggleTOC() {
+  settings.tocVisible = !settings.tocVisible;
+  tocPanel.classList.toggle('hidden', !settings.tocVisible);
+  tocToggleBtn.classList.toggle('active', settings.tocVisible);
+}
+
+// CSV parsing and rendering
+function parseCSV(content, delimiter = ',') {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        // Escaped quote
+        currentCell += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === delimiter) {
+        currentRow.push(currentCell.trim());
+        currentCell = '';
+      } else if (char === '\n' || (char === '\r' && nextChar === '\n')) {
+        currentRow.push(currentCell.trim());
+        if (currentRow.length > 0 && currentRow.some(c => c !== '')) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentCell = '';
+        if (char === '\r') i++; // Skip \n in \r\n
+      } else if (char !== '\r') {
+        currentCell += char;
+      }
+    }
+  }
+
+  // Don't forget the last cell/row
+  if (currentCell || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    if (currentRow.some(c => c !== '')) {
+      rows.push(currentRow);
+    }
+  }
+
+  return rows;
+}
+
+function renderCSVTable(content, filename) {
+  const delimiter = filename.toLowerCase().endsWith('.tsv') ? '\t' : ',';
+  const rows = parseCSV(content, delimiter);
+
+  if (rows.length === 0) {
+    csvTableContainer.innerHTML = '<div class="toc-empty">No data found</div>';
+    return;
+  }
+
+  const headers = rows[0];
+  const dataRows = rows.slice(1);
+
+  let html = '<table class="csv-table"><thead><tr>';
+  headers.forEach(h => {
+    html += `<th>${escapeHtml(h)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  dataRows.forEach(row => {
+    html += '<tr>';
+    // Ensure we have enough cells even if row is short
+    for (let i = 0; i < headers.length; i++) {
+      html += `<td>${escapeHtml(row[i] || '')}</td>`;
+    }
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  csvTableContainer.innerHTML = html;
+}
+
+function showCSVView(content, filename) {
+  markdownBody.classList.add('hidden');
+  csvView.classList.remove('hidden');
+  renderCSVTable(content, filename);
+}
+
+function hideCSVView() {
+  csvView.classList.add('hidden');
+  markdownBody.classList.remove('hidden');
+}
+
 function renderMarkdown(mdContent) {
   try {
+    // Hide CSV view if it was showing
+    hideCSVView();
+
     const html = marked.parse(mdContent);
     markdownBody.innerHTML = html;
 
@@ -739,6 +940,10 @@ function renderMarkdown(mdContent) {
     content.classList.remove('hidden');
     markdownBody.classList.remove('hidden');
 
+    // Update Table of Contents
+    const headings = extractHeadings(mdContent);
+    renderTOC(headings);
+
     window.scrollTo(0, 0);
   } catch (err) {
     console.error('Error rendering markdown:', err);
@@ -746,6 +951,47 @@ function renderMarkdown(mdContent) {
     dropZone.classList.add('hidden');
     content.classList.remove('hidden');
   }
+}
+
+// Render content based on file type
+function renderContent(content, filename) {
+  const tab = tabs.find(t => t.id === activeTabId);
+
+  // Check if it's a CSV/TSV file and should show as table
+  if (isCsvFile(filename) && settings.csvViewAsTable) {
+    dropZone.classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+    showCSVView(content, filename);
+    // Clear TOC for CSV
+    tocContent.innerHTML = '<div class="toc-empty">CSV files have no headings</div>';
+    return;
+  }
+
+  // Check if it's a markdown file - render as markdown
+  if (isMarkdownFile(filename)) {
+    renderMarkdown(content);
+    return;
+  }
+
+  // For other text files, show as syntax-highlighted code block
+  hideCSVView();
+  const ext = path.extname(filename).slice(1) || 'plaintext';
+  const escapedContent = escapeHtml(content);
+  markdownBody.innerHTML = `<pre><code class="language-${ext}">${escapedContent}</code></pre>`;
+
+  // Highlight if possible
+  document.querySelectorAll('pre code').forEach((block) => {
+    hljs.highlightElement(block);
+  });
+
+  dropZone.classList.add('hidden');
+  document.getElementById('content').classList.remove('hidden');
+  markdownBody.classList.remove('hidden');
+
+  // Clear TOC for code files
+  tocContent.innerHTML = '<div class="toc-empty">No headings in code files</div>';
+
+  window.scrollTo(0, 0);
 }
 
 // Drag and drop handling
@@ -771,14 +1017,15 @@ dropZone.addEventListener('dragleave', (e) => {
 
 function handleFileDrop(files) {
   Array.from(files).forEach((file, index) => {
-    if (isMarkdownFile(file.name)) {
+    // Accept markdown files and other text files
+    if (isMarkdownFile(file.name) || isTextFile(file.name)) {
       const reader = new FileReader();
       reader.onload = (event) => {
         const activeTab = tabs.find(t => t.id === activeTabId);
 
         if (index === 0 && activeTab && !activeTab.content) {
           updateTab(activeTabId, file.name, event.target.result, null);
-          renderMarkdown(event.target.result);
+          renderContent(event.target.result, file.name);
           document.title = `${file.name} - OpenMarkdownReader`;
         } else {
           createTab(file.name, event.target.result, null);
@@ -796,9 +1043,46 @@ dropZone.addEventListener('drop', (e) => {
 });
 
 function isMarkdownFile(filename) {
-  const ext = filename.toLowerCase().split('.').pop();
-  return ['md', 'markdown', 'mdown', 'mkd', 'txt'].includes(ext);
+  const ext = path.extname(filename).toLowerCase();
+  return ['.md', '.markdown', '.mdown', '.mkd'].includes(ext);
 }
+
+function isTextFile(filename) {
+  const lowerName = filename.toLowerCase();
+  const ext = '.' + lowerName.split('.').pop();
+  // Check explicit extensions
+  if (textFileExtensions.includes(ext)) return true;
+  // Check special filenames without extensions
+  if (textFileExtensions.includes(lowerName)) return true;
+  // Also check common dotfiles
+  if (lowerName.startsWith('.') && !lowerName.includes('.', 1)) return true;
+  return false;
+}
+
+// Alternative check for file tree display
+function isTextFileByName(filename) {
+  const lowerName = filename.toLowerCase();
+  const ext = '.' + lowerName.split('.').pop();
+  // Check explicit extensions
+  if (textFileExtensions.includes(ext)) return true;
+  // Check special filenames
+  const specialNames = ['makefile', 'dockerfile', 'vagrantfile', 'gemfile', 'rakefile'];
+  if (specialNames.includes(lowerName)) return true;
+  return false;
+}
+
+function isCsvFile(filename) {
+  const ext = '.' + filename.toLowerCase().split('.').pop();
+  return ext === '.csv' || ext === '.tsv';
+}
+
+// Simple path helper since we're in renderer
+const path = {
+  extname: (filename) => {
+    const lastDot = filename.lastIndexOf('.');
+    return lastDot > 0 ? filename.slice(lastDot).toLowerCase() : '';
+  }
+};
 
 document.querySelector('.content-area').addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -1138,6 +1422,40 @@ commandPaletteInput.addEventListener('keydown', (e) => {
 // Close on backdrop click
 document.querySelector('.command-palette-backdrop').addEventListener('click', () => {
   hideCommandPalette();
+});
+
+// TOC toggle button handler
+tocToggleBtn.addEventListener('click', toggleTOC);
+tocCloseBtn.addEventListener('click', toggleTOC);
+
+// CSV raw/table toggle handler
+csvToggleRawBtn.addEventListener('click', () => {
+  settings.csvViewAsTable = !settings.csvViewAsTable;
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.content !== null) {
+    if (settings.csvViewAsTable) {
+      csvToggleRawBtn.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0114.25 15h-9a.75.75 0 010-1.5h9a.25.25 0 00.25-.25V6H12.5a.25.25 0 01-.25-.25V2.5H5.75a.25.25 0 00-.25.25v2.5a.75.75 0 01-1.5 0V1.75z"/>
+          <path d="M0 10.75C0 9.784.784 9 1.75 9h5.5c.966 0 1.75.784 1.75 1.75v3.5A1.75 1.75 0 017.25 16h-5.5A1.75 1.75 0 010 14.25v-3.5zm1.75-.25a.25.25 0 00-.25.25v3.5c0 .138.112.25.25.25h5.5a.25.25 0 00.25-.25v-3.5a.25.25 0 00-.25-.25h-5.5z"/>
+        </svg>
+        Raw
+      `;
+      showCSVView(tab.content, tab.fileName);
+    } else {
+      csvToggleRawBtn.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M0 1.5A1.5 1.5 0 011.5 0h13A1.5 1.5 0 0116 1.5v13a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 010 14.5v-13zM1.5 1a.5.5 0 00-.5.5V5h4V1H1.5zM5 6H1v4h4V6zm1 4h4V6H6v4zm5 0V6h4v4h-4zM5 11H1v3.5a.5.5 0 00.5.5H5v-4zm1 4h4v-4H6v4zm5-4v4h3.5a.5.5 0 00.5-.5V11h-4zM15 5h-4V1h3.5a.5.5 0 01.5.5V5zM6 5V1h4v4H6z"/>
+        </svg>
+        Table
+      `;
+      hideCSVView();
+      // Show as raw text in a code block
+      const escapedContent = escapeHtml(tab.content);
+      markdownBody.innerHTML = `<pre><code class="language-csv">${escapedContent}</code></pre>`;
+      markdownBody.classList.remove('hidden');
+    }
+  }
 });
 
 // Initialize with one empty tab

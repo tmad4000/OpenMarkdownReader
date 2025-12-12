@@ -35,6 +35,11 @@
       </svg>
       Save
     </button>
+    <button id="toc-toggle-btn" class="toc-toggle-btn" title="Toggle Table of Contents">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M2 4a1 1 0 100-2 1 1 0 000 2zm3.75-1.5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zM3 8a1 1 0 11-2 0 1 1 0 012 0zm-1 6a1 1 0 100-2 1 1 0 000 2z"/>
+      </svg>
+    </button>
     <button id="edit-toggle-btn" class="edit-toggle-btn" title="Toggle Edit Mode (⌘E)">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064l6.286-6.286z"/>
@@ -88,6 +93,33 @@
           <textarea id="editor" class="editor" spellcheck="false"></textarea>
         </div>
         <article id="markdown-body" class="markdown-body"></article>
+        <!-- CSV Table View -->
+        <div id="csv-view" class="csv-view hidden">
+          <div class="csv-toolbar">
+            <span class="csv-label">CSV Table View</span>
+            <button id="csv-toggle-raw" class="csv-toggle-btn" title="View as raw text">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0114.25 15h-9a.75.75 0 010-1.5h9a.25.25 0 00.25-.25V6H12.5a.25.25 0 01-.25-.25V2.5H5.75a.25.25 0 00-.25.25v2.5a.75.75 0 01-1.5 0V1.75z"/>
+                <path d="M0 10.75C0 9.784.784 9 1.75 9h5.5c.966 0 1.75.784 1.75 1.75v3.5A1.75 1.75 0 017.25 16h-5.5A1.75 1.75 0 010 14.25v-3.5zm1.75-.25a.25.25 0 00-.25.25v3.5c0 .138.112.25.25.25h5.5a.25.25 0 00.25-.25v-3.5a.25.25 0 00-.25-.25h-5.5z"/>
+              </svg>
+              Raw
+            </button>
+          </div>
+          <div id="csv-table-container" class="csv-table-container"></div>
+        </div>
+      </div>
+
+      <!-- Table of Contents Panel -->
+      <div id="toc-panel" class="toc-panel hidden">
+        <div class="toc-header">
+          <span class="toc-title">Contents</span>
+          <button id="toc-close" class="toc-close-btn" title="Close">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+              <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+            </svg>
+          </button>
+        </div>
+        <nav id="toc-content" class="toc-content"></nav>
       </div>
     </div>
   </div>

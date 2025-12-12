@@ -977,6 +977,219 @@ html, body {
   font-size: 11px;
 }
 
+/* Table of Contents Panel */
+.toc-panel {
+  position: fixed;
+  top: 48px;
+  right: 12px;
+  width: 260px;
+  max-height: calc(100vh - 70px);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toc-panel.hidden {
+  display: none;
+}
+
+.toc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--code-bg);
+}
+
+.toc-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.toc-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toc-close-btn:hover {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.toc-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.toc-item {
+  display: block;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-color);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toc-item:hover {
+  background: var(--code-bg);
+}
+
+.toc-item.active {
+  background: var(--code-bg);
+  color: var(--link-color);
+}
+
+.toc-item[data-level="1"] { padding-left: 12px; font-weight: 600; }
+.toc-item[data-level="2"] { padding-left: 24px; }
+.toc-item[data-level="3"] { padding-left: 36px; font-size: 12px; }
+.toc-item[data-level="4"] { padding-left: 48px; font-size: 12px; color: var(--text-secondary); }
+.toc-item[data-level="5"] { padding-left: 60px; font-size: 11px; color: var(--text-secondary); }
+.toc-item[data-level="6"] { padding-left: 72px; font-size: 11px; color: var(--text-secondary); }
+
+.toc-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* TOC Toggle Button */
+.toc-toggle-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toc-toggle-btn:hover {
+  background: var(--code-bg);
+  color: var(--text-color);
+}
+
+.toc-toggle-btn.active {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+/* CSV View */
+.csv-view {
+  margin-top: 0;
+}
+
+.csv-view.hidden {
+  display: none;
+}
+
+.csv-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px 8px 0 0;
+  margin-bottom: -1px;
+}
+
+.csv-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.csv-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.csv-toggle-btn:hover {
+  background: var(--border-color);
+  color: var(--text-color);
+}
+
+.csv-toggle-btn svg {
+  flex-shrink: 0;
+}
+
+.csv-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 0 0 8px 8px;
+}
+
+.csv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.csv-table th,
+.csv-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.csv-table th {
+  font-weight: 600;
+  background: var(--code-bg);
+  position: sticky;
+  top: 0;
+}
+
+.csv-table tr:nth-child(2n) {
+  background: var(--table-row-alt);
+}
+
+.csv-table tr:hover {
+  background: var(--code-bg);
+}
+
+.csv-table tr:last-child td {
+  border-bottom: none;
+}
+
 @media (prefers-color-scheme: dark) {
   .hljs-comment,
   .hljs-quote {

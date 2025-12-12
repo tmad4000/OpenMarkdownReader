@@ -321,13 +321,33 @@ function broadcastSetting(setting, value) {
   });
 }
 
+// Text file extensions that can be opened
+const textFileExtensions = [
+  'md', 'markdown', 'mdown', 'mkd',
+  'txt', 'text',
+  'csv', 'tsv', 'json', 'xml', 'yaml', 'yml', 'toml',
+  'conf', 'config', 'ini', 'cfg', 'env', 'properties',
+  'js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs',
+  'py', 'rb', 'php', 'java', 'c', 'cpp', 'h', 'hpp',
+  'cs', 'go', 'rs', 'swift', 'kt', 'scala',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'sql', 'graphql', 'gql',
+  'html', 'htm', 'css', 'scss', 'sass', 'less',
+  'svg',
+  'rst', 'adoc', 'asciidoc', 'org', 'tex', 'latex',
+  'log',
+  'gitignore', 'dockerignore', 'editorconfig',
+  'eslintrc', 'prettierrc', 'babelrc',
+  'htaccess', 'npmrc', 'nvmrc'
+];
+
 async function openFileOrFolder(targetWindow = null) {
   const win = targetWindow || getFocusedWindow();
 
   const result = await dialog.showOpenDialog(win, {
     properties: ['openFile', 'openDirectory', 'multiSelections'],
     filters: [
-      { name: 'Markdown Files', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+      { name: 'Text Files', extensions: textFileExtensions },
       { name: 'All Files', extensions: ['*'] }
     ]
   });
@@ -526,9 +546,20 @@ ipcMain.handle('get-all-files-recursive', async (event, dirPath) => {
   return getAllFilesRecursive(dirPath);
 });
 
+// Check if a file is a text file we can open
+function isTextFileExt(filename) {
+  const ext = path.extname(filename).toLowerCase().slice(1);
+  return textFileExtensions.includes(ext);
+}
+
+// Check if a file is markdown
+function isMarkdownFileExt(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  return ['.md', '.markdown', '.mdown', '.mkd'].includes(ext);
+}
+
 // Recursively get all files in directory
 function getAllFilesRecursive(dirPath, maxDepth = 5) {
-  const markdownExtensions = ['.md', '.markdown', '.mdown', '.mkd', '.txt'];
   const files = [];
 
   function scan(currentPath, depth) {
@@ -545,13 +576,14 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
         if (entry.isDirectory()) {
           scan(fullPath, depth + 1);
         } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          const isMarkdown = markdownExtensions.includes(ext);
+          const isMarkdown = isMarkdownFileExt(entry.name);
+          const isTextFile = isTextFileExt(entry.name);
           files.push({
             name: entry.name,
             path: fullPath,
             type: 'file',
-            isMarkdown
+            isMarkdown,
+            isTextFile
           });
         }
       }
@@ -573,6 +605,7 @@ ipcMain.handle('close-window', (event) => {
 });
 
 // Toggle watch mode from renderer
+ipcMain.handle('toggle-watch-mode', async () => {
   const menu = Menu.getApplicationMenu();
   const item = menu.getMenuItemById('watch-mode-item');
   if (item) {
@@ -627,7 +660,6 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
 
 // Get all files and folders in directory
 function getDirectoryContents(dirPath) {
-  const markdownExtensions = ['.md', '.markdown', '.mdown', '.mkd', '.txt'];
   const folders = [];
   const files = [];
 
@@ -646,13 +678,14 @@ function getDirectoryContents(dirPath) {
           type: 'folder'
         });
       } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        const isMarkdown = markdownExtensions.includes(ext);
+        const isMarkdown = isMarkdownFileExt(entry.name);
+        const isTextFile = isTextFileExt(entry.name);
         files.push({
           name: entry.name,
           path: fullPath,
           type: 'file',
-          isMarkdown
+          isMarkdown,
+          isTextFile
         });
       }
     }
