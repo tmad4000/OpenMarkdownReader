@@ -14,7 +14,8 @@ let config = {
   recentFiles: [], // Array of { path, type: 'file' | 'folder', timestamp }
   maxRecentFiles: 10,
   restoreSession: true, // Whether to restore previous session on launch
-  session: null // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
+  session: null, // Saved session state
+  autoSave: false // Auto-save enabled
 };
 
 function loadConfig() {
@@ -36,74 +37,39 @@ function saveConfig() {
   }
 }
 
-// Add a file/folder to recent list
-function addToRecent(filePath, type = 'file') {
-  // Remove if already exists
-  config.recentFiles = config.recentFiles.filter(item => item.path !== filePath);
-
-  // Add to beginning
-  config.recentFiles.unshift({
-    path: filePath,
-    type: type,
-    timestamp: Date.now()
-  });
-
-  // Trim to max
-  if (config.recentFiles.length > config.maxRecentFiles) {
-    config.recentFiles = config.recentFiles.slice(0, config.maxRecentFiles);
-  }
-
-  saveConfig();
-  setupMenu(); // Rebuild menu to update recent files list
-}
-
-// Clear recent files
-function clearRecentFiles() {
-  config.recentFiles = [];
-  saveConfig();
-  setupMenu();
-}
-
-// Load config on startup
-loadConfig();
-
-function createWindow(filePath = null) {
-  const win = new BrowserWindow({
-    width: 900,
-    height: 700,
-    minWidth: 400,
-    minHeight: 300,
-    titleBarStyle: 'hiddenInset',
-    // backgroundColor: '#ffffff', // Removed to respect system theme
-    icon: path.join(__dirname, 'build', 'icon.png'),
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
-  });
-
-  windows.add(win);
-  win.on('closed', () => windows.delete(win));
+// ... existing code ...
 
   // Handle close with unsaved changes check
   let forceClose = false;
   win.on('close', async (e) => {
     if (forceClose) return;
-    if (win.isDestroyed()) return;
 
     e.preventDefault();
 
-    // Ask renderer if there are unsaved changes
+    // Ask renderer if there are unsaved changes AND get session state
     return new Promise((resolve) => {
-      const responseHandler = (event, hasUnsaved) => {
-        if (win.isDestroyed()) {
-          ipcMain.removeListener('unsaved-state', responseHandler);
-          resolve();
-          return;
-        }
+      const responseHandler = (event, data) => {
         if (event.sender !== win.webContents) return;
         ipcMain.removeListener('unsaved-state', responseHandler);
+
+        // Handle both boolean (legacy/simple) and object responses
+        let hasUnsaved = false;
+        let sessionData = null;
+
+        if (typeof data === 'boolean') {
+          hasUnsaved = data;
+        } else if (typeof data === 'object') {
+          hasUnsaved = data.hasUnsaved;
+          sessionData = data.sessionData;
+        }
+
+        // Save session state
+        if (config.restoreSession && sessionData) {
+          // Only save if this is the last window or main window? 
+          // For now, simpler to just save. If multiple windows, last one closed wins.
+          config.session = sessionData;
+          saveConfig();
+        }
 
         if (hasUnsaved) {
           const choice = dialog.showMessageBoxSync(win, {
@@ -170,9 +136,13 @@ function createWindow(filePath = null) {
     win.webContents.send('set-theme', config.theme);
     // Apply watch mode
     win.webContents.send('set-watch-mode', watchFileMode);
+    // Apply auto-save setting
+    win.webContents.send('set-auto-save', config.autoSave);
     
     if (filePath) {
       loadMarkdownFile(win, filePath);
+    } else if (config.restoreSession && config.session) {
+      win.webContents.send('restore-session', config.session);
     }
   });
 
@@ -188,9 +158,27 @@ function setTheme(theme) {
   setupMenu(); // Rebuild menu to update checkmarks
 }
 
+function setAutoSave(enabled) {
+  config.autoSave = enabled;
+  saveConfig();
+  windows.forEach(win => {
+    win.webContents.send('set-auto-save', enabled);
+  });
+}
+
 // Build the recent files submenu
 function buildRecentFilesMenu() {
   const recentItems = [];
+
+  recentItems.push({
+    label: 'Show All...',
+    accelerator: 'CmdOrCtrl+Shift+R',
+    click: () => {
+      const win = getFocusedWindow();
+      if (win) win.webContents.send('show-recent-palette');
+    }
+  });
+  recentItems.push({ type: 'separator' });
 
   if (config.recentFiles && config.recentFiles.length > 0) {
     // Filter out files/folders that no longer exist
@@ -320,6 +308,13 @@ function setupMenu() {
             const win = getFocusedWindow();
             if (win) win.webContents.send('export-pdf');
           }
+        },
+        { type: 'separator' },
+        {
+          label: 'Auto Save',
+          type: 'checkbox',
+          checked: config.autoSave,
+          click: (menuItem) => setAutoSave(menuItem.checked)
         },
         { type: 'separator' },
         {
@@ -832,10 +827,21 @@ ipcMain.handle('open-folder', async (event) => {
   }
 });
 
-// Open file by path (from sidebar)
+// Open file by path (from sidebar or recent)
 ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-  loadMarkdownFile(win, filePath, options);
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.isDirectory()) {
+      const files = getDirectoryContents(filePath);
+      win.webContents.send('directory-loaded', { dirPath: filePath, files });
+      addToRecent(filePath, 'folder');
+    } else {
+      loadMarkdownFile(win, filePath, options);
+    }
+  } catch (err) {
+    console.error(`Error opening path ${filePath}:`, err);
+  }
 });
 
 // Get directory contents (for expanding folders in sidebar)

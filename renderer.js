@@ -1989,7 +1989,17 @@ loadRecentFiles();
 // Handle unsaved changes check from main process
 window.electronAPI.onCheckUnsaved(() => {
   const hasUnsaved = tabs.some(tab => tab.isModified);
-  window.electronAPI.reportUnsavedState(hasUnsaved);
+  
+  const sessionData = {
+    tabs: tabs.map(t => ({
+      filePath: t.filePath,
+      fileName: t.fileName
+    })).filter(t => t.filePath),
+    directory: currentDirectory,
+    activeTabIndex: tabs.findIndex(t => t.id === activeTabId)
+  };
+  
+  window.electronAPI.reportUnsavedState({ hasUnsaved, sessionData });
 });
 
 // Handle session state request from main process
@@ -2610,3 +2620,206 @@ closeTab = async function(tabId, silent = false) {
     }
   }
 };
+
+// ==========================================
+// AUTO SAVE & RECENT PALETTE EXTENSIONS
+// ==========================================
+
+settings.autoSave = false;
+let autoSaveTimer = null;
+let commandPaletteMode = 'files'; // 'files' or 'recent'
+
+function triggerAutoSave() {
+  if (!settings.autoSave) return;
+  
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.filePath) return;
+  
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    if (tab.id === activeTabId) {
+        saveFile(); 
+    } else {
+        window.electronAPI.saveFile(tab.filePath, tab.content).then(() => {
+            tab.isModified = false;
+            updateTabUI(tab.id);
+        });
+    }
+  }, 1000);
+}
+
+// Hook Auto-Save into Editor
+editor.addEventListener('input', triggerAutoSave);
+
+// Redefine initRichEditor to add auto-save hook
+initRichEditor = function() {
+  if (easyMDE) return;
+  
+  easyMDE = new EasyMDE({
+    element: editor,
+    autoDownloadFontAwesome: true,
+    spellChecker: false,
+    status: false,
+    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
+    styleSelectedText: false,
+    minHeight: "100%",
+    maxHeight: "100%"
+  });
+  
+  easyMDE.codemirror.on('change', () => {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing) {
+      if (!tab.isModified) {
+        tab.isModified = true;
+        updateTabUI(activeTabId);
+        document.title = `${tab.fileName} * - OpenMarkdownReader`;
+      }
+      triggerAutoSave();
+    }
+  });
+};
+
+window.electronAPI.onSetAutoSave((enabled) => {
+  settings.autoSave = enabled;
+  if (!enabled) clearTimeout(autoSaveTimer);
+});
+
+// Recent Palette Logic
+const originalShowCommandPalette = showCommandPalette;
+showCommandPalette = function() {
+    commandPaletteMode = 'files';
+    originalShowCommandPalette();
+    commandPaletteInput.placeholder = 'Search files...';
+};
+
+const originalUpdateCommandPaletteResults = updateCommandPaletteResults;
+updateCommandPaletteResults = function() {
+    if (commandPaletteMode === 'recent') {
+        updateCommandPaletteResultsForRecent();
+    } else {
+        originalUpdateCommandPaletteResults();
+    }
+};
+
+function showRecentPalette() {
+  commandPaletteMode = 'recent';
+  commandPalette.classList.remove('hidden');
+  commandPaletteInput.value = '';
+  commandPaletteInput.focus();
+  commandPaletteInput.placeholder = 'Select a recent file or folder...';
+  commandPaletteSelectedIndex = 0;
+
+  commandPaletteResults.innerHTML = '<div class="command-palette-empty">Loading recent...</div>';
+  
+  window.electronAPI.getRecentFiles().then(recentFiles => {
+      commandPaletteFiles = recentFiles.map(f => ({
+          name: f.path.split('/').pop(),
+          path: f.path,
+          type: f.type,
+          isRecent: true
+      }));
+      updateCommandPaletteResultsForRecent();
+  }).catch(console.error);
+}
+
+function updateCommandPaletteResultsForRecent() {
+    const query = commandPaletteInput.value.toLowerCase();
+    const items = commandPaletteFiles.filter(f => f.name.toLowerCase().includes(query) || f.path.toLowerCase().includes(query));
+    
+    if (items.length === 0) {
+        commandPaletteResults.innerHTML = '<div class="command-palette-empty">No recent files found</div>';
+        return;
+    }
+
+    commandPaletteResults.innerHTML = items.map((file, index) => {
+        const isSelected = index === commandPaletteSelectedIndex;
+        const icon = file.type === 'folder' 
+          ? `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/></svg>`
+          : `<svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/></svg>`;
+        
+        return `
+          <div class="command-palette-item ${isSelected ? 'selected' : ''}" data-index="${index}">
+            <div class="command-palette-item-icon">${icon}</div>
+            <div class="command-palette-item-info">
+              <div class="command-palette-item-name">${escapeHtml(file.name)}</div>
+              <div class="command-palette-item-path">${escapeHtml(file.path.replace(/^\/Users\/[^/]+/, '~'))}</div>
+            </div>
+          </div>
+        `;
+    }).join('');
+
+    // Re-attach click handlers
+    commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
+        el.addEventListener('click', () => {
+            selectCommandPaletteItem(index);
+        });
+        el.addEventListener('mouseenter', () => {
+            if (lastInputSource === 'mouse') {
+                commandPaletteSelectedIndex = index;
+                updateSelectedItem();
+            }
+        });
+    });
+    
+    updateSelectedItem();
+}
+
+// Override selectCommandPaletteItem to handle folders in recent mode
+const originalSelectCommandPaletteItem = selectCommandPaletteItem;
+selectCommandPaletteItem = function(index) {
+    if (commandPaletteMode === 'recent') {
+         if (index >= 0 && index < commandPaletteFiles.length) {
+            const file = commandPaletteFiles[index];
+            hideCommandPalette();
+            
+            if (file.type === 'folder') {
+                // Open folder
+                window.electronAPI.getDirectoryContents(file.path).then(files => {
+                    const event = { dirPath: file.path, files };
+                    // We need to call logic to load directory.
+                    // window.electronAPI.onDirectoryLoaded... callback?
+                    // We can reuse buildFileTree directly?
+                    // Actually, sending 'directory-loaded' IPC from main is how we usually do it.
+                    // But we are in renderer.
+                    // We can just call the logic directly if we have access.
+                    // or ask main to open it?
+                    // window.electronAPI.openFileByPath handles both?
+                    // Let's check openFileByPath in main.
+                    window.electronAPI.openFileByPath(file.path);
+                });
+                // openFileByPath should handle it if main.js checks isDirectory.
+                // Main.js openFileByPath calls loadMarkdownFile.
+                // It does NOT check isDirectory. 
+                // We should fix main.js open-file-by-path or use openFolder logic.
+                // But openFolder opens dialog.
+                
+                // Let's rely on the fact that recent files list knows it's a folder.
+                // In main.js, `open-file-by-path` loads file.
+                // I need to update main.js `open-file-by-path` to handle folders?
+                // Or just use `openFileOrFolder` without dialog?
+                
+                // For now, let's call `openFileByPath` and update `main.js` to be smarter?
+                // Or use the renderer logic I wrote in `loadRecentFiles`?
+                // In `loadRecentFiles`:
+                /*
+                 window.electronAPI.getDirectoryContents(filePath).then(files => {
+                    // Manually trigger the directory loaded flow
+                    // ...
+                 });
+                 window.electronAPI.openFileByPath(filePath); 
+                */
+                // The `loadRecentFiles` logic was:
+                // `window.electronAPI.openFileByPath(filePath)`
+                // But wait, `openFileByPath` in main.js calls `loadMarkdownFile` which tries to read file. It will fail on folder.
+                
+                // I must update `main.js` `open-file-by-path` handler to check if directory.
+            } else {
+                window.electronAPI.openFileByPath(file.path);
+            }
+         }
+    } else {
+        originalSelectCommandPaletteItem(index);
+    }
+}
+
+window.electronAPI.onShowRecentPalette(showRecentPalette);

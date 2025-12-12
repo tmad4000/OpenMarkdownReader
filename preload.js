@@ -48,9 +48,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data)),
   onSetTheme: (callback) => ipcRenderer.on('set-theme', (event, theme) => callback(theme)),
+  onSetAutoSave: (callback) => ipcRenderer.on('set-auto-save', (event, enabled) => callback(enabled)),
 
   // Command palette
   onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback()),
+  onShowRecentPalette: (callback) => ipcRenderer.on('show-recent-palette', () => callback()),
   
   // Find
   onFindInFile: (callback) => ipcRenderer.on('find-in-file', () => callback()),
