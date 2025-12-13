@@ -76,5 +76,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRestoreSession: (callback) => ipcRenderer.on('restore-session', (event, data) => callback(data)),
 
   // External links
-  openExternal: (url) => ipcRenderer.invoke('open-external', url)
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Tab context menu
+  showTabContextMenu: (tabInfo) => ipcRenderer.invoke('show-tab-context-menu', tabInfo),
+  revealInFinder: (filePath) => ipcRenderer.invoke('reveal-in-finder', filePath),
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+  onCloseTabById: (callback) => ipcRenderer.on('close-tab-by-id', (event, tabId) => callback(tabId)),
+  onCloseOtherTabs: (callback) => ipcRenderer.on('close-other-tabs', (event, tabId) => callback(tabId)),
+  onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId))
 });

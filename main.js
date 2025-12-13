@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
@@ -16,8 +17,204 @@ let config = {
   contentWidth: 900,
   contentPadding: 20,
   restoreSession: true, // Whether to restore previous session on launch
-  session: null // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
+  session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
+  cliCommandPath: null,
+  watchMode: false // Watch for external file changes
 };
+
+const CLI_COMMAND_NAME = 'omr';
+const APP_BUNDLE_ID = 'com.jacobcole.openmarkdownreader';
+
+function getCliScriptContents() {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+APP_BUNDLE_ID="${APP_BUNDLE_ID}"
+APP_NAME="OpenMarkdownReader"
+
+if [[ "\${1:-}" == "--help" || "\${1:-}" == "-h" ]]; then
+  echo "Usage: ${CLI_COMMAND_NAME} [path ...]"
+  echo "Open files/folders in OpenMarkdownReader."
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  open -b "$APP_BUNDLE_ID" 2>/dev/null || open -a "$APP_NAME"
+  exit 0
+fi
+
+open -b "$APP_BUNDLE_ID" "$@" 2>/dev/null || open -a "$APP_NAME" "$@"
+`;
+}
+
+function getCliInstallCandidates() {
+  const homeDir = os.homedir();
+  return [
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    path.join(homeDir, '.local', 'bin'),
+    path.join(homeDir, 'bin')
+  ];
+}
+
+function isDirInPath(dirPath) {
+  const envPath = process.env.PATH || '';
+  return envPath.split(':').includes(dirPath);
+}
+
+function ensureWritableDir(dirPath, { create } = { create: false }) {
+  if (!fs.existsSync(dirPath)) {
+    if (!create) return false;
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch {
+      return false;
+    }
+  }
+  try {
+    fs.accessSync(dirPath, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function installCliCommand() {
+  if (process.platform !== 'darwin') {
+    dialog.showMessageBox({
+      type: 'info',
+      message: 'Terminal command install is currently macOS-only.'
+    });
+    return;
+  }
+
+  const preferredCandidates = getCliInstallCandidates();
+  const candidatesInPath = preferredCandidates.filter(isDirInPath);
+  const orderedCandidates = [...candidatesInPath, ...preferredCandidates.filter(d => !candidatesInPath.includes(d))];
+
+  const script = getCliScriptContents();
+  let installedPath = null;
+  let lastError = null;
+
+  for (const dir of orderedCandidates) {
+    const isUserDir = dir.startsWith(os.homedir());
+    const ok = ensureWritableDir(dir, { create: isUserDir });
+    if (!ok) continue;
+
+    const target = path.join(dir, CLI_COMMAND_NAME);
+
+    try {
+      if (fs.existsSync(target)) {
+        const choice = dialog.showMessageBoxSync({
+          type: 'question',
+          buttons: ['Replace', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1,
+          message: `A '${CLI_COMMAND_NAME}' command already exists at:\n${target}\n\nReplace it?`
+        });
+        if (choice !== 0) return;
+      }
+
+      fs.writeFileSync(target, script, { encoding: 'utf-8' });
+      fs.chmodSync(target, 0o755);
+      installedPath = target;
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!installedPath) {
+    dialog.showErrorBox(
+      'Install Failed',
+      `Could not install '${CLI_COMMAND_NAME}' command.\n\n${lastError ? String(lastError.message || lastError) : 'No writable install location found.'}`
+    );
+    return;
+  }
+
+  config.cliCommandPath = installedPath;
+  saveConfig();
+  setupMenu();
+
+  const dir = path.dirname(installedPath);
+  const inPath = isDirInPath(dir);
+  const nextSteps = inPath
+    ? `Try it in Terminal:\n  ${CLI_COMMAND_NAME} README.md`
+    : `Add this to your shell PATH (zsh):\n  echo 'export PATH=\"${dir}:$PATH\"' >> ~/.zshrc\n  source ~/.zshrc\n\nThen try:\n  ${CLI_COMMAND_NAME} README.md`;
+
+  dialog.showMessageBox({
+    type: 'info',
+    message: `Installed '${CLI_COMMAND_NAME}' command`,
+    detail: `${installedPath}\n\n${nextSteps}`
+  });
+}
+
+async function uninstallCliCommand() {
+  if (process.platform !== 'darwin') {
+    dialog.showMessageBox({
+      type: 'info',
+      message: 'Terminal command uninstall is currently macOS-only.'
+    });
+    return;
+  }
+
+  const pathsToTry = [];
+  if (config.cliCommandPath) {
+    pathsToTry.push(config.cliCommandPath);
+  }
+  for (const dir of getCliInstallCandidates()) {
+    const p = path.join(dir, CLI_COMMAND_NAME);
+    if (!pathsToTry.includes(p)) pathsToTry.push(p);
+  }
+
+  const existing = pathsToTry.find(p => fs.existsSync(p));
+  if (!existing) {
+    dialog.showMessageBox({
+      type: 'info',
+      message: `No '${CLI_COMMAND_NAME}' command found to uninstall.`
+    });
+    return;
+  }
+
+  const choice = dialog.showMessageBoxSync({
+    type: 'question',
+    buttons: ['Uninstall', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Remove '${CLI_COMMAND_NAME}' from:\n${existing}?`
+  });
+  if (choice !== 0) return;
+
+  try {
+    fs.unlinkSync(existing);
+    if (config.cliCommandPath === existing) {
+      config.cliCommandPath = null;
+      saveConfig();
+      setupMenu();
+    }
+    dialog.showMessageBox({
+      type: 'info',
+      message: `Uninstalled '${CLI_COMMAND_NAME}' command`
+    });
+  } catch (err) {
+    dialog.showErrorBox('Uninstall Failed', String(err.message || err));
+  }
+}
+
+function openPathInWindow(win, targetPath, options = {}) {
+  try {
+    const stats = fs.statSync(targetPath);
+    if (stats.isDirectory()) {
+      const files = getDirectoryContents(targetPath);
+      win.webContents.send('directory-loaded', { dirPath: targetPath, files });
+      addToRecent(targetPath, 'folder');
+      return;
+    }
+    loadMarkdownFile(win, targetPath, options);
+  } catch (err) {
+    dialog.showErrorBox('Error', `Could not open path: ${err.message}`);
+  }
+}
 
 function loadConfig() {
   try {
@@ -146,8 +343,10 @@ function clearRecentFiles() {
 
 // Load config on startup
 loadConfig();
+watchFileMode = config.watchMode || false;
 
 function createWindow(filePath = null) {
+  const initialPath = filePath;
   const win = new BrowserWindow({
     width: 900,
     height: 700,
@@ -209,18 +408,75 @@ function createWindow(filePath = null) {
           saveConfig();
         }
 
-        if (hasUnsaved && unsavedTabs.length > 0) {
-          // Review each unsaved tab one by one (standard macOS pattern)
-          const result = await reviewUnsavedTabsOneByOne(win, unsavedTabs);
+        if (hasUnsaved && unsavedTabs.length > 1) {
+          // Multiple unsaved documents - show summary dialog first (standard macOS pattern)
+          const fileList = unsavedTabs.map(t => t.fileName).join(', ');
+          const choice = dialog.showMessageBoxSync(win, {
+            type: 'warning',
+            buttons: ['Save All', 'Review Changes...', 'Discard Changes', 'Cancel'],
+            defaultId: 0,
+            cancelId: 3,
+            message: `You have ${unsavedTabs.length} documents with unsaved changes.`,
+            detail: `${fileList}\n\nYour changes will be lost if you discard them.`
+          });
 
-          if (result === 'close') {
-            // All tabs handled (saved or discarded), close the window
+          if (choice === 0) {
+            // Save All - save all and close
+            if (!win.isDestroyed()) {
+              win.webContents.send('save-all');
+              setTimeout(() => {
+                forceClose = true;
+                if (!win.isDestroyed()) {
+                  win.close();
+                }
+              }, 1000);
+            }
+          } else if (choice === 1) {
+            // Review Changes - go through one by one
+            const result = await reviewUnsavedTabsOneByOne(win, unsavedTabs);
+            if (result === 'close') {
+              forceClose = true;
+              if (!win.isDestroyed()) {
+                win.close();
+              }
+            }
+          } else if (choice === 2) {
+            // Discard Changes - close without saving any
             forceClose = true;
             if (!win.isDestroyed()) {
               win.close();
             }
           }
-          // result === 'cancel' means user cancelled, window stays open
+          // Cancel (choice === 3) - do nothing, window stays open
+        } else if (hasUnsaved && unsavedTabs.length === 1) {
+          // Single unsaved document - show simple Save/Don't Save/Cancel
+          const tab = unsavedTabs[0];
+          const choice = dialog.showMessageBoxSync(win, {
+            type: 'warning',
+            buttons: ['Save', "Don't Save", 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            message: `Do you want to save the changes you made to "${tab.fileName}"?`,
+            detail: 'Your changes will be lost if you don\'t save them.'
+          });
+
+          if (choice === 0) {
+            // Save
+            const saved = await saveTabInRenderer(win, tab);
+            if (saved) {
+              forceClose = true;
+              if (!win.isDestroyed()) {
+                win.close();
+              }
+            }
+          } else if (choice === 1) {
+            // Don't Save
+            forceClose = true;
+            if (!win.isDestroyed()) {
+              win.close();
+            }
+          }
+          // Cancel - do nothing
         } else if (hasUnsaved) {
           // Legacy path - show the old dialog if we don't have unsavedTabs list
           const choice = dialog.showMessageBoxSync(win, {
@@ -294,8 +550,8 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
 
-    if (filePath) {
-      loadMarkdownFile(win, filePath);
+    if (initialPath) {
+      openPathInWindow(win, initialPath);
     }
   });
 
@@ -553,18 +809,6 @@ function setupMenu() {
             });
           }
         },
-        {
-          label: 'Watch for File Changes',
-          id: 'watch-mode-item',
-          type: 'checkbox',
-          checked: false,
-          click: (menuItem) => {
-            watchFileMode = menuItem.checked;
-            windows.forEach(win => {
-              win.webContents.send('set-watch-mode', watchFileMode);
-            });
-          }
-        },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
@@ -681,6 +925,20 @@ function setupMenu() {
               win.webContents.send('set-auto-save', menuItem.checked);
             });
           }
+        },
+        {
+          label: 'Watch for External Changes',
+          id: 'watch-mode-item',
+          type: 'checkbox',
+          checked: config.watchMode || false,
+          click: (menuItem) => {
+            config.watchMode = menuItem.checked;
+            watchFileMode = menuItem.checked;
+            saveConfig();
+            windows.forEach(win => {
+              win.webContents.send('set-watch-mode', menuItem.checked);
+            });
+          }
         }
       ]
     },
@@ -691,6 +949,31 @@ function setupMenu() {
         { role: 'zoom' },
         { type: 'separator' },
         { role: 'front' }
+      ]
+    },
+    {
+      label: 'Help',
+      role: 'help',
+      submenu: [
+        {
+          label: 'Documentation',
+          click: () => shell.openExternal('https://github.com/tmad4000/OpenMarkdownReader')
+        },
+        {
+          label: 'Report an Issue…',
+          click: () => shell.openExternal('https://github.com/tmad4000/OpenMarkdownReader/issues')
+        },
+        { type: 'separator' },
+        {
+          label: `Install '${CLI_COMMAND_NAME}' Command in PATH…`,
+          enabled: process.platform === 'darwin',
+          click: () => installCliCommand()
+        },
+        {
+          label: `Uninstall '${CLI_COMMAND_NAME}' Command…`,
+          enabled: process.platform === 'darwin',
+          click: () => uninstallCliCommand()
+        }
       ]
     }
   ];
@@ -742,19 +1025,8 @@ async function openFileOrFolder(targetWindow = null) {
 
   if (!result.canceled && result.filePaths.length > 0) {
     result.filePaths.forEach((filePath) => {
-      if (win) {
-        // Check if it's a directory or file
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-          // Load as folder in sidebar
-          const files = getDirectoryContents(filePath);
-          win.webContents.send('directory-loaded', { dirPath: filePath, files });
-          addToRecent(filePath, 'folder');
-        } else {
-          // Load as file in tab
-          loadMarkdownFile(win, filePath);
-        }
-      }
+      if (!win) return;
+      openPathInWindow(win, filePath);
     });
   }
 }
@@ -785,7 +1057,7 @@ app.on('open-file', (event, filePath) => {
   if (app.isReady()) {
     const win = getFocusedWindow();
     if (win) {
-      loadMarkdownFile(win, filePath);
+      openPathInWindow(win, filePath);
     } else {
       createWindow(filePath);
     }
@@ -1041,33 +1313,14 @@ ipcMain.handle('open-folder', async (event) => {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    const dirPath = result.filePaths[0];
-    const files = getMarkdownFilesInDirectory(dirPath);
-    win.webContents.send('directory-loaded', { dirPath, files });
-    addToRecent(dirPath, 'folder');
+    openPathInWindow(win, result.filePaths[0]);
   }
 });
 
 // Open file by path (from sidebar or recent palette)
 ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
-
-  try {
-    const stats = fs.statSync(filePath);
-    if (stats.isDirectory()) {
-      // Open as folder in sidebar
-      const files = getDirectoryContents(filePath);
-      win.webContents.send('directory-loaded', { dirPath: filePath, files });
-      addToRecent(filePath, 'folder');
-    } else {
-      // Open as file in tab
-      loadMarkdownFile(win, filePath, options);
-    }
-  } catch (err) {
-    console.error('Error opening path:', err);
-    // Try loading as file anyway
-    loadMarkdownFile(win, filePath, options);
-  }
+  openPathInWindow(win, filePath, options);
 });
 
 // Get directory contents (for expanding folders in sidebar)
@@ -1180,6 +1433,8 @@ ipcMain.handle('toggle-watch-mode', async () => {
   if (item) {
     item.checked = !item.checked;
     watchFileMode = item.checked;
+    config.watchMode = item.checked;
+    saveConfig();
     windows.forEach(win => {
       win.webContents.send('set-watch-mode', watchFileMode);
     });
@@ -1225,6 +1480,75 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
     watcher.close();
     fileWatchers.delete(watchKey);
   }
+});
+
+// Tab context menu
+ipcMain.handle('show-tab-context-menu', async (event, tabInfo) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const { filePath, tabId, tabIndex, totalTabs } = tabInfo;
+
+  const menuTemplate = [];
+
+  if (filePath) {
+    menuTemplate.push(
+      {
+        label: 'Reveal in Finder',
+        click: () => shell.showItemInFolder(filePath)
+      },
+      {
+        label: 'Copy Path',
+        click: () => {
+          require('electron').clipboard.writeText(filePath);
+        }
+      },
+      {
+        label: 'Copy Relative Path',
+        click: () => {
+          // Get relative path from current directory if available
+          const relativePath = tabInfo.directory
+            ? path.relative(tabInfo.directory, filePath)
+            : path.basename(filePath);
+          require('electron').clipboard.writeText(relativePath);
+        }
+      },
+      { type: 'separator' }
+    );
+  }
+
+  menuTemplate.push(
+    {
+      label: 'Close Tab',
+      click: () => win.webContents.send('close-tab-by-id', tabId)
+    },
+    {
+      label: 'Close Other Tabs',
+      enabled: totalTabs > 1,
+      click: () => win.webContents.send('close-other-tabs', tabId)
+    },
+    {
+      label: 'Close Tabs to the Right',
+      enabled: tabIndex < totalTabs - 1,
+      click: () => win.webContents.send('close-tabs-to-right', tabId)
+    }
+  );
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  menu.popup({ window: win });
+});
+
+// Reveal in Finder
+ipcMain.handle('reveal-in-finder', async (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+    return true;
+  }
+  return false;
+});
+
+// Copy to clipboard
+ipcMain.handle('copy-to-clipboard', async (event, text) => {
+  require('electron').clipboard.writeText(text);
+  return true;
 });
 
 // Get all files and folders in directory

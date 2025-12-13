@@ -72,6 +72,16 @@ function escapeHtml(text) {
   return text.replace(/[&<>"']/g, m => map[m]);
 }
 
+// Update tab display (title text and tooltip)
+function updateTabDisplay(tabId, fileName, filePath) {
+  const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
+  if (tabEl) {
+    const titleEl = tabEl.querySelector('.tab-title');
+    if (titleEl) titleEl.textContent = fileName;
+    tabEl.title = filePath || fileName;
+  }
+}
+
 // DOM Elements
 const tabBar = document.getElementById('tab-bar');
 const newTabBtn = document.getElementById('new-tab-btn');
@@ -118,6 +128,7 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
   tabEl.className = 'tab';
   tabEl.dataset.tabId = tabId;
   tabEl.draggable = true;
+  tabEl.title = filePath || fileName; // Show full path on hover
   tabEl.innerHTML = `
     <span class="tab-title">${escapeHtml(fileName)}</span>
     <span class="tab-close">×</span>
@@ -152,6 +163,19 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
   tabEl.addEventListener('dragleave', handleTabDragLeave);
   tabEl.addEventListener('drop', handleTabDrop);
   tabEl.addEventListener('dragend', handleTabDragEnd);
+
+  // Right-click context menu
+  tabEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const tabIndex = tabs.findIndex(t => t.id === tabId);
+    window.electronAPI.showTabContextMenu({
+      tabId,
+      filePath: tab.filePath,
+      tabIndex,
+      totalTabs: tabs.length,
+      directory: currentDirectory
+    });
+  });
 
   if (switchTo) {
     switchToTab(tabId);
@@ -346,6 +370,7 @@ function startTabRename(tabId) {
           tab.filePath = result.newPath;
           tab.fileName = newName;
           titleEl.textContent = newName;
+          tabEl.title = result.newPath;
         } else {
           alert(`Could not rename file: ${result.error}`);
         }
@@ -353,6 +378,7 @@ function startTabRename(tabId) {
         // Just update the tab name for unsaved files
         tab.fileName = newName;
         titleEl.textContent = newName;
+        tabEl.title = newName;
       }
     }
 
@@ -505,8 +531,7 @@ function updateTab(tabId, fileName, mdContent, filePath) {
     tab.scrollPos = 0;
     tab.isModified = false;
 
-    const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"] .tab-title`);
-    if (tabEl) tabEl.textContent = fileName;
+    updateTabDisplay(tabId, fileName, filePath);
     updateTabUI(tabId);
   }
 }
@@ -522,8 +547,7 @@ function toggleEditMode() {
     tab.content = '';
     tab.isEditing = true;
     tab.originalContent = '';
-    const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
-    if (tabEl) tabEl.textContent = tab.fileName;
+    updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
     showEditor('');
     updateTabUI(activeTabId);
     return;
@@ -625,8 +649,7 @@ async function saveFile() {
       if (tab.isEditing) {
         tab.originalContent = tab.content;
       }
-      const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
-      if (tabEl) tabEl.textContent = tab.fileName;
+      updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
       updateTabUI(activeTabId);
       document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
@@ -920,8 +943,7 @@ function startSidebarRename(el, item) {
         if (tab.filePath === oldPath) {
           tab.filePath = result.newPath;
           tab.fileName = newName;
-          const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
-          if (tabEl) tabEl.textContent = newName;
+          updateTabDisplay(tab.id, newName, result.newPath);
           if (tab.id === activeTabId) {
             document.title = `${newName} - OpenMarkdownReader`;
           }
@@ -1153,6 +1175,26 @@ window.electronAPI.onCloseTab(() => {
   }
 });
 
+// Listen for close tab by ID (from context menu)
+window.electronAPI.onCloseTabById((tabId) => {
+  closeTab(tabId);
+});
+
+// Listen for close other tabs (from context menu)
+window.electronAPI.onCloseOtherTabs((keepTabId) => {
+  const tabsToClose = tabs.filter(t => t.id !== keepTabId);
+  tabsToClose.forEach(t => closeTab(t.id, true)); // silent close
+});
+
+// Listen for close tabs to the right (from context menu)
+window.electronAPI.onCloseTabsToRight((tabId) => {
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex >= 0) {
+    const tabsToClose = tabs.slice(tabIndex + 1);
+    tabsToClose.forEach(t => closeTab(t.id, true)); // silent close
+  }
+});
+
 // Listen for new file request - creates tab and enters edit mode
 window.electronAPI.onNewFile(() => {
   const tabId = createTab('Untitled.md', '', null);
@@ -1207,8 +1249,7 @@ async function saveAllFiles() {
           tab.fileName = result.fileName;
           tab.isModified = false;
           tab.originalContent = tab.content;
-          const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
-          if (tabEl) tabEl.textContent = tab.fileName;
+          updateTabDisplay(tab.id, tab.fileName, tab.filePath);
           updateTabUI(tab.id);
         }
       }
@@ -2280,8 +2321,7 @@ window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
         tab.fileName = result.fileName;
         tab.isModified = false;
         tab.originalContent = tab.content;
-        const tabEl = document.querySelector(`.tab[data-tab-id="${tab.id}"] .tab-title`);
-        if (tabEl) tabEl.textContent = tab.fileName;
+        updateTabDisplay(tab.id, tab.fileName, tab.filePath);
         updateTabUI(tab.id);
         window.electronAPI.reportReviewDecision({ success: true, tabId: tab.id, saved: true });
       } else {
@@ -2942,8 +2982,7 @@ toggleEditMode = function() {
     tab.content = '';
     tab.isEditing = true;
     tab.originalContent = '';
-    const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
-    if (tabEl) tabEl.textContent = tab.fileName;
+    updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
     showEditor('');
     updateTabUI(activeTabId);
     return;
@@ -2992,10 +3031,8 @@ saveFile = async function() {
         tab.fileName = result.fileName;
         tab.isModified = false;
         if (tab.isEditing) tab.originalContent = tab.content;
-        
-        const tabEl = document.querySelector(`.tab[data-tab-id="${activeTabId}"] .tab-title`);
-        if (tabEl) tabEl.textContent = tab.fileName;
-        
+
+        updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
         updateTabUI(activeTabId);
         document.title = `${tab.fileName} - OpenMarkdownReader`;
     }

@@ -25,9 +25,6 @@
 
   <!-- Content Group -->
   <g transform="translate(192, 230)">
-    <!-- Paper Sheet -->
-    <rect x="0" y="0" width="640" height="600" rx="40" fill="white" fill-opacity="0.95"/>
-    
     <!-- Code/Markdown Hints -->
     <!-- Header # -->
     <path d="M100 120 H200 M100 160 H200 M130 90 V190 M170 90 V190" stroke="#2563EB" stroke-width="16" stroke-linecap="round"/>
