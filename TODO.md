@@ -2,6 +2,8 @@
 
 ## Next Up
 
+- [ ] **Fix Watch Mode**: Not persisting to config (resets on restart) - should save like Auto Save does
+- [ ] **Move Watch Mode to Settings**: Currently in View menu, should be in Settings next to Auto Save
 - [ ] **Tab Hover Tooltip**: Show the full file path when hovering over a tab
 - [ ] **Tab Right-Click Context Menu**: VS Code-style menu with options like:
   - Open in Finder / Reveal in Finder
