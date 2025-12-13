@@ -16,6 +16,9 @@
   --table-border: #d0d7de;
   --table-row-alt: #f6f8fa;
   --content-padding-base: 20px;
+  --checkbox-border: #57606a;
+  --checkbox-checked-bg: #0969da;
+  --checkbox-check: #ffffff;
 }
 
 /* Dark Theme Variables */
@@ -32,6 +35,9 @@
     --blockquote-text: #8b949e;
     --table-border: #30363d;
     --table-row-alt: #161b22;
+    --checkbox-border: #8b949e;
+    --checkbox-checked-bg: #1f6feb;
+    --checkbox-check: #ffffff;
   }
 }
 
@@ -47,6 +53,9 @@
   --blockquote-text: #8b949e;
   --table-border: #30363d;
   --table-row-alt: #161b22;
+  --checkbox-border: #8b949e;
+  --checkbox-checked-bg: #1f6feb;
+  --checkbox-check: #ffffff;
 }
 
 /* Applied via manual override (Force Light) */
@@ -61,6 +70,9 @@
   --blockquote-text: #57606a;
   --table-border: #d0d7de;
   --table-row-alt: #f6f8fa;
+  --checkbox-border: #57606a;
+  --checkbox-checked-bg: #0969da;
+  --checkbox-check: #ffffff;
 }
 
 html, body {
@@ -295,11 +307,11 @@ html, body {
   flex: 1;
   min-width: 0;
   height: 100%;
-  -webkit-app-region: no-drag;
 }
 
 /* Tab Bar */
 .tab-bar {
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   height: 100%;
@@ -424,6 +436,7 @@ mark.find-match.active {
 }
 
 .new-tab-btn {
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -988,6 +1001,39 @@ mark.find-match.active {
 .markdown-body .task-list-item input {
   margin: 0 0.5em 0 -1.3em;
   vertical-align: middle;
+  width: 14px;
+  height: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 2px solid var(--checkbox-border);
+  border-radius: 3px;
+  background: transparent;
+  display: inline-grid;
+  place-content: center;
+  opacity: 1; /* Keep contrast even when disabled */
+}
+
+.markdown-body .task-list-item input::before {
+  content: '';
+  width: 4px;
+  height: 8px;
+  border-right: 2px solid var(--checkbox-check);
+  border-bottom: 2px solid var(--checkbox-check);
+  transform: rotate(45deg);
+  opacity: 0;
+}
+
+.markdown-body .task-list-item input:checked {
+  background: var(--checkbox-checked-bg);
+  border-color: var(--checkbox-checked-bg);
+}
+
+.markdown-body .task-list-item input:checked::before {
+  opacity: 1;
+}
+
+.markdown-body .task-list-item input:disabled {
+  opacity: 1;
 }
 
 /* Syntax Highlighting - GitHub style */
@@ -1948,4 +1994,108 @@ mark.find-match.active {
 /* Horizontal rule styling */
 .cm-hr {
   color: var(--border-color) !important;
+}
+
+/* Keyboard Shortcuts Modal */
+.shortcuts-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcuts-modal.hidden {
+  display: none;
+}
+
+.shortcuts-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.shortcuts-content {
+  position: relative;
+  background: var(--bg-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcuts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.shortcuts-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.shortcuts-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+  line-height: 1;
+}
+
+.shortcuts-close:hover {
+  color: var(--text-color);
+}
+
+.shortcuts-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.shortcuts-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text-color);
+}
+
+.shortcut-keys {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  font-size: 12px;
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: center;
 }

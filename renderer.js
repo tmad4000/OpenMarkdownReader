@@ -52,6 +52,8 @@ const textFileExtensions = [
 let tabs = [];
 let activeTabId = null;
 let tabIdCounter = 0;
+let closedTabs = []; // Stack of recently closed tabs for Cmd+Shift+T
+const MAX_CLOSED_TABS = 20;
 
 // Directory state
 let currentDirectory = null;
@@ -500,6 +502,20 @@ async function closeTab(tabId, silent = false) {
   // Stop watching the file if we were watching it
   if (tab && tab.filePath) {
     window.electronAPI.unwatchFile(tab.filePath);
+  }
+
+  // Save tab info for reopening (Cmd+Shift+T)
+  if (tab && (tab.filePath || tab.content)) {
+    closedTabs.push({
+      fileName: tab.fileName,
+      filePath: tab.filePath,
+      content: tab.content,
+      scrollPos: tab.scrollPos
+    });
+    // Limit the stack size
+    if (closedTabs.length > MAX_CLOSED_TABS) {
+      closedTabs.shift();
+    }
   }
 
   // Remove tab data
@@ -1102,6 +1118,28 @@ saveBtn.addEventListener('click', () => {
 window.electronAPI.onFileLoaded((data) => {
   const openInBackground = data.openInBackground || false;
   const forceNewTab = data.forceNewTab || false;
+  const reuseTab = data.reuseTab || null;
+
+  // If reuseTab is specified (e.g., for refresh), update that specific tab
+  if (reuseTab) {
+    const tab = tabs.find(t => t.id === reuseTab);
+    if (tab) {
+      tab.content = data.content;
+      tab.isModified = false;
+      tab.originalContent = data.content;
+      if (tab.isEditing) {
+        if (easyMDE) {
+          easyMDE.value(data.content);
+        } else {
+          editor.value = data.content;
+        }
+      } else {
+        renderContent(data.content, data.fileName);
+      }
+      updateTabUI(reuseTab);
+      return;
+    }
+  }
 
   // Check if file is already open
   if (data.filePath) {
@@ -1193,6 +1231,69 @@ window.electronAPI.onCloseTabsToRight((tabId) => {
     const tabsToClose = tabs.slice(tabIndex + 1);
     tabsToClose.forEach(t => closeTab(t.id, true)); // silent close
   }
+});
+
+// Listen for reopen closed tab (Cmd+Shift+T)
+window.electronAPI.onReopenClosedTab(() => {
+  if (closedTabs.length === 0) return;
+
+  const closedTab = closedTabs.pop();
+  if (closedTab.filePath) {
+    // Reopen from file
+    window.electronAPI.openFileByPath(closedTab.filePath);
+  } else if (closedTab.content !== undefined) {
+    // Reopen unsaved content
+    const tabId = createTab(closedTab.fileName, closedTab.content, null);
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.isModified = true;
+      updateTabUI(tabId);
+    }
+  }
+});
+
+// Keyboard shortcuts modal
+const shortcutsModal = document.getElementById('keyboard-shortcuts-modal');
+const shortcutsBackdrop = shortcutsModal.querySelector('.shortcuts-backdrop');
+const shortcutsClose = shortcutsModal.querySelector('.shortcuts-close');
+
+function showKeyboardShortcuts() {
+  shortcutsModal.classList.remove('hidden');
+}
+
+function hideKeyboardShortcuts() {
+  shortcutsModal.classList.add('hidden');
+}
+
+shortcutsBackdrop.addEventListener('click', hideKeyboardShortcuts);
+shortcutsClose.addEventListener('click', hideKeyboardShortcuts);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !shortcutsModal.classList.contains('hidden')) {
+    hideKeyboardShortcuts();
+  }
+});
+
+window.electronAPI.onShowKeyboardShortcuts(showKeyboardShortcuts);
+
+// Listen for refresh file (Cmd+R)
+window.electronAPI.onRefreshFile(async () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.filePath) return;
+
+  // If there are unsaved changes, confirm first
+  if (tab.isModified) {
+    const result = await showSaveDialog(tab.fileName, 'Refresh will discard your changes.');
+    if (result === 'cancel') return;
+    if (result === 'save') {
+      if (tab.isEditing) {
+        tab.content = easyMDE ? easyMDE.value() : editor.value;
+      }
+      await window.electronAPI.saveFile(tab.filePath, tab.content);
+    }
+  }
+
+  // Reload the file from disk
+  window.electronAPI.openFileByPath(tab.filePath, { reuseTab: activeTabId });
 });
 
 // Listen for new file request - creates tab and enters edit mode

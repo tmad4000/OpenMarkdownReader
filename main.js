@@ -7,6 +7,7 @@ const windows = new Set();
 let isReadOnlyMode = true; // Default to read-only
 let watchFileMode = false; // Watch for external file changes
 const fileWatchers = new Map(); // Track active file watchers
+const fileWatchDebounceTimers = new Map(); // Track debounce timers per watcher
 
 // Configuration Management
 const configPath = path.join(app.getPath('userData'), 'config.json');
@@ -345,6 +346,21 @@ function clearRecentFiles() {
 loadConfig();
 watchFileMode = config.watchMode || false;
 
+function cleanupFileWatchersForWindow(winId) {
+  const prefix = `${winId}:`;
+  for (const [watchKey, watcher] of fileWatchers) {
+    if (!watchKey.startsWith(prefix)) continue;
+    try {
+      watcher.close();
+    } catch {}
+    fileWatchers.delete(watchKey);
+
+    const timer = fileWatchDebounceTimers.get(watchKey);
+    if (timer) clearTimeout(timer);
+    fileWatchDebounceTimers.delete(watchKey);
+  }
+}
+
 function createWindow(filePath = null) {
   const initialPath = filePath;
   const win = new BrowserWindow({
@@ -362,8 +378,12 @@ function createWindow(filePath = null) {
     }
   });
 
+  const winId = win.id;
   windows.add(win);
-  win.on('closed', () => windows.delete(win));
+  win.on('closed', () => {
+    cleanupFileWatchersForWindow(winId);
+    windows.delete(win);
+  });
 
   // Handle close with unsaved changes check
   let forceClose = false;
@@ -682,6 +702,14 @@ function setupMenu() {
             if (win) win.webContents.send('show-command-palette');
           }
         },
+        {
+          label: 'Refresh File',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('refresh-file');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Print...',
@@ -707,6 +735,14 @@ function setupMenu() {
           click: () => {
             const win = getFocusedWindow();
             if (win) win.webContents.send('close-tab');
+          }
+        },
+        {
+          label: 'Reopen Closed Tab',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('reopen-closed-tab');
           }
         },
         {
@@ -810,7 +846,6 @@ function setupMenu() {
           }
         },
         { type: 'separator' },
-        { role: 'reload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         { role: 'resetZoom' },
@@ -956,6 +991,15 @@ function setupMenu() {
       role: 'help',
       submenu: [
         {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-keyboard-shortcuts');
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Documentation',
           click: () => shell.openExternal('https://github.com/tmad4000/OpenMarkdownReader')
         },
@@ -1040,7 +1084,8 @@ function loadMarkdownFile(win, filePath, options = {}) {
       fileName,
       filePath,
       openInBackground: options.background || false,
-      forceNewTab: options.newTab || false
+      forceNewTab: options.newTab || false,
+      reuseTab: options.reuseTab || null
     });
     if (!options.background) {
       win.setTitle(`${fileName} - OpenMarkdownReader`);
@@ -1445,26 +1490,60 @@ ipcMain.handle('toggle-watch-mode', async () => {
 // Watch a file for changes
 ipcMain.handle('watch-file', async (event, filePath) => {
   const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || !filePath) return;
   const watchKey = `${win.id}:${filePath}`;
 
   // Don't create duplicate watchers
   if (fileWatchers.has(watchKey)) return;
 
   try {
-    const watcher = fs.watch(filePath, (eventType) => {
-      if (eventType === 'change') {
-        // Debounce: wait a bit for write to complete
-        setTimeout(() => {
-          try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            win.webContents.send('file-changed', { filePath, content });
-          } catch (err) {
-            console.error('Error reading changed file:', err);
+    const scheduleUpdate = () => {
+      const existingTimer = fileWatchDebounceTimers.get(watchKey);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        fileWatchDebounceTimers.delete(watchKey);
+        if (win.isDestroyed()) return;
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          win.webContents.send('file-changed', { filePath, content });
+        } catch (err) {
+          console.error('Error reading changed file:', err);
+        }
+      }, 150);
+
+      fileWatchDebounceTimers.set(watchKey, timer);
+    };
+
+    const startWatcher = () => {
+      if (win.isDestroyed()) return;
+      try {
+        const watcher = fs.watch(filePath, (eventType) => {
+          if (eventType !== 'change' && eventType !== 'rename') return;
+
+          scheduleUpdate();
+
+          if (eventType === 'rename') {
+            const currentWatcher = fileWatchers.get(watchKey);
+            if (currentWatcher) {
+              try {
+                currentWatcher.close();
+              } catch {}
+              fileWatchers.delete(watchKey);
+            }
+            setTimeout(() => {
+              if (win.isDestroyed()) return;
+              if (!fileWatchers.has(watchKey)) startWatcher();
+            }, 50);
           }
-        }, 100);
+        });
+        fileWatchers.set(watchKey, watcher);
+      } catch (err) {
+        console.error('Error watching file:', err);
       }
-    });
-    fileWatchers.set(watchKey, watcher);
+    };
+
+    startWatcher();
   } catch (err) {
     console.error('Error watching file:', err);
   }
@@ -1473,6 +1552,7 @@ ipcMain.handle('watch-file', async (event, filePath) => {
 // Stop watching a file
 ipcMain.handle('unwatch-file', async (event, filePath) => {
   const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || !filePath) return;
   const watchKey = `${win.id}:${filePath}`;
 
   const watcher = fileWatchers.get(watchKey);
@@ -1480,6 +1560,10 @@ ipcMain.handle('unwatch-file', async (event, filePath) => {
     watcher.close();
     fileWatchers.delete(watchKey);
   }
+
+  const timer = fileWatchDebounceTimers.get(watchKey);
+  if (timer) clearTimeout(timer);
+  fileWatchDebounceTimers.delete(watchKey);
 });
 
 // Tab context menu

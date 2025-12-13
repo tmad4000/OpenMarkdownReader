@@ -15,6 +15,7 @@
 
 ## Future Features
 
+- [ ] **Diff/Changes Highlighting Mode**: Show and highlight changes to a document, especially useful in watch mode. Could highlight added/removed lines or show a diff view when files change externally.
 - [ ] Make a proper Markdown editor (syntax highlighting, toolbar, live preview side-by-side)
 - [ ] Auto-update functionality (using electron-updater with GitHub Releases)
 - [ ] Mac App Store submission
