@@ -1,5 +1,16 @@
 # OpenMarkdownReader TODO
 
+## Next Up
+
+- [ ] **Tab Hover Tooltip**: Show the full file path when hovering over a tab
+- [ ] **Tab Right-Click Context Menu**: VS Code-style menu with options like:
+  - Open in Finder / Reveal in Finder
+  - Copy Path
+  - Copy Relative Path
+  - Close Tab
+  - Close Other Tabs
+  - Close Tabs to the Right
+
 ## Future Features
 
 - [ ] Make a proper Markdown editor (syntax highlighting, toolbar, live preview side-by-side)
@@ -24,6 +35,7 @@
 - [ ] **Frontmatter Support**: better visualization or hiding of YAML frontmatter.
 
 ### Application Features
+- [ ] **Crash Recovery / Draft Persistence**: Auto-save unsaved buffer content to a temp/drafts folder periodically. On app restart, detect and offer to recover unsaved drafts. Would protect against crashes and enable workflows with truly temporary scratch files.
 - [ ] **Auto-Save**: (Needs thought - potentially dangerous/annoying) Option to automatically save changes after a delay or on focus loss.
 - [ ] **Spell Checker**: Integrated spell checking for the editor.
 - [ ] **Word Count & Stats**: Status bar display for words, characters, and reading time.
