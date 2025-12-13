@@ -6,12 +6,15 @@ let settings = {
   sidebarVisible: false,
   contentWidth: 900,
   contentPadding: 20,
+  editorMonospace: false,
   watchFileMode: false,
   tocVisible: false,
   csvViewAsTable: true, // Default to showing CSV as table
   richEditorMode: true, // Default to Rich
   richToolbarVisible: true // Show formatting toolbar
 };
+
+let easyMDE = null;
 
 // Platform helpers
 const isMac = typeof navigator !== 'undefined' &&
@@ -53,7 +56,7 @@ let tabs = [];
 let activeTabId = null;
 let tabIdCounter = 0;
 let closedTabs = []; // Stack of recently closed tabs for Cmd+Shift+T
-const MAX_CLOSED_TABS = 20;
+const MAX_CLOSED_TABS = 50;
 
 // Directory state
 let currentDirectory = null;
@@ -642,7 +645,7 @@ async function saveFile() {
   if (!tab) return;
 
   if (tab.isEditing) {
-    tab.content = editor.value;
+    tab.content = easyMDE ? easyMDE.value() : editor.value;
   }
 
   if (tab.filePath) {
@@ -669,6 +672,38 @@ async function saveFile() {
       updateTabUI(activeTabId);
       document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
+  }
+}
+
+// Save file with dialog (always prompts for path)
+async function saveFileAs() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  if (tab.isEditing) {
+    tab.content = easyMDE ? easyMDE.value() : editor.value;
+  }
+
+  const previousPath = tab.filePath;
+  const defaultPath = tab.filePath || tab.fileName;
+  const result = await window.electronAPI.saveFileAs(tab.content, defaultPath);
+  if (!result) return;
+
+  if (settings.watchFileMode && previousPath && previousPath !== result.filePath) {
+    window.electronAPI.unwatchFile(previousPath);
+  }
+
+  tab.filePath = result.filePath;
+  tab.fileName = result.fileName;
+  tab.isModified = false;
+  if (tab.isEditing) tab.originalContent = tab.content;
+
+  updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
+  updateTabUI(activeTabId);
+  document.title = `${tab.fileName} - OpenMarkdownReader`;
+
+  if (settings.watchFileMode) {
+    window.electronAPI.watchFile(tab.filePath);
   }
 }
 
@@ -1323,6 +1358,11 @@ window.electronAPI.onSave(() => {
   saveFile();
 });
 
+// Listen for save-as request
+window.electronAPI.onSaveAs(() => {
+  saveFileAs();
+});
+
 // Listen for save all request (when closing window with unsaved changes)
 window.electronAPI.onSaveAll(async () => {
   await saveAllFiles();
@@ -1334,7 +1374,7 @@ async function saveAllFiles() {
     if (tab.isModified) {
       // Make sure to get latest content if editing
       if (tab.isEditing && tab.id === activeTabId) {
-        tab.content = editor.value;
+        tab.content = easyMDE ? easyMDE.value() : editor.value;
       }
 
       if (tab.filePath) {
@@ -1438,6 +1478,9 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   } else if (setting === 'content-padding') {
     settings.contentPadding = value;
     applyContentPadding();
+  } else if (setting === 'editor-monospace') {
+    settings.editorMonospace = !!value;
+    applyEditorFont();
   }
 });
 
@@ -1495,31 +1538,24 @@ function applyContentPadding() {
   document.documentElement.style.setProperty('--content-padding-base', `${base}px`);
 }
 
+function applyEditorFont() {
+  document.documentElement.classList.toggle('editor-font-mono', !!settings.editorMonospace);
+  if (easyMDE) {
+    easyMDE.codemirror.refresh();
+  }
+}
+
 // Table of Contents functions
-function extractHeadings(content) {
+function extractHeadings() {
+  if (!markdownBody) return [];
+
   const headings = [];
-  // Match markdown headings (# style)
-  const lines = content.split('\n');
-  let inCodeBlock = false;
-
-  lines.forEach((line, index) => {
-    // Track code blocks
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      return;
-    }
-    if (inCodeBlock) return;
-
-    const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      const level = match[1].length;
-      const text = match[2].trim();
-      // Generate ID similar to how marked does it
-      const id = text.toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-');
-      headings.push({ level, text, id, line: index });
-    }
+  markdownBody.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((el) => {
+    const level = Number(el.tagName.slice(1));
+    const text = (el.textContent || '').trim();
+    const id = el.id;
+    if (!id || !text || Number.isNaN(level)) return;
+    headings.push({ level, text, id });
   });
 
   return headings;
@@ -1654,15 +1690,48 @@ function hideCSVView() {
 
 // Configure marked to generate heading IDs
 const markedRenderer = new marked.Renderer();
-markedRenderer.heading = function(text, level) {
+let fallbackHeadingSlugCounts = new Map();
+
+function slugifyHeadingText(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function uniqueSlug(base) {
+  const safeBase = base || 'section';
+  const count = fallbackHeadingSlugCounts.get(safeBase) || 0;
+  fallbackHeadingSlugCounts.set(safeBase, count + 1);
+  return count === 0 ? safeBase : `${safeBase}-${count}`;
+}
+
+function htmlToPlainText(html) {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  return (temp.textContent || '').trim();
+}
+
+markedRenderer.heading = function(text, level, raw, slugger) {
   // Handle both old and new marked API
-  const headingText = typeof text === 'object' ? text.text : text;
+  const headingHtml = typeof text === 'object' ? text.text : text;
   const headingLevel = typeof text === 'object' ? text.depth : level;
 
-  const id = headingText.toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-');
-  return `<h${headingLevel} id="${id}">${headingText}</h${headingLevel}>`;
+  const plainText = typeof raw === 'string' && raw.trim().length > 0
+    ? raw
+    : htmlToPlainText(headingHtml);
+
+  let id = '';
+  if (slugger && typeof slugger.slug === 'function') {
+    id = slugger.slug(plainText);
+  } else {
+    id = uniqueSlug(slugifyHeadingText(plainText));
+  }
+
+  return `<h${headingLevel} id="${id}">${headingHtml}</h${headingLevel}>`;
 };
 
 marked.setOptions({
@@ -1675,6 +1744,7 @@ function renderMarkdown(mdContent) {
   try {
     // Hide CSV view if it was showing
     hideCSVView();
+    fallbackHeadingSlugCounts = new Map();
 
     const html = marked.parse(mdContent);
     markdownBody.innerHTML = html;
@@ -1690,7 +1760,7 @@ function renderMarkdown(mdContent) {
     markdownBody.classList.remove('hidden');
 
     // Update Table of Contents
-    const headings = extractHeadings(mdContent);
+    const headings = extractHeadings();
     renderTOC(headings);
 
     window.scrollTo(0, 0);
@@ -2829,7 +2899,6 @@ markdownBody.addEventListener('click', (e) => {
 // RICH EDITOR (EasyMDE) INTEGRATION
 // ==========================================
 
-let easyMDE = null;
 const richModeBtn = document.getElementById('rich-mode-btn');
 const richToolbarBtn = document.getElementById('rich-toolbar-btn');
 
@@ -2900,7 +2969,7 @@ function initRichEditor() {
     spellChecker: false,
     status: false, // Hide status bar
     toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-    styleSelectedText: false,
+    styleSelectedText: true,
     minHeight: "100%",
     maxHeight: "100%"
   });
@@ -3165,7 +3234,25 @@ closeTab = async function(tabId, silent = false) {
       }
     }
   }
-  
+
+  // Stop watching the file if we were watching it
+  if (tab && tab.filePath && settings.watchFileMode) {
+    window.electronAPI.unwatchFile(tab.filePath);
+  }
+
+  // Save tab info for reopening (Cmd+Shift+T)
+  if (tab && (tab.filePath || tab.content)) {
+    closedTabs.push({
+      fileName: tab.fileName,
+      filePath: tab.filePath,
+      content: tab.content,
+      scrollPos: tab.scrollPos
+    });
+    if (closedTabs.length > MAX_CLOSED_TABS) {
+      closedTabs.shift();
+    }
+  }
+
   // Remove tab
   tabs.splice(tabIndex, 1);
   const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
@@ -3226,7 +3313,7 @@ editor.addEventListener('input', triggerAutoSave);
 	    spellChecker: false,
 	    status: false,
 	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-	    styleSelectedText: false,
+	    styleSelectedText: true,
 	    minHeight: "100%",
 	    maxHeight: "100%"
 	  });

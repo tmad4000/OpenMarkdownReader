@@ -16,7 +16,10 @@
   --table-border: #d0d7de;
   --table-row-alt: #f6f8fa;
   --content-padding-base: 20px;
+  --hover-bg: rgba(0, 0, 0, 0.08);
+  --selection-bg: rgba(9, 105, 218, 0.28);
   --checkbox-border: #57606a;
+  --checkbox-unchecked-bg: transparent;
   --checkbox-checked-bg: #0969da;
   --checkbox-check: #ffffff;
 }
@@ -35,8 +38,11 @@
     --blockquote-text: #8b949e;
     --table-border: #30363d;
     --table-row-alt: #161b22;
-    --checkbox-border: #8b949e;
-    --checkbox-checked-bg: #1f6feb;
+    --hover-bg: rgba(255, 255, 255, 0.10);
+    --selection-bg: rgba(47, 129, 247, 0.5);
+    --checkbox-border: #e6edf3;
+    --checkbox-unchecked-bg: #161b22;
+    --checkbox-checked-bg: #2f81f7;
     --checkbox-check: #ffffff;
   }
 }
@@ -53,8 +59,11 @@
   --blockquote-text: #8b949e;
   --table-border: #30363d;
   --table-row-alt: #161b22;
-  --checkbox-border: #8b949e;
-  --checkbox-checked-bg: #1f6feb;
+  --hover-bg: rgba(255, 255, 255, 0.10);
+  --selection-bg: rgba(47, 129, 247, 0.5);
+  --checkbox-border: #e6edf3;
+  --checkbox-unchecked-bg: #161b22;
+  --checkbox-checked-bg: #2f81f7;
   --checkbox-check: #ffffff;
 }
 
@@ -70,7 +79,10 @@
   --blockquote-text: #57606a;
   --table-border: #d0d7de;
   --table-row-alt: #f6f8fa;
+  --hover-bg: rgba(0, 0, 0, 0.08);
+  --selection-bg: rgba(9, 105, 218, 0.28);
   --checkbox-border: #57606a;
+  --checkbox-unchecked-bg: transparent;
   --checkbox-checked-bg: #0969da;
   --checkbox-check: #ffffff;
 }
@@ -807,6 +819,15 @@ mark.find-match.active {
   border-color: var(--link-color);
 }
 
+.editor::selection {
+  background: var(--selection-bg);
+}
+
+.editor-font-mono .editor,
+.editor-font-mono .CodeMirror {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace !important;
+}
+
 /* Edit mode indicator */
 .tab.editing .tab-title::before {
   content: '';
@@ -1001,13 +1022,13 @@ mark.find-match.active {
 .markdown-body .task-list-item input {
   margin: 0 0.5em 0 -1.3em;
   vertical-align: middle;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   -webkit-appearance: none;
   appearance: none;
   border: 2px solid var(--checkbox-border);
   border-radius: 3px;
-  background: transparent;
+  background: var(--checkbox-unchecked-bg);
   display: inline-grid;
   place-content: center;
   opacity: 1; /* Keep contrast even when disabled */
@@ -1015,8 +1036,8 @@ mark.find-match.active {
 
 .markdown-body .task-list-item input::before {
   content: '';
-  width: 4px;
-  height: 8px;
+  width: 5px;
+  height: 10px;
   border-right: 2px solid var(--checkbox-check);
   border-bottom: 2px solid var(--checkbox-check);
   transform: rotate(45deg);

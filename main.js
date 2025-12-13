@@ -17,6 +17,7 @@ let config = {
   maxRecentFiles: 10,
   contentWidth: 900,
   contentPadding: 20,
+  editorMonospace: false, // Use monospace font in editor
   restoreSession: true, // Whether to restore previous session on launch
   session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
   cliCommandPath: null,
@@ -569,6 +570,7 @@ function createWindow(filePath = null) {
     // Apply content layout settings
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
+    win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
 
     if (initialPath) {
       openPathInWindow(win, initialPath);
@@ -710,6 +712,22 @@ function setupMenu() {
             if (win) win.webContents.send('refresh-file');
           }
         },
+        {
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('save');
+          }
+        },
+        {
+          label: 'Save As...',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('save-as');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Print...',
@@ -781,14 +799,6 @@ function setupMenu() {
           click: () => {
             const win = getFocusedWindow();
             if (win) win.webContents.send('toggle-edit');
-          }
-        },
-        {
-          label: 'Save',
-          accelerator: 'CmdOrCtrl+S',
-          click: () => {
-            const win = getFocusedWindow();
-            if (win) win.webContents.send('save');
           }
         },
         {
@@ -959,6 +969,16 @@ function setupMenu() {
             windows.forEach(win => {
               win.webContents.send('set-auto-save', menuItem.checked);
             });
+          }
+        },
+        {
+          label: 'Monospace Editor Font',
+          type: 'checkbox',
+          checked: config.editorMonospace || false,
+          click: (menuItem) => {
+            config.editorMonospace = menuItem.checked;
+            saveConfig();
+            broadcastSetting('editor-monospace', menuItem.checked);
           }
         },
         {

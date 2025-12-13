@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', oldPath, newName),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
+  onSaveAs: (callback) => ipcRenderer.on('save-as', () => callback()),
   onSaveAll: (callback) => ipcRenderer.on('save-all', () => callback()),
   showSaveDialog: (fileName) => ipcRenderer.invoke('show-save-dialog', fileName),
 
