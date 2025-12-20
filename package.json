@@ -8,7 +8,8 @@
     "start": "electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
-    "build:dmg": "electron-builder --mac dmg"
+    "build:dmg": "electron-builder --mac dmg",
+    "build:mas": "electron-builder --mac mas"
   },
   "keywords": [
     "markdown",
@@ -68,6 +69,11 @@
           "path": "/Applications"
         }
       ]
+    },
+    "mas": {
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "provisioningProfile": "build/embedded.provisionprofile"
     },
     "files": [
       "**/*",

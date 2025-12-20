@@ -11,7 +11,7 @@ let settings = {
   tocVisible: false,
   csvViewAsTable: true, // Default to showing CSV as table
   richEditorMode: true, // Default to Rich
-  richToolbarVisible: true // Show formatting toolbar
+  richToolbarVisible: false // Default toolbar closed
 };
 
 let easyMDE = null;
@@ -1162,14 +1162,18 @@ window.electronAPI.onFileLoaded((data) => {
       tab.content = data.content;
       tab.isModified = false;
       tab.originalContent = data.content;
-      if (tab.isEditing) {
-        if (easyMDE) {
-          easyMDE.value(data.content);
+      // Only update the visible editor/preview if this is the active tab
+      if (tab.id === activeTabId) {
+        if (tab.isEditing) {
+          if (easyMDE) {
+            easyMDE.value(data.content);
+          } else {
+            editor.value = data.content;
+          }
         } else {
-          editor.value = data.content;
+          renderContent(data.content, data.fileName);
         }
-      } else {
-        renderContent(data.content, data.fileName);
+        document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
       }
       updateTabUI(reuseTab);
       return;
@@ -1187,14 +1191,22 @@ window.electronAPI.onFileLoaded((data) => {
       // Update content if no unsaved changes (fresh from disk)
       if (!existingTab.isModified) {
         existingTab.content = data.content;
+        if (existingTab.isEditing) {
+          existingTab.originalContent = data.content;
+        }
 
         // Refresh UI only if it's the active tab
         if (existingTab.id === activeTabId) {
           if (existingTab.isEditing) {
-            editor.value = data.content;
+            if (easyMDE) {
+              easyMDE.value(data.content);
+            } else {
+              editor.value = data.content;
+            }
           } else {
             renderContent(data.content, data.fileName);
           }
+          document.title = `${existingTab.fileName}${existingTab.isModified ? ' *' : ''} - OpenMarkdownReader`;
         }
       }
       return;
@@ -1423,9 +1435,9 @@ window.electronAPI.onSetWatchMode((watchMode) => {
     watchIndicator.classList.toggle('hidden', !watchMode);
   }
 
-  // Start/stop watching current tab's file
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (tab && tab.filePath) {
+  // Start/stop watching all open tabs with paths (not just the active tab)
+  for (const tab of tabs) {
+    if (!tab.filePath) continue;
     if (watchMode) {
       window.electronAPI.watchFile(tab.filePath);
     } else {
@@ -1440,22 +1452,30 @@ window.electronAPI.onFileChanged(({ filePath, content }) => {
   const tab = tabs.find(t => t.filePath === filePath);
   if (!tab) return;
 
-  // Don't update if user is editing and has unsaved changes
-  if (tab.isEditing && tab.isModified) {
+  // Don't clobber unsaved changes
+  if (tab.isModified) {
     console.log('File changed externally but tab has unsaved edits, skipping update');
     return;
   }
 
   // Update content
   tab.content = content;
+  if (tab.isEditing) {
+    tab.originalContent = content;
+  }
 
   // If this is the active tab, re-render
   if (tab.id === activeTabId) {
     if (tab.isEditing) {
-      editor.value = content;
+      if (easyMDE) {
+        easyMDE.value(content);
+      } else {
+        editor.value = content;
+      }
     } else {
       renderContent(content, tab.fileName);
     }
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
   }
 });
 
@@ -2975,7 +2995,8 @@ function initRichEditor() {
   });
   
   // Change handler to update tab status
-  easyMDE.codemirror.on('change', () => {
+  easyMDE.codemirror.on('change', (cm, change) => {
+    if (change && change.origin === 'setValue') return;
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab && tab.isEditing) {
       if (!tab.isModified) {
@@ -3332,7 +3353,8 @@ editor.addEventListener('input', triggerAutoSave);
 	    openLinkFromEditor(href, e);
 	  });
 	  
-		  easyMDE.codemirror.on('change', () => {
+		  easyMDE.codemirror.on('change', (cmInstance, change) => {
+		    if (change && change.origin === 'setValue') return;
 		    const tab = tabs.find(t => t.id === activeTabId);
 		    if (tab && tab.isEditing) {
 		      if (!tab.isModified) {
