@@ -961,6 +961,7 @@ function setupMenu() {
         { type: 'separator' },
         {
           label: 'Auto Save',
+          id: 'auto-save-item',
           type: 'checkbox',
           checked: config.autoSave || false,
           click: (menuItem) => {
@@ -1507,6 +1508,21 @@ ipcMain.handle('toggle-watch-mode', async () => {
   return watchFileMode;
 });
 
+// Toggle auto-save from renderer
+ipcMain.handle('toggle-auto-save', async () => {
+  const menu = Menu.getApplicationMenu();
+  const item = menu.getMenuItemById('auto-save-item');
+  if (item) {
+    item.checked = !item.checked;
+    config.autoSave = item.checked;
+    saveConfig();
+    windows.forEach(win => {
+      win.webContents.send('set-auto-save', item.checked);
+    });
+  }
+  return config.autoSave;
+});
+
 // Watch a file for changes
 ipcMain.handle('watch-file', async (event, filePath) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -1564,6 +1580,14 @@ ipcMain.handle('watch-file', async (event, filePath) => {
     };
 
     startWatcher();
+
+    // Immediately check for changes when watch mode is enabled
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      win.webContents.send('file-changed', { filePath, content });
+    } catch (err) {
+      console.error('Error reading file on watch start:', err);
+    }
   } catch (err) {
     console.error('Error watching file:', err);
   }

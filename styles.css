@@ -521,6 +521,17 @@ mark.find-match.active {
   font-size: 12px;
   font-weight: 500;
   opacity: 0.8;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.autosave-indicator:hover {
+  opacity: 1;
+  background: var(--border-color);
+}
+
+.autosave-indicator:active {
+  transform: scale(0.96);
 }
 
 .autosave-indicator svg {

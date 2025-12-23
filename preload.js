@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSettingChanged: (callback) => ipcRenderer.on('setting-changed', (event, data) => callback(data)),
   onSetTheme: (callback) => ipcRenderer.on('set-theme', (event, theme) => callback(theme)),
   onSetAutoSave: (callback) => ipcRenderer.on('set-auto-save', (event, enabled) => callback(enabled)),
+  toggleAutoSave: () => ipcRenderer.invoke('toggle-auto-save'),
 
   // Command palette
   onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback()),

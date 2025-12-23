@@ -1484,9 +1484,14 @@ window.electronAPI.onToggleSidebar(() => {
   sidebarToggle.click();
 });
 
-// Watch indicator click to toggle
+// Watch indicator click to toggle off
 document.getElementById('watch-indicator').addEventListener('click', () => {
   window.electronAPI.toggleWatchMode();
+});
+
+// Auto-save indicator click to toggle off
+document.getElementById('autosave-indicator').addEventListener('click', () => {
+  window.electronAPI.toggleAutoSave();
 });
 
 
