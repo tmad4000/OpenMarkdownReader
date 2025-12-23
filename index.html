@@ -24,17 +24,27 @@
       <button id="new-tab-btn" class="new-tab-btn" title="New Tab (⌘T)">+</button>
     </div>
     <div class="titlebar-drag-spacer"></div>
-    <div id="watch-indicator" class="watch-indicator hidden" title="Click to turn off file watching">
+    <div id="watch-indicator" class="watch-indicator hidden" title="Watching for file changes">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M8 2C4.5 2 1.55 4.13 0 7.5 1.55 10.87 4.5 13 8 13s6.45-2.13 8-5.5C14.45 4.13 11.5 2 8 2zM8 11c-1.93 0-3.5-1.57-3.5-3.5S6.07 4 8 4s3.5 1.57 3.5 3.5S9.93 11 8 11zm0-5.5c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
       </svg>
       Watching
+      <span class="indicator-close" title="Turn off">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+          <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+        </svg>
+      </span>
     </div>
-    <div id="autosave-indicator" class="autosave-indicator hidden" title="Click to turn off auto-save">
+    <div id="autosave-indicator" class="autosave-indicator hidden" title="Auto-save enabled">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 4.22a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 011.06-1.06l1.72 1.72 3.72-3.72a.75.75 0 011.06 0z"/>
       </svg>
       Auto Save
+      <span class="indicator-close" title="Turn off">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+          <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+        </svg>
+      </span>
     </div>
     <button id="save-btn" class="save-btn hidden" title="Save (⌘S)">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">

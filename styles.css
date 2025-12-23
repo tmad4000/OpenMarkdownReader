@@ -500,8 +500,34 @@ mark.find-match.active {
   transform: scale(0.96);
 }
 
-.watch-indicator svg {
+.watch-indicator > svg {
   color: var(--link-color);
+}
+
+/* Close button for indicators */
+.indicator-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 50%;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.indicator-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .indicator-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.indicator-close svg {
+  color: var(--text-color);
 }
 
 /* Auto-save indicator */
@@ -534,7 +560,7 @@ mark.find-match.active {
   transform: scale(0.96);
 }
 
-.autosave-indicator svg {
+.autosave-indicator > svg {
   color: #22c55e; /* Green checkmark */
 }
 

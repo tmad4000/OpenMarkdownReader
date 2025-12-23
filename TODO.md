@@ -54,3 +54,8 @@ These are ideas that might be interesting but need more thought:
 - [ ] **Link Preview on Hover**: Show a tooltip preview when hovering over links.
 - [ ] **Vim Keybindings**: Optional vim-mode for power users.
 
+## Design Improvements
+
+- [ ] **Switch to Lucide or Phosphor Icons**: Replace hand-drawn SVGs with a proper icon library for consistency. Lucide (1,450+ icons, clean stroke style) or Phosphor (9,000+ icons, multiple weights) would work well.
+- [ ] **Design System**: Establish consistent spacing (4px/8px grid), consistent icon sizes, and follow patterns from Tailwind UI, Radix, or Apple HIG.
+
