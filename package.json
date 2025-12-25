@@ -25,6 +25,8 @@
     "url": "https://github.com/tmad4000/OpenMarkdownReader.git"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.1.0",
+    "easymde": "^2.20.0",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1"
   },
@@ -47,11 +49,15 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ]
     },
