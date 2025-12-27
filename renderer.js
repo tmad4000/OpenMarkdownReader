@@ -3217,16 +3217,49 @@ toggleEditMode = function() {
     return;
   }
 
+  // Capture scroll position before switching
+  let scrollPercent = 0;
+  if (tab.isEditing) {
+    // Switching FROM edit mode - get editor scroll position
+    if (easyMDE) {
+      const scrollInfo = easyMDE.codemirror.getScrollInfo();
+      scrollPercent = scrollInfo.top / Math.max(1, scrollInfo.height - scrollInfo.clientHeight);
+    } else {
+      scrollPercent = editor.scrollTop / Math.max(1, editor.scrollHeight - editor.clientHeight);
+    }
+  } else {
+    // Switching FROM preview mode - get preview scroll position
+    scrollPercent = markdownBody.scrollTop / Math.max(1, markdownBody.scrollHeight - markdownBody.clientHeight);
+  }
+
   tab.isEditing = !tab.isEditing;
 
   if (tab.isEditing) {
     tab.originalContent = tab.content;
     showEditor(tab.content);
+
+    // Restore scroll position in editor after a brief delay for layout
+    setTimeout(() => {
+      if (easyMDE) {
+        const scrollInfo = easyMDE.codemirror.getScrollInfo();
+        const targetScroll = scrollPercent * (scrollInfo.height - scrollInfo.clientHeight);
+        easyMDE.codemirror.scrollTo(null, targetScroll);
+      } else {
+        const targetScroll = scrollPercent * (editor.scrollHeight - editor.clientHeight);
+        editor.scrollTop = targetScroll;
+      }
+    }, 50);
   } else {
     // Capture content
     tab.content = easyMDE ? easyMDE.value() : editor.value;
     hideEditor();
     renderContent(tab.content, tab.fileName);
+
+    // Restore scroll position in preview after rendering
+    setTimeout(() => {
+      const targetScroll = scrollPercent * (markdownBody.scrollHeight - markdownBody.clientHeight);
+      markdownBody.scrollTop = targetScroll;
+    }, 50);
   }
 
   updateTabUI(activeTabId);
