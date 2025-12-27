@@ -3402,7 +3402,8 @@ editor.addEventListener('input', triggerAutoSave);
 	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
 	    styleSelectedText: true,
 	    minHeight: "100%",
-	    maxHeight: "100%"
+	    maxHeight: "100%",
+	    previewRender: (plainText) => marked.parse(plainText)
 	  });
 	  
 	  // Cmd/Ctrl+click links inside editor (Obsidian-style)
