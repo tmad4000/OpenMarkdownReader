@@ -14,8 +14,8 @@ After making changes, build and install to Applications:
 # Build the Mac app (universal binary for Intel + Apple Silicon)
 npm run build:mac
 
-# Install to Applications (preserves "Open With" default associations)
-cp -R dist/mac-universal/OpenMarkdownReader.app /Applications/
+# Install to Applications (ditto preserves code signatures; cp -R breaks them!)
+ditto dist/mac-universal/OpenMarkdownReader.app /Applications/OpenMarkdownReader.app
 ```
 
 ## Releasing
