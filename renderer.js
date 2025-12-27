@@ -1577,7 +1577,7 @@ function extractHeadings() {
   const headings = [];
   markdownBody.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((el) => {
     const level = Number(el.tagName.slice(1));
-    const text = (el.textContent || '').trim();
+    const text = (el.dataset.headingText || el.textContent || '').trim();
     const id = el.id;
     if (!id || !text || Number.isNaN(level)) return;
     headings.push({ level, text, id });
@@ -1604,6 +1604,7 @@ function renderTOC(headings) {
       const id = item.dataset.id;
       const target = document.getElementById(id);
       if (target) {
+        expandSectionAncestors(target);
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         // Highlight briefly
         target.style.background = 'var(--code-bg)';
@@ -1740,23 +1741,105 @@ function htmlToPlainText(html) {
   return (temp.textContent || '').trim();
 }
 
+function parseHeadingAttributes(raw) {
+  if (typeof raw !== 'string') return null;
+  const match = raw.match(/\s*\{([^}]+)\}\s*$/);
+  if (!match) return null;
+
+  const attributeSource = match[1].trim();
+  if (!attributeSource) return null;
+
+  const tokens = attributeSource.split(/\s+/);
+  const attrs = { id: null, classes: [], extra: {} };
+  let used = false;
+
+  tokens.forEach((token) => {
+    if (/^#[A-Za-z][\w-]*$/.test(token)) {
+      attrs.id = token.slice(1);
+      used = true;
+      return;
+    }
+    if (/^\.[A-Za-z][\w-]*$/.test(token)) {
+      attrs.classes.push(token.slice(1));
+      used = true;
+      return;
+    }
+
+    const eqIndex = token.indexOf('=');
+    if (eqIndex > 0) {
+      const key = token.slice(0, eqIndex);
+      let value = token.slice(eqIndex + 1);
+      if (!/^[A-Za-z][\w-]*$/.test(key)) return;
+      value = value.replace(/^['"]|['"]$/g, '');
+      if (!value) return;
+      attrs.extra[key] = value;
+      used = true;
+    }
+  });
+
+  if (!used) return null;
+
+  return {
+    attrs,
+    rawWithoutAttributes: raw.slice(0, match.index).trimEnd(),
+    attributeBlock: match[0]
+  };
+}
+
 markedRenderer.heading = function(text, level, raw, slugger) {
   // Handle both old and new marked API
   const headingHtml = typeof text === 'object' ? text.text : text;
   const headingLevel = typeof text === 'object' ? text.depth : level;
 
-  const plainText = typeof raw === 'string' && raw.trim().length > 0
-    ? raw
-    : htmlToPlainText(headingHtml);
+  const rawText = typeof raw === 'string' ? raw.trim() : '';
+  const attributeInfo = parseHeadingAttributes(rawText);
+
+  let cleanedHtml = headingHtml;
+  let plainText = rawText || htmlToPlainText(headingHtml);
+
+  if (attributeInfo) {
+    if (attributeInfo.rawWithoutAttributes) {
+      plainText = attributeInfo.rawWithoutAttributes;
+    }
+    if (typeof cleanedHtml === 'string' && attributeInfo.attributeBlock && cleanedHtml.endsWith(attributeInfo.attributeBlock)) {
+      cleanedHtml = cleanedHtml.slice(0, -attributeInfo.attributeBlock.length).trimEnd();
+    }
+    if (!plainText) {
+      plainText = htmlToPlainText(cleanedHtml);
+    }
+  }
 
   let id = '';
-  if (slugger && typeof slugger.slug === 'function') {
+  if (attributeInfo && attributeInfo.attrs.id) {
+    id = attributeInfo.attrs.id;
+  } else if (slugger && typeof slugger.slug === 'function') {
     id = slugger.slug(plainText);
   } else {
     id = uniqueSlug(slugifyHeadingText(plainText));
   }
 
-  return `<h${headingLevel} id="${id}">${headingHtml}</h${headingLevel}>`;
+  const safeHeadingText = escapeHtml(plainText);
+  const classes = ['md-heading'];
+  if (attributeInfo && attributeInfo.attrs.classes.length > 0) {
+    classes.push(...attributeInfo.attrs.classes);
+  }
+
+  const attrs = [
+    `id="${escapeHtml(id)}"`,
+    `class="${classes.join(' ')}"`,
+    `data-heading-text="${safeHeadingText}"`
+  ];
+
+  if (attributeInfo) {
+    Object.entries(attributeInfo.attrs.extra).forEach(([key, value]) => {
+      attrs.push(`${key}="${escapeHtml(String(value))}"`);
+    });
+  }
+
+  const collapseToggle = `<button class="collapse-toggle" type="button" aria-label="Collapse section ${safeHeadingText}" aria-expanded="true"></button>`;
+  const anchorLink = `<a class="heading-anchor" href="#${escapeHtml(id)}" aria-label="Link to ${safeHeadingText}"></a>`;
+
+  return `<h${headingLevel} ${attrs.join(' ')}>${collapseToggle}${cleanedHtml}${anchorLink}</h${headingLevel}>`;
 };
 
 marked.setOptions({
@@ -1764,6 +1847,109 @@ marked.setOptions({
   gfm: true,
   breaks: false
 });
+
+function buildCollapsibleSections() {
+  if (!markdownBody) return;
+
+  const nodes = Array.from(markdownBody.childNodes);
+  const fragment = document.createDocumentFragment();
+  const stack = [];
+
+  const isHeading = (node) =>
+    node.nodeType === Node.ELEMENT_NODE && /^H[1-6]$/.test(node.tagName);
+
+  nodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE && !node.textContent.trim()) {
+      return;
+    }
+
+    if (isHeading(node)) {
+      const level = Number(node.tagName.slice(1));
+
+      while (stack.length && stack[stack.length - 1].level >= level) {
+        stack.pop();
+      }
+
+      const section = document.createElement('section');
+      section.className = 'md-section';
+      section.dataset.level = String(level);
+
+      const body = document.createElement('div');
+      body.className = 'md-section-body';
+
+      section.appendChild(node);
+      section.appendChild(body);
+
+      if (stack.length) {
+        stack[stack.length - 1].body.appendChild(section);
+      } else {
+        fragment.appendChild(section);
+      }
+
+      stack.push({ level, body, section });
+      return;
+    }
+
+    if (stack.length) {
+      stack[stack.length - 1].body.appendChild(node);
+    } else {
+      fragment.appendChild(node);
+    }
+  });
+
+  markdownBody.innerHTML = '';
+  markdownBody.appendChild(fragment);
+
+  let sectionIndex = 0;
+  markdownBody.querySelectorAll('.md-section').forEach((section) => {
+    const body = section.querySelector(':scope > .md-section-body');
+    const heading = section.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+    const toggle = heading ? heading.querySelector('.collapse-toggle') : null;
+
+    if (body && !body.id) {
+      sectionIndex += 1;
+      body.id = `md-section-body-${sectionIndex}`;
+    }
+
+    if (toggle && body && body.id) {
+      toggle.setAttribute('aria-controls', body.id);
+      toggle.setAttribute('aria-expanded', section.classList.contains('collapsed') ? 'false' : 'true');
+    }
+
+    if (body && !body.textContent.trim()) {
+      section.classList.add('md-section-empty');
+    }
+  });
+}
+
+function wrapTablesForScroll() {
+  if (!markdownBody) return;
+  markdownBody.querySelectorAll('table').forEach((table) => {
+    const parent = table.parentElement;
+    if (parent && parent.classList.contains('table-wrap')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-wrap';
+    parent.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+}
+
+function expandSectionAncestors(target) {
+  if (!target) return;
+  let section = target.closest('.md-section');
+  while (section) {
+    if (section.classList.contains('collapsed')) {
+      section.classList.remove('collapsed');
+      const heading = section.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+      const toggle = heading ? heading.querySelector('.collapse-toggle') : null;
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', 'true');
+      }
+    }
+    section = section.parentElement ? section.parentElement.closest('.md-section') : null;
+  }
+}
 
 function renderMarkdown(mdContent) {
   try {
@@ -1773,6 +1959,9 @@ function renderMarkdown(mdContent) {
 
     const html = marked.parse(mdContent);
     markdownBody.innerHTML = html;
+
+    buildCollapsibleSections();
+    wrapTablesForScroll();
 
     document.querySelectorAll('pre code').forEach((block) => {
       hljs.highlightElement(block);
@@ -1802,6 +1991,7 @@ function applyLinkTooltips() {
   const modifier = isMac ? '⌘-click' : 'Ctrl+click';
 
   markdownBody.querySelectorAll('a[href]').forEach((a) => {
+    if (a.classList.contains('heading-anchor')) return;
     const href = a.getAttribute('href');
     if (!href) return;
 
@@ -2907,6 +3097,22 @@ window.electronAPI.onFileLoaded(() => {
 
 // Handle link clicks - open external links in browser, handle internal links in-app
 markdownBody.addEventListener('click', (e) => {
+  const collapseToggle = e.target.closest('.collapse-toggle');
+  if (collapseToggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const heading = collapseToggle.closest('h1, h2, h3, h4, h5, h6');
+    const section = heading && heading.parentElement && heading.parentElement.classList.contains('md-section')
+      ? heading.parentElement
+      : null;
+    if (!section) return;
+    if (section.classList.contains('md-section-empty')) return;
+
+    const isCollapsed = section.classList.toggle('collapsed');
+    collapseToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    return;
+  }
+
   const link = e.target.closest('a');
   if (!link) return;
 
@@ -2925,6 +3131,7 @@ markdownBody.addEventListener('click', (e) => {
   if (href.startsWith('#')) {
     const target = document.getElementById(href.slice(1));
     if (target) {
+      expandSectionAncestors(target);
       target.scrollIntoView({ behavior: 'smooth' });
     }
     return;
