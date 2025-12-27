@@ -2698,19 +2698,20 @@ function updateFindResults() {
 }
 
 function searchInEditor(query) {
-  const text = editor.value;
+  // Use EasyMDE's value if active, otherwise plain textarea
+  const text = easyMDE ? easyMDE.value() : editor.value;
   const regex = new RegExp(escapeRegExp(query), 'gi');
   let match;
-  
+
   findState.matches = [];
-  
+
   while ((match = regex.exec(text)) !== null) {
     findState.matches.push({
       start: match.index,
       end: match.index + match[0].length
     });
   }
-  
+
   if (findState.matches.length > 0) {
     findState.currentIndex = 0;
     jumpToMatch(0);
@@ -2791,28 +2792,55 @@ function searchInPreview(query) {
 
 function jumpToMatch(index) {
   if (findState.matches.length === 0) return;
-  
+
   // Wrap index
   if (index < 0) index = findState.matches.length - 1;
   if (index >= findState.matches.length) index = 0;
-  
+
   findState.currentIndex = index;
   updateFindCountUI();
-  
+
   const tab = tabs.find(t => t.id === activeTabId);
-  
+
   if (tab.isEditing) {
     const match = findState.matches[index];
-    editor.focus();
-    editor.setSelectionRange(match.start, match.end);
-    // Note: scrolling to cursor in textarea is automatic on focus/selection usually
+
+    if (easyMDE) {
+      // Convert character offset to CodeMirror {line, ch} position
+      const cm = easyMDE.codemirror;
+      const text = easyMDE.value();
+
+      function offsetToPos(offset) {
+        let line = 0;
+        let ch = 0;
+        for (let i = 0; i < offset && i < text.length; i++) {
+          if (text[i] === '\n') {
+            line++;
+            ch = 0;
+          } else {
+            ch++;
+          }
+        }
+        return { line, ch };
+      }
+
+      const from = offsetToPos(match.start);
+      const to = offsetToPos(match.end);
+
+      cm.focus();
+      cm.setSelection(from, to);
+      cm.scrollIntoView({ from, to }, 100);
+    } else {
+      editor.focus();
+      editor.setSelectionRange(match.start, match.end);
+    }
   } else {
     // Preview
     const mark = findState.matches[index];
-    
+
     // Remove active class from all
     findState.matches.forEach(m => m.classList.remove('active'));
-    
+
     mark.classList.add('active');
     mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
