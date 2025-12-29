@@ -9,6 +9,111 @@ let watchFileMode = false; // Watch for external file changes
 const fileWatchers = new Map(); // Track active file watchers
 const fileWatchDebounceTimers = new Map(); // Track debounce timers per watcher
 
+// Argument Parsing
+function parseArgs(argv) {
+  const flags = {
+    watch: false,
+    edit: false,
+    theme: null,
+    noSession: false,
+    scratch: false,
+    ref: false,
+    monospace: null,
+    files: []
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    
+    if (arg === '--watch' || arg === '-w') {
+      flags.watch = true;
+    } else if (arg === '--edit' || arg === '-e') {
+      flags.edit = true;
+    } else if (arg === '--scratch' || arg === '-s') {
+      flags.scratch = true;
+    } else if (arg === '--ref' || arg === '-r') {
+      flags.ref = true;
+    } else if (arg === '--no-session') {
+      flags.noSession = true;
+    } else if (arg === '--monospace') {
+      flags.monospace = true;
+    } else if (arg === '--no-monospace') {
+      flags.monospace = false;
+    } else if (arg === '--theme' || arg === '-t') {
+      const next = argv[i + 1];
+      if (next && ['light', 'dark', 'system'].includes(next)) {
+        flags.theme = next;
+        i++;
+      }
+    } else if (arg === '--debug') {
+      flags.debug = true;
+    } else if (arg === '.') {
+      flags.files.push(process.cwd());
+    } else if (!arg.startsWith('-')) {
+      if (arg.includes('node_modules') || 
+          arg.includes('OpenMarkdownReader.app') || 
+          arg === 'main.js' ||
+          arg === '.') continue;
+          
+      if (path.isAbsolute(arg) || arg.includes('/') || arg.includes('\\') || arg.endsWith('.md')) {
+        flags.files.push(arg);
+      }
+    }
+  }
+
+  return flags;
+}
+
+// Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    const win = getFocusedWindow();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+      
+      const args = parseArgs(argv);
+      
+      // Apply flags to session
+      if (args.watch) {
+        watchFileMode = true;
+        windows.forEach(w => w.webContents.send('set-watch-mode', true));
+      }
+      
+      if (args.theme) {
+        setTheme(args.theme);
+      }
+
+      if (args.monospace !== null) {
+        config.editorMonospace = args.monospace;
+        saveConfig();
+        broadcastSetting('editor-monospace', args.monospace);
+      }
+      
+      // Open daily notes if requested
+      if (args.scratch) {
+        createDailyNote(win, 'scratch');
+      }
+      if (args.ref) {
+        createDailyNote(win, 'ref');
+      }
+      
+      // Open any files passed
+      args.files.forEach(file => {
+        const fullPath = path.isAbsolute(file) ? file : path.join(workingDirectory, file);
+        openPathInWindow(win, fullPath, { forceEdit: args.edit });
+      });
+      
+      setupMenu(); // Update menu checkmarks
+    }
+  });
+}
+
 // Configuration Management
 const configPath = path.join(app.getPath('userData'), 'config.json');
 let config = {
@@ -21,13 +126,16 @@ let config = {
   restoreSession: true, // Whether to restore previous session on launch
   session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
   cliCommandPath: null,
-  watchMode: false // Watch for external file changes
+  watchMode: false, // Watch for external file changes
+  dailyNotesFolder: null, // Path to folder for daily notes
+  dailyNotesFormat: 'YYYY-MM-DD', // Date format for filenames
+  dailyNotesTemplate: '' // Optional template for new daily notes
 };
 
-const CLI_COMMAND_NAME = 'omr';
+const CLI_COMMAND_NAMES = ['omr', 'openmd'];
 const APP_BUNDLE_ID = 'com.jacobcole.openmarkdownreader';
 
-function getCliScriptContents() {
+function getCliScriptContents(commandName) {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -35,8 +143,16 @@ APP_BUNDLE_ID="${APP_BUNDLE_ID}"
 APP_NAME="OpenMarkdownReader"
 
 if [[ "\${1:-}" == "--help" || "\${1:-}" == "-h" ]]; then
-  echo "Usage: ${CLI_COMMAND_NAME} [path ...]"
-  echo "Open files/folders in OpenMarkdownReader."
+  echo "Usage: ${commandName} [options] [path ...]"
+  echo ""
+  echo "Options:"
+  echo "  -w, --watch    Watch for external changes"
+  echo "  -h, --help     Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  ${commandName} .               Open current directory"
+  echo "  ${commandName} README.md       Open a specific file"
+  echo "  ${commandName} -w README.md    Open and watch for changes"
   exit 0
 fi
 
@@ -45,7 +161,8 @@ if [[ $# -eq 0 ]]; then
   exit 0
 fi
 
-open -b "$APP_BUNDLE_ID" "$@" 2>/dev/null || open -a "$APP_NAME" "$@"
+# Use --args to pass flags to the Electron app
+open -b "$APP_BUNDLE_ID" --args "$@" 2>/dev/null || open -a "$APP_NAME" --args "$@"
 `;
 }
 
@@ -94,16 +211,28 @@ async function installCliCommand() {
   const candidatesInPath = preferredCandidates.filter(isDirInPath);
   const orderedCandidates = [...candidatesInPath, ...preferredCandidates.filter(d => !candidatesInPath.includes(d))];
 
-  const script = getCliScriptContents();
-  let installedPath = null;
+  let installedPaths = [];
   let lastError = null;
 
+  // Find a suitable directory for all commands
+  let selectedDir = null;
   for (const dir of orderedCandidates) {
     const isUserDir = dir.startsWith(os.homedir());
     const ok = ensureWritableDir(dir, { create: isUserDir });
-    if (!ok) continue;
+    if (ok) {
+      selectedDir = dir;
+      break;
+    }
+  }
 
-    const target = path.join(dir, CLI_COMMAND_NAME);
+  if (!selectedDir) {
+    dialog.showErrorBox('Install Failed', 'No writable install location found in your PATH.');
+    return;
+  }
+
+  for (const commandName of CLI_COMMAND_NAMES) {
+    const target = path.join(selectedDir, commandName);
+    const script = getCliScriptContents(commandName);
 
     try {
       if (fs.existsSync(target)) {
@@ -112,42 +241,40 @@ async function installCliCommand() {
           buttons: ['Replace', 'Cancel'],
           defaultId: 0,
           cancelId: 1,
-          message: `A '${CLI_COMMAND_NAME}' command already exists at:\n${target}\n\nReplace it?`
+          message: `A '${commandName}' command already exists at:\n${target}\n\nReplace it?`
         });
-        if (choice !== 0) return;
+        if (choice !== 0) continue;
       }
 
       fs.writeFileSync(target, script, { encoding: 'utf-8' });
       fs.chmodSync(target, 0o755);
-      installedPath = target;
-      break;
+      installedPaths.push(target);
     } catch (err) {
       lastError = err;
     }
   }
 
-  if (!installedPath) {
+  if (installedPaths.length === 0) {
     dialog.showErrorBox(
       'Install Failed',
-      `Could not install '${CLI_COMMAND_NAME}' command.\n\n${lastError ? String(lastError.message || lastError) : 'No writable install location found.'}`
+      `Could not install terminal commands.\n\n${lastError ? String(lastError.message || lastError) : ''}`
     );
     return;
   }
 
-  config.cliCommandPath = installedPath;
+  config.cliCommandPath = installedPaths[0]; // Store one for reference
   saveConfig();
   setupMenu();
 
-  const dir = path.dirname(installedPath);
-  const inPath = isDirInPath(dir);
+  const inPath = isDirInPath(selectedDir);
   const nextSteps = inPath
-    ? `Try it in Terminal:\n  ${CLI_COMMAND_NAME} README.md`
-    : `Add this to your shell PATH (zsh):\n  echo 'export PATH=\"${dir}:$PATH\"' >> ~/.zshrc\n  source ~/.zshrc\n\nThen try:\n  ${CLI_COMMAND_NAME} README.md`;
+    ? `Try it in Terminal:\n  ${CLI_COMMAND_NAMES[1]} README.md`
+    : `Add this to your shell PATH (zsh):\n  echo 'export PATH=\"${selectedDir}:$PATH\"' >> ~/.zshrc\n  source ~/.zshrc\n\nThen try:\n  ${CLI_COMMAND_NAMES[1]} README.md`;
 
   dialog.showMessageBox({
     type: 'info',
-    message: `Installed '${CLI_COMMAND_NAME}' command`,
-    detail: `${installedPath}\n\n${nextSteps}`
+    message: `Installed terminal commands`,
+    detail: `Commands installed to: ${selectedDir}\n\nCommands: ${CLI_COMMAND_NAMES.join(', ')}\n\n${nextSteps}`
   });
 }
 
@@ -160,20 +287,20 @@ async function uninstallCliCommand() {
     return;
   }
 
-  const pathsToTry = [];
-  if (config.cliCommandPath) {
-    pathsToTry.push(config.cliCommandPath);
-  }
-  for (const dir of getCliInstallCandidates()) {
-    const p = path.join(dir, CLI_COMMAND_NAME);
-    if (!pathsToTry.includes(p)) pathsToTry.push(p);
+  const existingPaths = [];
+  const candidates = getCliInstallCandidates();
+  
+  for (const dir of candidates) {
+    for (const name of CLI_COMMAND_NAMES) {
+      const p = path.join(dir, name);
+      if (fs.existsSync(p)) existingPaths.push(p);
+    }
   }
 
-  const existing = pathsToTry.find(p => fs.existsSync(p));
-  if (!existing) {
+  if (existingPaths.length === 0) {
     dialog.showMessageBox({
       type: 'info',
-      message: `No '${CLI_COMMAND_NAME}' command found to uninstall.`
+      message: `No terminal commands found to uninstall.`
     });
     return;
   }
@@ -183,23 +310,28 @@ async function uninstallCliCommand() {
     buttons: ['Uninstall', 'Cancel'],
     defaultId: 0,
     cancelId: 1,
-    message: `Remove '${CLI_COMMAND_NAME}' from:\n${existing}?`
+    message: `Found terminal commands at:\n${existingPaths.join('\n')}\n\nUninstall them?`
   });
-  if (choice !== 0) return;
 
-  try {
-    fs.unlinkSync(existing);
-    if (config.cliCommandPath === existing) {
-      config.cliCommandPath = null;
-      saveConfig();
-      setupMenu();
+  if (choice === 0) {
+    let count = 0;
+    for (const p of existingPaths) {
+      try {
+        fs.unlinkSync(p);
+        count++;
+      } catch (err) {
+        console.error(`Failed to uninstall ${p}:`, err);
+      }
     }
+
+    config.cliCommandPath = null;
+    saveConfig();
+    setupMenu();
+
     dialog.showMessageBox({
       type: 'info',
-      message: `Uninstalled '${CLI_COMMAND_NAME}' command`
+      message: `Uninstalled ${count} command(s).`
     });
-  } catch (err) {
-    dialog.showErrorBox('Uninstall Failed', String(err.message || err));
   }
 }
 
@@ -687,6 +819,38 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+Shift+N',
           click: () => createWindow()
         },
+        { type: 'separator' },
+        {
+          label: 'New Daily Note (Scratch)',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: async () => {
+            const win = getFocusedWindow();
+            if (win) await createDailyNote(win, 'scratch', true);
+          }
+        },
+        {
+          label: 'New Daily Note (Reference)',
+          accelerator: 'CmdOrCtrl+Alt+D',
+          click: async () => {
+            const win = getFocusedWindow();
+            if (win) await createDailyNote(win, 'ref', true);
+          }
+        },
+        {
+          label: 'Browse Daily Notes Folder',
+          click: async () => {
+            const win = getFocusedWindow();
+            if (win) await browseDailyNotesFolder(win);
+          }
+        },
+        {
+          label: 'Show Daily Notes Folder in Finder',
+          click: async () => {
+            const win = getFocusedWindow();
+            if (win) await openDailyNotesFolder(win);
+          }
+        },
+        { type: 'separator' },
         {
           label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
@@ -995,6 +1159,16 @@ function setupMenu() {
               win.webContents.send('set-watch-mode', menuItem.checked);
             });
           }
+        },
+        { type: 'separator' },
+        {
+          label: 'Set Daily Notes Folder...',
+          click: async () => {
+            const win = getFocusedWindow();
+            if (win) {
+              await getDailyNotesFolder(win);
+            }
+          }
         }
       ]
     },
@@ -1030,12 +1204,12 @@ function setupMenu() {
         },
         { type: 'separator' },
         {
-          label: `Install '${CLI_COMMAND_NAME}' Command in PATH…`,
+          label: `Install '${CLI_COMMAND_NAMES.join("' and '")}' Commands in PATH…`,
           enabled: process.platform === 'darwin',
           click: () => installCliCommand()
         },
         {
-          label: `Uninstall '${CLI_COMMAND_NAME}' Command…`,
+          label: `Uninstall '${CLI_COMMAND_NAMES.join("' and '")}' Commands…`,
           enabled: process.platform === 'darwin',
           click: () => uninstallCliCommand()
         }
@@ -1080,12 +1254,10 @@ const textFileExtensions = [
 async function openFileOrFolder(targetWindow = null) {
   const win = targetWindow || getFocusedWindow();
 
+  // Don't use filters on macOS - they can gray out files unexpectedly
+  // The app can open any text file, so let users see everything
   const result = await dialog.showOpenDialog(win, {
-    properties: ['openFile', 'openDirectory', 'multiSelections'],
-    filters: [
-      { name: 'Text Files', extensions: textFileExtensions },
-      { name: 'All Files', extensions: ['*'] }
-    ]
+    properties: ['openFile', 'openDirectory', 'multiSelections', 'treatPackageAsDirectory']
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
@@ -1098,15 +1270,18 @@ async function openFileOrFolder(targetWindow = null) {
 
 function loadMarkdownFile(win, filePath, options = {}) {
   try {
+    const stats = fs.statSync(filePath);
     const content = fs.readFileSync(filePath, 'utf-8');
     const fileName = path.basename(filePath);
     win.webContents.send('file-loaded', {
       content,
       fileName,
       filePath,
+      mtime: stats.mtimeMs,
       openInBackground: options.background || false,
       forceNewTab: options.newTab || false,
-      reuseTab: options.reuseTab || null
+      reuseTab: options.reuseTab || null,
+      forceEdit: options.forceEdit || false
     });
     if (!options.background) {
       win.setTitle(`${fileName} - OpenMarkdownReader`);
@@ -1194,10 +1369,35 @@ function restoreSession() {
 }
 
 app.whenReady().then(() => {
+  const args = parseArgs(process.argv);
+  
+  if (args.watch) {
+    watchFileMode = true;
+  }
+  
+  if (args.theme) {
+    config.theme = args.theme;
+  }
+
+  if (args.monospace !== null) {
+    config.editorMonospace = args.monospace;
+  }
+
   setupMenu();
 
-  // Try to restore session, otherwise create empty window
-  if (!restoreSession()) {
+  // Handle files or daily notes passed via CLI on launch
+  if (args.files.length > 0 || args.scratch || args.ref) {
+    const win = createWindow();
+    win.webContents.on('did-finish-load', () => {
+      if (args.scratch) createDailyNote(win, 'scratch');
+      if (args.ref) createDailyNote(win, 'ref');
+      
+      args.files.forEach(file => {
+        const fullPath = path.isAbsolute(file) ? file : path.resolve(file);
+        openPathInWindow(win, fullPath, { forceEdit: args.edit });
+      });
+    });
+  } else if (args.noSession || !restoreSession()) {
     createWindow();
   }
 
@@ -1270,7 +1470,8 @@ ipcMain.handle('toggle-maximize', (event) => {
 ipcMain.handle('save-file', async (event, filePath, content) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8');
-    return { success: true };
+    const stats = fs.statSync(filePath);
+    return { success: true, mtime: stats.mtimeMs };
   } catch (err) {
     dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
     return { success: false, error: err.message };
@@ -1359,9 +1560,11 @@ ipcMain.handle('save-file-as', async (event, content, defaultName) => {
   if (!result.canceled && result.filePath) {
     try {
       fs.writeFileSync(result.filePath, content, 'utf-8');
+      const stats = fs.statSync(result.filePath);
       return {
         filePath: result.filePath,
-        fileName: path.basename(result.filePath)
+        fileName: path.basename(result.filePath),
+        mtime: stats.mtimeMs
       };
     } catch (err) {
       dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);
@@ -1369,6 +1572,126 @@ ipcMain.handle('save-file-as', async (event, content, defaultName) => {
     }
   }
   return null;
+});
+
+// Get file modification time
+ipcMain.handle('get-file-mtime', async (event, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.mtimeMs;
+  } catch (err) {
+    return null;
+  }
+});
+
+async function getDailyNotesFolder(win) {
+  // If not set, try a smart default
+  if (!config.dailyNotesFolder) {
+    const defaultPath = path.join(os.homedir(), 'Documents', 'Daily Notes');
+    if (!fs.existsSync(defaultPath)) {
+      try {
+        fs.mkdirSync(defaultPath, { recursive: true });
+      } catch (err) {
+        console.error('Failed to create default daily notes folder:', err);
+      }
+    }
+    if (fs.existsSync(defaultPath)) {
+      config.dailyNotesFolder = defaultPath;
+      saveConfig();
+    }
+  }
+
+  // If still not set or doesn't exist, prompt
+  if (!config.dailyNotesFolder || !fs.existsSync(config.dailyNotesFolder)) {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select Daily Notes Folder',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    
+    config.dailyNotesFolder = result.filePaths[0];
+    saveConfig();
+  }
+  
+  return config.dailyNotesFolder;
+}
+
+async function openDailyNotesFolder(win) {
+  const folder = await getDailyNotesFolder(win);
+  if (folder) {
+    shell.openPath(folder);
+  }
+}
+
+async function browseDailyNotesFolder(win) {
+  const folder = await getDailyNotesFolder(win);
+  if (folder) {
+    openPathInWindow(win, folder);
+  }
+}
+
+async function createDailyNote(win, type, forceNew = false) {
+  // 1. Ensure folder exists
+  let folder = await getDailyNotesFolder(win);
+  if (!folder) return null;
+  
+  // 2. Generate filename
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  let fileName = `${dateStr}-${type}.md`;
+  let filePath = path.join(folder, fileName);
+  
+  // If forceNew is requested and file exists, find a unique name
+  if (forceNew && fs.existsSync(filePath)) {
+    let counter = 1;
+    while (fs.existsSync(filePath)) {
+      fileName = `${dateStr}-${type}-${counter}.md`;
+      filePath = path.join(folder, fileName);
+      counter++;
+    }
+  }
+  
+  // 3. Create if doesn't exist
+  if (!fs.existsSync(filePath)) {
+    try {
+      const initialContent = config.dailyNotesTemplate || `# Daily Note (${type.toUpperCase()}) - ${dateStr}\n\n`;
+      fs.writeFileSync(filePath, initialContent, 'utf-8');
+    } catch (err) {
+      dialog.showErrorBox('Error', `Could not create daily note: ${err.message}`);
+      return null;
+    }
+  }
+  
+  // 4. Open the file
+  loadMarkdownFile(win, filePath);
+  return { filePath, fileName };
+}
+
+// Get daily notes folder, prompt if not set
+ipcMain.handle('get-daily-notes-folder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return await getDailyNotesFolder(win);
+});
+
+// Open daily notes folder in OS
+ipcMain.handle('open-daily-notes-folder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return await openDailyNotesFolder(win);
+});
+
+// Browse daily notes folder in app
+ipcMain.handle('browse-daily-notes-folder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return await browseDailyNotesFolder(win);
+});
+
+// Create or open a daily note
+ipcMain.handle('create-daily-note', async (event, type, forceNew = true) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return await createDailyNote(win, type, forceNew);
 });
 
 // Open folder
@@ -1541,8 +1864,9 @@ ipcMain.handle('watch-file', async (event, filePath) => {
         fileWatchDebounceTimers.delete(watchKey);
         if (win.isDestroyed()) return;
         try {
+          const stats = fs.statSync(filePath);
           const content = fs.readFileSync(filePath, 'utf-8');
-          win.webContents.send('file-changed', { filePath, content });
+          win.webContents.send('file-changed', { filePath, content, mtime: stats.mtimeMs });
         } catch (err) {
           console.error('Error reading changed file:', err);
         }
@@ -1583,8 +1907,9 @@ ipcMain.handle('watch-file', async (event, filePath) => {
 
     // Immediately check for changes when watch mode is enabled
     try {
+      const stats = fs.statSync(filePath);
       const content = fs.readFileSync(filePath, 'utf-8');
-      win.webContents.send('file-changed', { filePath, content });
+      win.webContents.send('file-changed', { filePath, content, mtime: stats.mtimeMs });
     } catch (err) {
       console.error('Error reading file on watch start:', err);
     }

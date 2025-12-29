@@ -122,6 +122,72 @@
         "role": "Editor",
         "mimeType": "text/markdown",
         "icon": "build/icon.icns"
+      },
+      {
+        "ext": "txt",
+        "name": "Text Document",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "json",
+        "name": "JSON Document",
+        "role": "Viewer",
+        "mimeType": "application/json"
+      },
+      {
+        "ext": "yaml",
+        "name": "YAML Document",
+        "role": "Viewer",
+        "mimeType": "text/yaml"
+      },
+      {
+        "ext": "yml",
+        "name": "YAML Document",
+        "role": "Viewer",
+        "mimeType": "text/yaml"
+      },
+      {
+        "ext": "toml",
+        "name": "TOML Document",
+        "role": "Viewer",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "xml",
+        "name": "XML Document",
+        "role": "Viewer",
+        "mimeType": "text/xml"
+      },
+      {
+        "ext": "csv",
+        "name": "CSV Document",
+        "role": "Viewer",
+        "mimeType": "text/csv"
+      },
+      {
+        "ext": "log",
+        "name": "Log File",
+        "role": "Viewer",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "rst",
+        "name": "reStructuredText Document",
+        "role": "Viewer",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "org",
+        "name": "Org Document",
+        "role": "Viewer",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "adoc",
+        "name": "AsciiDoc Document",
+        "role": "Viewer",
+        "mimeType": "text/plain"
       }
     ]
   }
