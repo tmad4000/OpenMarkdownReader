@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', oldPath, newName),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
+  getFileMtime: (filePath) => ipcRenderer.invoke('get-file-mtime', filePath),
   onSave: (callback) => ipcRenderer.on('save', () => callback()),
   onSaveAs: (callback) => ipcRenderer.on('save-as', () => callback()),
   onSaveAll: (callback) => ipcRenderer.on('save-all', () => callback()),
@@ -36,6 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   watchFile: (filePath) => ipcRenderer.invoke('watch-file', filePath),
   unwatchFile: (filePath) => ipcRenderer.invoke('unwatch-file', filePath),
   onFileChanged: (callback) => ipcRenderer.on('file-changed', (event, data) => callback(data)),
+  getDailyNotesFolder: () => ipcRenderer.invoke('get-daily-notes-folder'),
+  openDailyNotesFolder: () => ipcRenderer.invoke('open-daily-notes-folder'),
+  browseDailyNotesFolder: () => ipcRenderer.invoke('browse-daily-notes-folder'),
+  createDailyNote: (type, forceNew) => ipcRenderer.invoke('create-daily-note', type, forceNew),
 
   // Folder/directory operations
   openFolder: () => ipcRenderer.invoke('open-folder'),
@@ -43,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
   createFileInDirectory: (dirPath, fileName) => ipcRenderer.invoke('create-file-in-directory', dirPath, fileName),
+  createFolderInDirectory: (dirPath, folderName) => ipcRenderer.invoke('create-folder-in-directory', dirPath, folderName),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 

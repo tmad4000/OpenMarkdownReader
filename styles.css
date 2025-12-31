@@ -235,6 +235,36 @@ html, body {
   gap: 4px;
 }
 
+.sidebar-path {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--hover-bg);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 28px;
+}
+
+.sidebar-path.hidden {
+  display: none;
+}
+
+.sidebar-path-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.sidebar-path-text:hover {
+  background: var(--hover-bg);
+  color: var(--text-color);
+}
+
 .file-tree {
   flex: 1;
   overflow-y: auto;

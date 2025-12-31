@@ -1496,6 +1496,24 @@ ipcMain.handle('create-file-in-directory', async (event, dirPath, fileName) => {
   }
 });
 
+// Create folder in directory
+ipcMain.handle('create-folder-in-directory', async (event, dirPath, folderName) => {
+  try {
+    const folderPath = path.join(dirPath, folderName);
+
+    // Check if folder already exists
+    if (fs.existsSync(folderPath)) {
+      return { success: false, error: 'A folder with that name already exists' };
+    }
+
+    // Create folder
+    fs.mkdirSync(folderPath);
+    return { success: true, folderPath, folderName };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Rename file
 ipcMain.handle('rename-file', async (event, oldPath, newName) => {
   try {

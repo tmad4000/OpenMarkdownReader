@@ -98,6 +98,9 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
+const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
+const sidebarPath = document.getElementById('sidebar-path');
+const sidebarPathText = document.getElementById('sidebar-path-text');
 const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
@@ -115,16 +118,18 @@ const csvTableContainer = document.getElementById('csv-table-container');
 const csvToggleRawBtn = document.getElementById('csv-toggle-raw');
 
 // Create a new tab
-function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true) {
+function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null) {
   const tabId = ++tabIdCounter;
   const tab = {
     id: tabId,
     fileName,
     filePath,
     content: mdContent,
+    lastKnownMtime: mtime,
     scrollPos: 0,
     isEditing: false,
-    isModified: false
+    isModified: false,
+    externalChangePending: false
   };
   tabs.push(tab);
 
@@ -189,8 +194,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
 }
 
 // Create tab in background (doesn't switch to it)
-function createTabBackground(fileName, mdContent, filePath) {
-  return createTab(fileName, mdContent, filePath, false);
+function createTabBackground(fileName, mdContent, filePath, mtime = null) {
+  return createTab(fileName, mdContent, filePath, false, mtime);
 }
 
 // Tab drag-to-reorder
@@ -491,7 +496,15 @@ async function closeTab(tabId, silent = false) {
         tab.content = editor.value;
       }
       if (tab.filePath) {
-        await window.electronAPI.saveFile(tab.filePath, tab.content);
+        const saveResult = await writeTabToDisk(tab);
+        if (!saveResult || !saveResult.success) {
+          return; // Save cancelled or failed
+        }
+        tab.isModified = false;
+        if (tab.isEditing) {
+          tab.originalContent = tab.content;
+        }
+        updateTabUI(tab.id);
       } else {
         const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
         if (!saveResult) {
@@ -541,14 +554,16 @@ async function closeTab(tabId, silent = false) {
 }
 
 // Update tab content
-function updateTab(tabId, fileName, mdContent, filePath) {
+function updateTab(tabId, fileName, mdContent, filePath, mtime = null) {
   const tab = tabs.find(t => t.id === tabId);
   if (tab) {
     tab.fileName = fileName;
     tab.content = mdContent;
     tab.filePath = filePath;
+    tab.lastKnownMtime = mtime;
     tab.scrollPos = 0;
     tab.isModified = false;
+    tab.externalChangePending = false;
 
     updateTabDisplay(tabId, fileName, filePath);
     updateTabUI(tabId);
@@ -639,6 +654,44 @@ editor.addEventListener('input', () => {
   }
 });
 
+async function writeTabToDisk(tab, { fromAutoSave = false } = {}) {
+  if (!tab || !tab.filePath) {
+    return { success: false, error: 'missing-path' };
+  }
+
+  const currentMtime = await window.electronAPI.getFileMtime(tab.filePath);
+  const hasExternalChange = !!tab.externalChangePending
+    || (currentMtime && tab.lastKnownMtime && currentMtime > tab.lastKnownMtime);
+
+  if (hasExternalChange) {
+    if (fromAutoSave) {
+      tab.externalChangePending = true;
+      if (currentMtime) {
+        tab.lastKnownMtime = currentMtime;
+      }
+      return { success: false, conflict: true };
+    }
+
+    const overwrite = confirm(`File "${tab.fileName}" has been modified externally since you opened or last saved it. Overwrite anyway?`);
+    if (!overwrite) {
+      tab.externalChangePending = true;
+      if (currentMtime) {
+        tab.lastKnownMtime = currentMtime;
+      }
+      return { success: false, conflict: true, cancelled: true };
+    }
+
+    tab.externalChangePending = false;
+  }
+
+  const result = await window.electronAPI.saveFile(tab.filePath, tab.content);
+  if (result && result.success) {
+    tab.lastKnownMtime = result.mtime;
+    tab.externalChangePending = false;
+  }
+  return result || { success: false, error: 'save-failed' };
+}
+
 // Save file
 async function saveFile() {
   const tab = tabs.find(t => t.id === activeTabId);
@@ -649,21 +702,25 @@ async function saveFile() {
   }
 
   if (tab.filePath) {
-    await window.electronAPI.saveFile(tab.filePath, tab.content);
-    tab.isModified = false;
-    // Update original content to match saved content, so 'Revert' goes back to this save
-    if (tab.isEditing) {
-      tab.originalContent = tab.content;
+    const result = await writeTabToDisk(tab);
+    if (result && result.success) {
+      tab.isModified = false;
+      // Update original content to match saved content, so 'Revert' goes back to this save
+      if (tab.isEditing) {
+        tab.originalContent = tab.content;
+      }
+      updateTabUI(activeTabId);
+      document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
-    updateTabUI(activeTabId);
-    document.title = `${tab.fileName} - OpenMarkdownReader`;
   } else {
     // No file path, use save as
     const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
     if (result) {
       tab.filePath = result.filePath;
       tab.fileName = result.fileName;
+      tab.lastKnownMtime = result.mtime;
       tab.isModified = false;
+      tab.externalChangePending = false;
       // Update original content here too
       if (tab.isEditing) {
         tab.originalContent = tab.content;
@@ -695,7 +752,9 @@ async function saveFileAs() {
 
   tab.filePath = result.filePath;
   tab.fileName = result.fileName;
+  tab.lastKnownMtime = result.mtime;
   tab.isModified = false;
+  tab.externalChangePending = false;
   if (tab.isEditing) tab.originalContent = tab.content;
 
   updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
@@ -718,6 +777,124 @@ sidebarToggle.addEventListener('click', () => {
 openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
+
+// Update sidebar path display
+function updateSidebarPath(dirPath) {
+  if (!dirPath) {
+    sidebarPath.classList.add('hidden');
+    return;
+  }
+
+  // Show the path, with home directory abbreviated
+  const homePath = dirPath.replace(/^\/Users\/[^/]+/, '~');
+  const folderName = dirPath.split('/').pop();
+
+  sidebarPathText.textContent = folderName;
+  sidebarPathText.title = dirPath; // Full path on hover
+  sidebarPath.classList.remove('hidden');
+}
+
+// Click on path to reveal in Finder
+sidebarPathText.addEventListener('click', () => {
+  if (currentDirectory) {
+    window.electronAPI.revealInFinder(currentDirectory);
+  }
+});
+
+// New folder from sidebar
+sidebarNewFolderBtn.addEventListener('click', () => {
+  if (currentDirectory) {
+    createNewFolderInDirectory(currentDirectory);
+  }
+});
+
+// Create a new folder in the directory with inline editing
+async function createNewFolderInDirectory(dirPath) {
+  // Generate a unique default name
+  let defaultName = 'New Folder';
+  let counter = 1;
+  const existingNames = new Set();
+
+  // Collect existing names
+  directoryFiles.forEach(item => existingNames.add(item.name));
+
+  while (existingNames.has(defaultName)) {
+    defaultName = `New Folder ${counter++}`;
+  }
+
+  // Create a temporary item in the tree
+  const tempItem = {
+    name: defaultName,
+    path: null,
+    type: 'folder',
+    isNew: true
+  };
+
+  // Add to beginning of directory files (folders first)
+  directoryFiles.unshift(tempItem);
+  renderFileTree();
+
+  // Find the new element and start inline editing
+  const newEl = fileTree.querySelector('.file-tree-folder.new-folder');
+  if (newEl) {
+    startNewFolderRename(newEl, tempItem, dirPath, defaultName);
+  }
+}
+
+// Rename new folder inline
+function startNewFolderRename(el, tempItem, dirPath, defaultName) {
+  const span = el.querySelector('span');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = defaultName;
+  input.className = 'file-tree-rename-input';
+  span.replaceWith(input);
+  el.classList.add('renaming');
+
+  input.focus();
+  input.select();
+
+  async function finishRename() {
+    const newName = input.value.trim();
+
+    if (!newName) {
+      // Cancel - remove temp item
+      const idx = directoryFiles.indexOf(tempItem);
+      if (idx >= 0) directoryFiles.splice(idx, 1);
+      renderFileTree();
+      return;
+    }
+
+    // Create the folder
+    const result = await window.electronAPI.createFolderInDirectory(dirPath, newName);
+
+    if (result.success) {
+      // Update temp item with real data
+      tempItem.name = result.folderName;
+      tempItem.path = result.folderPath;
+      tempItem.isNew = false;
+      renderFileTree();
+    } else {
+      alert(`Could not create folder: ${result.error}`);
+      const idx = directoryFiles.indexOf(tempItem);
+      if (idx >= 0) directoryFiles.splice(idx, 1);
+      renderFileTree();
+    }
+  }
+
+  input.addEventListener('blur', finishRename);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      const idx = directoryFiles.indexOf(tempItem);
+      if (idx >= 0) directoryFiles.splice(idx, 1);
+      renderFileTree();
+    }
+  });
+}
 
 // New file from sidebar
 sidebarNewFileBtn.addEventListener('click', () => {
@@ -787,7 +964,10 @@ function createNewFileInDirectory(dirPath) {
 window.electronAPI.onDirectoryLoaded((data) => {
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
-  
+
+  // Update sidebar path display
+  updateSidebarPath(currentDirectory);
+
   // Pre-fetch all files for command palette
   allFilesCache = null;
   allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
@@ -839,7 +1019,7 @@ function renderFileTreeItems(items, container, depth) {
 
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
-      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}`;
+      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${item.isNew ? ' new-folder' : ''}`;
       el.innerHTML = `
         <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
           <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
@@ -1160,11 +1340,16 @@ window.electronAPI.onFileLoaded((data) => {
     const tab = tabs.find(t => t.id === reuseTab);
     if (tab) {
       tab.content = data.content;
+      tab.lastKnownMtime = data.mtime || null;
       tab.isModified = false;
+      tab.externalChangePending = false;
       tab.originalContent = data.content;
       // Only update the visible editor/preview if this is the active tab
       if (tab.id === activeTabId) {
-        if (tab.isEditing) {
+        if (data.forceEdit && !tab.isEditing) {
+          tab.isEditing = true;
+          showEditor(data.content);
+        } else if (tab.isEditing) {
           if (easyMDE) {
             easyMDE.value(data.content);
           } else {
@@ -1191,13 +1376,18 @@ window.electronAPI.onFileLoaded((data) => {
       // Update content if no unsaved changes (fresh from disk)
       if (!existingTab.isModified) {
         existingTab.content = data.content;
+        existingTab.lastKnownMtime = data.mtime || null;
+        existingTab.externalChangePending = false;
         if (existingTab.isEditing) {
           existingTab.originalContent = data.content;
         }
 
         // Refresh UI only if it's the active tab
         if (existingTab.id === activeTabId) {
-          if (existingTab.isEditing) {
+          if (data.forceEdit && !existingTab.isEditing) {
+            existingTab.isEditing = true;
+            showEditor(data.content);
+          } else if (existingTab.isEditing) {
             if (easyMDE) {
               easyMDE.value(data.content);
             } else {
@@ -1217,7 +1407,17 @@ window.electronAPI.onFileLoaded((data) => {
 
   // If forcing new tab or opening in background, always create new tab
   if (forceNewTab || openInBackground) {
-    const newTabId = createTabBackground(data.fileName, data.content, data.filePath);
+    const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime);
+    
+    // Set edit mode if requested
+    if (data.forceEdit) {
+      const tab = tabs.find(t => t.id === newTabId);
+      if (tab) {
+        tab.isEditing = true;
+        tab.originalContent = data.content;
+      }
+    }
+
     // Start watching if watch mode is on
     if (data.filePath && settings.watchFileMode) {
       window.electronAPI.watchFile(data.filePath);
@@ -1232,15 +1432,31 @@ window.electronAPI.onFileLoaded((data) => {
     if (activeTab.filePath && settings.watchFileMode) {
       window.electronAPI.unwatchFile(activeTab.filePath);
     }
-    updateTab(activeTabId, data.fileName, data.content, data.filePath);
-    renderContent(data.content, data.fileName);
+    updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime);
+    
+    if (data.forceEdit) {
+      activeTab.isEditing = true;
+      activeTab.originalContent = data.content;
+      showEditor(data.content);
+    } else {
+      renderContent(data.content, data.fileName);
+    }
+    
     document.title = `${data.fileName} - OpenMarkdownReader`;
     // Start watching new file
     if (data.filePath && settings.watchFileMode) {
       window.electronAPI.watchFile(data.filePath);
     }
   } else {
-    createTab(data.fileName, data.content, data.filePath);
+    const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime);
+    if (data.forceEdit) {
+      const tab = tabs.find(t => t.id === newTabId);
+      if (tab) {
+        tab.isEditing = true;
+        tab.originalContent = data.content;
+        showEditor(data.content);
+      }
+    }
     // Start watching if watch mode is on
     if (data.filePath && settings.watchFileMode) {
       window.electronAPI.watchFile(data.filePath);
@@ -1335,7 +1551,15 @@ window.electronAPI.onRefreshFile(async () => {
       if (tab.isEditing) {
         tab.content = easyMDE ? easyMDE.value() : editor.value;
       }
-      await window.electronAPI.saveFile(tab.filePath, tab.content);
+      const saveResult = await writeTabToDisk(tab);
+      if (!saveResult || !saveResult.success) {
+        return;
+      }
+      tab.isModified = false;
+      if (tab.isEditing) {
+        tab.originalContent = tab.content;
+      }
+      updateTabUI(tab.id);
     }
   }
 
@@ -1390,17 +1614,23 @@ async function saveAllFiles() {
       }
 
       if (tab.filePath) {
-        await window.electronAPI.saveFile(tab.filePath, tab.content);
-        tab.isModified = false;
-        tab.originalContent = tab.content;
-        updateTabUI(tab.id);
+        const result = await writeTabToDisk(tab);
+        if (result && result.success) {
+          tab.isModified = false;
+          if (tab.isEditing) {
+            tab.originalContent = tab.content;
+          }
+          updateTabUI(tab.id);
+        }
       } else {
         // No file path, need Save As dialog
         const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
         if (result) {
           tab.filePath = result.filePath;
           tab.fileName = result.fileName;
+          tab.lastKnownMtime = result.mtime;
           tab.isModified = false;
+          tab.externalChangePending = false;
           tab.originalContent = tab.content;
           updateTabDisplay(tab.id, tab.fileName, tab.filePath);
           updateTabUI(tab.id);
@@ -1447,19 +1677,50 @@ window.electronAPI.onSetWatchMode((watchMode) => {
 });
 
 // Listen for file changes from watcher
-window.electronAPI.onFileChanged(({ filePath, content }) => {
+window.electronAPI.onFileChanged(({ filePath, content, mtime }) => {
   // Find the tab with this file
   const tab = tabs.find(t => t.filePath === filePath);
   if (!tab) return;
 
-  // Don't clobber unsaved changes
-  if (tab.isModified) {
-    console.log('File changed externally but tab has unsaved edits, skipping update');
+  // If this was our own save, just update the mtime and return
+  if (content === tab.content) {
+    tab.lastKnownMtime = mtime;
+    tab.externalChangePending = false;
     return;
   }
 
-  // Update content
+  // If we have unsaved changes, ask user before reloading
+  if (tab.isModified) {
+    // Only prompt if the incoming content is actually different from our current buffer
+    if (content !== (tab.isEditing ? (easyMDE ? easyMDE.value() : editor.value) : tab.content)) {
+      if (confirm(`File "${tab.fileName}" has been modified externally. Would you like to reload it? (Unsaved changes will be lost)`)) {
+        tab.content = content;
+        tab.lastKnownMtime = mtime;
+        tab.isModified = false;
+        tab.externalChangePending = false;
+        if (tab.isEditing) {
+          tab.originalContent = content;
+          if (tab.id === activeTabId) {
+            if (easyMDE) easyMDE.value(content);
+            else editor.value = content;
+          }
+        } else if (tab.id === activeTabId) {
+          renderContent(content, tab.fileName);
+        }
+        updateTabUI(tab.id);
+      } else {
+        // User said no: record the external change so auto-save won't overwrite it
+        tab.lastKnownMtime = mtime;
+        tab.externalChangePending = true;
+      }
+    }
+    return;
+  }
+
+  // No unsaved changes, update content automatically
   tab.content = content;
+  tab.lastKnownMtime = mtime;
+  tab.externalChangePending = false;
   if (tab.isEditing) {
     tab.originalContent = content;
   }
@@ -1477,6 +1738,7 @@ window.electronAPI.onFileChanged(({ filePath, content }) => {
     }
     document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
   }
+  updateTabUI(tab.id);
 });
 
 // Listen for toggle sidebar
@@ -2253,11 +2515,51 @@ document.getElementById('titlebar').addEventListener('dblclick', (e) => {
 // Command Palette / File Search
 let commandPaletteSelectedIndex = 0;
 let commandPaletteFiles = []; // This will hold the currently displayed (filtered) files
-let lastInputSource = 'mouse'; // Track input source to prevent mouse hover fighting keyboard
 
-document.addEventListener('mousemove', () => {
-  lastInputSource = 'mouse';
-});
+const builtInCommands = [
+  {
+    name: 'Daily Note: New Scratch Note',
+    description: 'Create a new scratch note for today',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
+    action: () => window.electronAPI.createDailyNote('scratch', true)
+  },
+  {
+    name: 'Daily Note: Open Today\'s Scratch Note',
+    description: 'Open the main scratch note for today',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>',
+    action: () => window.electronAPI.createDailyNote('scratch', false)
+  },
+  {
+    name: 'Daily Note: New Reference Note',
+    description: 'Create a new reference note for today',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>',
+    action: () => window.electronAPI.createDailyNote('ref', true)
+  },
+  {
+    name: 'Daily Note: Open Today\'s Reference Note',
+    description: 'Open the main reference note for today',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>',
+    action: () => window.electronAPI.createDailyNote('ref', false)
+  },
+      {
+        name: 'Daily Note: Browse Folder in App',
+        description: 'Open the daily notes folder in the sidebar',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>',
+        action: () => window.electronAPI.browseDailyNotesFolder()
+      },
+      {
+        name: 'Daily Note: Open Folder in Finder',
+        description: 'Open the daily notes folder in Finder',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>',
+        action: () => window.electronAPI.openDailyNotesFolder()
+      },
+      {
+        name: 'Daily Note: Set Folder...',
+    description: 'Choose where daily notes are saved',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+    action: () => window.electronAPI.getDailyNotesFolder()
+  }
+];
 
 async function showCommandPalette() {
   commandPalette.classList.remove('hidden');
@@ -2312,137 +2614,145 @@ function getAllFilesFlat(items, basePath = '') {
 
 function updateCommandPaletteResults() {
   const query = commandPaletteInput.value.toLowerCase().trim();
+  const isCommandQuery = query.startsWith('>');
+  const searchText = isCommandQuery ? query.substring(1).trim() : query;
 
-  // Build list of searchable items: folder files + open tabs
+  // Build list of searchable items: folder files + open tabs + commands
   let allItems = [];
 
-  // Add files from folder if available
-  if (allFilesCache) {
-    allItems = allFilesCache.map(f => ({ ...f })); // Clone to avoid modifying cache
-  } else if (directoryFiles.length > 0) {
-    allItems = getAllFilesFlat(directoryFiles);
-  }
-
-  // Add open tabs that have content (even without a folder open)
-  // We mark them as isOpenTab to prioritize them
-  tabs.forEach(tab => {
-    if (tab.content !== null) {
-      // Check if this file is already in the list
-      const existingItem = tab.filePath ? allItems.find(f => f.path === tab.filePath) : null;
-      
-      if (existingItem) {
-        existingItem.isOpenTab = true;
-        existingItem.tabId = tab.id;
-      } else {
-        // Not in file list (or no file path), add it
-        allItems.push({
-          name: tab.fileName,
-          path: tab.filePath || 'Untitled',
-          isMarkdown: true,
-          isOpenTab: true,
-          tabId: tab.id
-        });
-      }
+  // 1. Add built-in commands
+  builtInCommands.forEach(cmd => {
+    if (!searchText || cmd.name.toLowerCase().includes(searchText) || (cmd.description && cmd.description.toLowerCase().includes(searchText))) {
+      allItems.push({
+        ...cmd,
+        type: 'command',
+        isCommand: true
+      });
     }
   });
 
-  // Filter based on query
-  let filteredFiles = allItems;
-  if (query) {
-    filteredFiles = allItems.filter(f =>
-      f.name.toLowerCase().includes(query) ||
-      f.path.toLowerCase().includes(query)
-    );
+  // 2. Add files from folder if available (unless specifically searching for commands with >)
+  if (!isCommandQuery || searchText) {
+    if (allFilesCache) {
+      allItems = allItems.concat(allFilesCache.map(f => ({ ...f })));
+    } else if (directoryFiles.length > 0) {
+      allItems = allItems.concat(getAllFilesFlat(directoryFiles));
+    }
   }
 
-  // Sort: Open tabs first, then exact name matches, then partial matches
-  filteredFiles.sort((a, b) => {
-    // 1. Open tabs first
-    if (a.isOpenTab && !b.isOpenTab) return -1;
-    if (!a.isOpenTab && b.isOpenTab) return 1;
+  // 3. Add open tabs that have content (even without a folder open)
+  // We mark them as isOpenTab to prioritize them
+  if (!isCommandQuery || searchText) {
+    tabs.forEach(tab => {
+      if (tab.content !== null) {
+        // Check if this file is already in the list
+        const existingItem = tab.filePath ? allItems.find(f => f.path === tab.filePath) : null;
+        
+        if (existingItem) {
+          existingItem.isOpenTab = true;
+          existingItem.tabId = tab.id;
+        } else {
+          // Not in file list (or no file path), add it
+          allItems.push({
+            name: tab.fileName,
+            path: tab.filePath || 'Untitled',
+            isMarkdown: true,
+            isOpenTab: true,
+            tabId: tab.id
+          });
+        }
+      }
+    });
+  }
 
-    // 2. Exact name match starts with query
-    const aNameMatch = a.name.toLowerCase().startsWith(query);
-    const bNameMatch = b.name.toLowerCase().startsWith(query);
-    if (aNameMatch && !bNameMatch) return -1;
-    if (!aNameMatch && bNameMatch) return 1;
-    
-    // 3. Alphabetical
-    return a.name.localeCompare(b.name);
+  // Filter based on query if not already filtered
+  let filteredItems = allItems;
+  if (searchText && !isCommandQuery) {
+    filteredItems = allItems.filter(item => {
+      if (item.isCommand) return item.name.toLowerCase().includes(searchText);
+      return item.name.toLowerCase().includes(searchText) || (item.path && item.path.toLowerCase().includes(searchText));
+    });
+  } else if (isCommandQuery) {
+    filteredItems = allItems.filter(item => item.isCommand);
+  }
+
+  // Sort: Commands first if query starts with >, otherwise open tabs first
+  filteredItems.sort((a, b) => {
+    if (isCommandQuery) {
+      if (a.isCommand && !b.isCommand) return -1;
+      if (!a.isCommand && b.isCommand) return 1;
+    } else {
+      // 1. Open tabs first
+      if (a.isOpenTab && !b.isOpenTab) return -1;
+      if (!a.isOpenTab && b.isOpenTab) return 1;
+      
+      // 2. Commands next
+      if (a.isCommand && !b.isCommand) return -1;
+      if (!a.isCommand && b.isCommand) return 1;
+    }
+
+    // 3. Exact name matches
+    const aExact = (a.name || '').toLowerCase() === searchText;
+    const bExact = (b.name || '').toLowerCase() === searchText;
+    if (aExact && !bExact) return -1;
+    if (!aExact && bExact) return 1;
+
+    // 4. Case-insensitive sort
+    return (a.name || '').localeCompare(b.name || '');
   });
 
-  // Limit results
-  filteredFiles = filteredFiles.slice(0, 20);
-  
-  // Update global variable for selection logic
-  commandPaletteFiles = filteredFiles;
+  commandPaletteFiles = filteredItems;
 
-  // Reset selection if out of bounds
-  if (commandPaletteSelectedIndex >= filteredFiles.length) {
-    commandPaletteSelectedIndex = Math.max(0, filteredFiles.length - 1);
+  if (commandPaletteSelectedIndex >= filteredItems.length) {
+    commandPaletteSelectedIndex = Math.max(0, filteredItems.length - 1);
   }
 
-  // Render results
-  if (filteredFiles.length === 0) {
-    if (!currentDirectory && tabs.filter(t => t.filePath).length === 0) {
-      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files open yet<br><span style="font-size: 12px; opacity: 0.7;">Open a file or folder with ⌘O</span></div>';
-    } else if (query) {
-      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No matching files</div>';
-    } else {
-      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files found</div>';
+  if (filteredItems.length === 0) {
+    if (commandPaletteMode === 'files') {
+      if (currentDirectory) {
+        commandPaletteResults.innerHTML = '<div class="command-palette-empty">No matching files or commands</div>';
+      } else {
+        commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files open yet<br><span style="font-size: 12px; opacity: 0.7;">Open a file or folder with ⌘O or type > for commands</span></div>';
+      }
     }
     return;
   }
 
-  commandPaletteResults.innerHTML = filteredFiles.map((file, index) => {
-    const relativePath = currentDirectory && file.path.startsWith(currentDirectory) 
-      ? file.path.replace(currentDirectory + '/', '') 
-      : file.path;
-    const pathDir = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
-    
-    const icon = file.isOpenTab ? 
-      // Tab icon
-      `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="opacity: 0.8;">
-         <path d="M0 3.75C0 2.784.784 2 1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 14H1.75A1.75 1.75 0 010 12.25v-8.5zm1.75-.25a.25.25 0 00-.25.25v8.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H1.75zM3.5 6.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75z"/>
-       </svg>` :
-      // File icon
-      `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="opacity: 0.5;">
-         <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
-       </svg>`;
-
-    const isOpenBadge = file.isOpenTab ? '<span class="command-palette-badge">Open</span>' : '';
+  const displayItems = filteredItems.slice(0, 100);
+  commandPaletteResults.innerHTML = displayItems.map((item, index) => {
+    const isSelected = index === commandPaletteSelectedIndex;
+    const icon = item.isCommand ? (item.icon || '⌘') : (item.isOpenTab ? '📄' : '📁');
+    const pathDir = item.isCommand ? (item.description || 'Command') : (item.path ? item.path.substring(0, item.path.lastIndexOf(path.sep)) : '');
+    const isOpenBadge = item.isOpenTab ? '<span class="command-palette-badge">Open</span>' : '';
+    const isCommandBadge = item.isCommand ? '<span class="command-palette-badge" style="background: var(--accent-color); color: white;">Command</span>' : '';
 
     return `
-      <div class="command-palette-item ${index === commandPaletteSelectedIndex ? 'selected' : ''}" data-index="${index}">
-        ${icon}
+      <div class="command-palette-item ${isSelected ? 'selected' : ''}" data-index="${index}">
+        <div class="command-palette-item-icon">${icon}</div>
         <div class="command-palette-item-info">
           <div class="command-palette-item-name">
-            ${escapeHtml(file.name)}
-            ${isOpenBadge}
+            ${escapeHtml(item.name)} ${isOpenBadge} ${isCommandBadge}
           </div>
-          ${pathDir ? `<div class="command-palette-item-path">${escapeHtml(pathDir)}</div>` : ''}
+          <div class="command-palette-item-path">${escapeHtml(pathDir)}</div>
         </div>
       </div>
     `;
   }).join('');
 
-  // Add click handlers
+  // Add click handlers to items
   commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
     el.addEventListener('click', (e) => {
       selectCommandPaletteItem(index, e);
     });
+    
     el.addEventListener('mouseenter', () => {
-      // Only update selection on mouse hover if the mouse is actually the source of input
-      // This prevents the selection from jumping when the list scrolls under the mouse due to keyboard nav
-      if (lastInputSource === 'mouse') {
-        commandPaletteSelectedIndex = index;
-        updateSelectedItem();
-      }
+      commandPaletteSelectedIndex = index;
+      updateCommandPaletteSelection();
     });
   });
-  
-  // Ensure selected item is in view
-  updateSelectedItem();
+
+  // Ensure selected item is visible
+  updateCommandPaletteSelection();
 }
 
 function updateSelectedItem() {
@@ -2459,9 +2769,15 @@ function updateSelectedItem() {
 
 function selectCommandPaletteItem(index, event = null) {
   if (index >= 0 && index < commandPaletteFiles.length) {
-    const file = commandPaletteFiles[index];
+    const item = commandPaletteFiles[index];
     hideCommandPalette();
 
+    if (item.isCommand && item.action) {
+      item.action();
+      return;
+    }
+
+    const file = item;
     // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
     const options = {};
     if (event && event.metaKey) {
@@ -2477,10 +2793,14 @@ function selectCommandPaletteItem(index, event = null) {
   }
 }
 
-// Command palette input handler
+// Command palette input handler with debounce
+let commandPaletteInputTimer = null;
 commandPaletteInput.addEventListener('input', () => {
-  commandPaletteSelectedIndex = 0;
-  updateCommandPaletteResults();
+  clearTimeout(commandPaletteInputTimer);
+  commandPaletteInputTimer = setTimeout(() => {
+    commandPaletteSelectedIndex = 0;
+    updateCommandPaletteResults();
+  }, 150);
 });
 
 // Command palette keyboard navigation
@@ -2638,10 +2958,19 @@ window.electronAPI.onCheckUnsaved(async () => {
     clearTimeout(autoSaveTimer); // Cancel any pending auto-save
     const savePromises = tabs
       .filter(tab => tab.isModified && tab.filePath)
-      .map(tab => window.electronAPI.saveFile(tab.filePath, tab.content).then(() => {
-        tab.isModified = false;
-        updateTabUI(tab.id);
-      }));
+      .map(async tab => {
+        if (tab.isEditing && tab.id === activeTabId) {
+          tab.content = easyMDE ? easyMDE.value() : editor.value;
+        }
+        const result = await writeTabToDisk(tab, { fromAutoSave: true });
+        if (result && result.success) {
+          tab.isModified = false;
+          if (tab.isEditing) {
+            tab.originalContent = tab.content;
+          }
+          updateTabUI(tab.id);
+        }
+      });
     await Promise.all(savePromises);
   }
 
@@ -2694,7 +3023,15 @@ window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
 
   try {
     if (tab.filePath) {
-      await window.electronAPI.saveFile(tab.filePath, tab.content);
+      const saveResult = await writeTabToDisk(tab);
+      if (!saveResult || !saveResult.success) {
+        window.electronAPI.reportReviewDecision({
+          success: false,
+          tabId: tab.id,
+          cancelled: !!(saveResult && saveResult.cancelled)
+        });
+        return;
+      }
       tab.isModified = false;
       tab.originalContent = tab.content;
       updateTabUI(tab.id);
@@ -2705,7 +3042,9 @@ window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
       if (result) {
         tab.filePath = result.filePath;
         tab.fileName = result.fileName;
+        tab.lastKnownMtime = result.mtime;
         tab.isModified = false;
+        tab.externalChangePending = false;
         tab.originalContent = tab.content;
         updateTabDisplay(tab.id, tab.fileName, tab.filePath);
         updateTabUI(tab.id);
@@ -3472,7 +3811,7 @@ toggleEditMode = function() {
   updateTabUI(activeTabId);
 };
 
-saveFile = async function() {
+saveFile = async function(options = {}) {
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab) return;
 
@@ -3481,19 +3820,24 @@ saveFile = async function() {
   }
 
   if (tab.filePath) {
-    await window.electronAPI.saveFile(tab.filePath, tab.content);
-    tab.isModified = false;
-    if (tab.isEditing) {
-      tab.originalContent = tab.content;
+    const { fromAutoSave = false } = options;
+    const result = await writeTabToDisk(tab, { fromAutoSave });
+    if (result && result.success) {
+      tab.isModified = false;
+      if (tab.isEditing) {
+        tab.originalContent = tab.content;
+      }
+      updateTabUI(activeTabId);
+      document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
-    updateTabUI(activeTabId);
-    document.title = `${tab.fileName} - OpenMarkdownReader`;
   } else {
     const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
     if (result) {
         tab.filePath = result.filePath;
         tab.fileName = result.fileName;
+        tab.lastKnownMtime = result.mtime;
         tab.isModified = false;
+        tab.externalChangePending = false;
         if (tab.isEditing) tab.originalContent = tab.content;
 
         updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
@@ -3521,7 +3865,13 @@ closeTab = async function(tabId, silent = false) {
         }
       }
       if (tab.filePath) {
-        await window.electronAPI.saveFile(tab.filePath, tab.content);
+        const saveResult = await writeTabToDisk(tab);
+        if (!saveResult || !saveResult.success) return;
+        tab.isModified = false;
+        if (tab.isEditing) {
+          tab.originalContent = tab.content;
+        }
+        updateTabUI(tab.id);
       } else {
         const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
         if (!saveResult) return;
@@ -3584,11 +3934,16 @@ function triggerAutoSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     if (tab.id === activeTabId) {
-        saveFile(); 
+        saveFile({ fromAutoSave: true }); 
     } else {
-        window.electronAPI.saveFile(tab.filePath, tab.content).then(() => {
-            tab.isModified = false;
-            updateTabUI(tab.id);
+        writeTabToDisk(tab, { fromAutoSave: true }).then((result) => {
+            if (result && result.success) {
+                tab.isModified = false;
+                if (tab.isEditing) {
+                  tab.originalContent = tab.content;
+                }
+                updateTabUI(tab.id);
+            }
         });
     }
   }, 1000);
@@ -3736,16 +4091,22 @@ function updateCommandPaletteResultsForRecent() {
 
 // Override selectCommandPaletteItem to handle folders in recent mode
 const originalSelectCommandPaletteItem = selectCommandPaletteItem;
-selectCommandPaletteItem = function(index) {
+selectCommandPaletteItem = function(index, event = null) {
     if (commandPaletteMode === 'recent') {
          if (index >= 0 && index < commandPaletteFiles.length) {
-            const file = commandPaletteFiles[index];
+            const item = commandPaletteFiles[index];
             hideCommandPalette();
+            
+            if (item.isCommand && item.action) {
+                item.action();
+                return;
+            }
+            
             // openFileByPath now handles both files and directories
-            window.electronAPI.openFileByPath(file.path);
+            window.electronAPI.openFileByPath(item.path);
          }
     } else {
-        originalSelectCommandPaletteItem(index);
+        originalSelectCommandPaletteItem(index, event);
     }
 }
 
