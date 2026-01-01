@@ -19,12 +19,13 @@ function parseArgs(argv) {
     scratch: false,
     ref: false,
     monospace: null,
+    newFile: false,
     files: []
   };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    
+
     if (arg === '--watch' || arg === '-w') {
       flags.watch = true;
     } else if (arg === '--edit' || arg === '-e') {
@@ -33,6 +34,8 @@ function parseArgs(argv) {
       flags.scratch = true;
     } else if (arg === '--ref' || arg === '-r') {
       flags.ref = true;
+    } else if (arg === '--new' || arg === '-n') {
+      flags.newFile = true;
     } else if (arg === '--no-session') {
       flags.noSession = true;
     } else if (arg === '--monospace') {
@@ -102,13 +105,18 @@ if (!gotTheLock) {
       if (args.ref) {
         createDailyNote(win, 'ref');
       }
-      
+
+      // Create new file if requested
+      if (args.newFile) {
+        win.webContents.send('new-file');
+      }
+
       // Open any files passed
       args.files.forEach(file => {
         const fullPath = path.isAbsolute(file) ? file : path.join(workingDirectory, file);
         openPathInWindow(win, fullPath, { forceEdit: args.edit });
       });
-      
+
       setupMenu(); // Update menu checkmarks
     }
   });
@@ -142,18 +150,40 @@ set -euo pipefail
 
 APP_BUNDLE_ID="${APP_BUNDLE_ID}"
 APP_NAME="OpenMarkdownReader"
+VERSION="1.0.0"
 
 if [[ "\${1:-}" == "--help" || "\${1:-}" == "-h" ]]; then
+  echo "OpenMarkdownReader - A beautiful Markdown reader and editor"
+  echo ""
   echo "Usage: ${commandName} [options] [path ...]"
   echo ""
   echo "Options:"
-  echo "  -w, --watch    Watch for external changes"
-  echo "  -h, --help     Show this help message"
+  echo "  -e, --edit           Open file(s) in edit mode"
+  echo "  -w, --watch          Watch for external file changes"
+  echo "  -s, --scratch        Open today's scratch note"
+  echo "  -r, --ref            Open today's reference note"
+  echo "  -t, --theme <mode>   Set theme (light, dark, system)"
+  echo "      --monospace      Use monospace font in editor"
+  echo "      --no-monospace   Use proportional font in editor"
+  echo "      --no-session     Don't restore previous session"
+  echo "  -n, --new            Create a new untitled file"
+  echo "  -v, --version        Show version"
+  echo "  -h, --help           Show this help message"
   echo ""
   echo "Examples:"
-  echo "  ${commandName} .               Open current directory"
-  echo "  ${commandName} README.md       Open a specific file"
-  echo "  ${commandName} -w README.md    Open and watch for changes"
+  echo "  ${commandName}                    Open app (restores last session)"
+  echo "  ${commandName} .                  Open current directory in sidebar"
+  echo "  ${commandName} README.md          Open a specific file"
+  echo "  ${commandName} -e README.md       Open file in edit mode"
+  echo "  ${commandName} -w README.md       Open and watch for changes"
+  echo "  ${commandName} -s                 Open today's scratch note"
+  echo "  ${commandName} --theme dark       Open with dark theme"
+  echo "  ${commandName} -n                 Create new untitled file"
+  exit 0
+fi
+
+if [[ "\${1:-}" == "--version" || "\${1:-}" == "-v" ]]; then
+  echo "OpenMarkdownReader $VERSION"
   exit 0
 fi
 
@@ -1448,13 +1478,14 @@ app.whenReady().then(() => {
   // Prompt to set as default app (after a delay)
   promptSetAsDefaultApp();
 
-  // Handle files or daily notes passed via CLI on launch
-  if (args.files.length > 0 || args.scratch || args.ref) {
+  // Handle files, daily notes, or new file passed via CLI on launch
+  if (args.files.length > 0 || args.scratch || args.ref || args.newFile) {
     const win = createWindow();
     win.webContents.on('did-finish-load', () => {
       if (args.scratch) createDailyNote(win, 'scratch');
       if (args.ref) createDailyNote(win, 'ref');
-      
+      if (args.newFile) win.webContents.send('new-file');
+
       args.files.forEach(file => {
         const fullPath = path.isAbsolute(file) ? file : path.resolve(file);
         openPathInWindow(win, fullPath, { forceEdit: args.edit });
