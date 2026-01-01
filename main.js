@@ -129,7 +129,8 @@ let config = {
   watchMode: false, // Watch for external file changes
   dailyNotesFolder: null, // Path to folder for daily notes
   dailyNotesFormat: 'YYYY-MM-DD', // Date format for filenames
-  dailyNotesTemplate: '' // Optional template for new daily notes
+  dailyNotesTemplate: '', // Optional template for new daily notes
+  askedAboutDefaultApp: false // Whether we've asked to set as default
 };
 
 const CLI_COMMAND_NAMES = ['omr', 'openmd'];
@@ -1204,6 +1205,20 @@ function setupMenu() {
         },
         { type: 'separator' },
         {
+          label: 'Set as Default Markdown App…',
+          enabled: process.platform === 'darwin',
+          click: async () => {
+            const win = getFocusedWindow();
+            dialog.showMessageBox(win, {
+              type: 'info',
+              buttons: ['OK'],
+              title: 'Set Default App',
+              message: 'To set OpenMarkdownReader as your default:',
+              detail: '1. Find any .md file in Finder\n2. Right-click → Get Info (or ⌘I)\n3. Under "Open with:", select OpenMarkdownReader\n4. Click "Change All..." to apply to all .md files'
+            });
+          }
+        },
+        {
           label: `Install '${CLI_COMMAND_NAMES.join("' and '")}' Commands in PATH…`,
           enabled: process.platform === 'darwin',
           click: () => installCliCommand()
@@ -1368,13 +1383,58 @@ function restoreSession() {
   return true;
 }
 
+// Check if we should prompt to set as default markdown app
+async function promptSetAsDefaultApp() {
+  if (process.platform !== 'darwin') return;
+  if (config.askedAboutDefaultApp) return;
+
+  // Wait a moment for the window to be ready
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
+  const win = getFocusedWindow();
+  if (!win) return;
+
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: ['Set as Default', 'Not Now', "Don't Ask Again"],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Default Markdown Reader',
+    message: 'Would you like to set OpenMarkdownReader as your default app for Markdown files?',
+    detail: 'This will open .md files in this app when you double-click them in Finder.'
+  });
+
+  if (result.response === 0) {
+    // Set as Default - open System Settings
+    // On macOS Ventura+, this is the path to change default apps
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+
+    // Also show instructions
+    dialog.showMessageBox(win, {
+      type: 'info',
+      buttons: ['OK'],
+      title: 'Set Default App',
+      message: 'To set OpenMarkdownReader as your default:',
+      detail: '1. Find any .md file in Finder\n2. Right-click → Get Info (or ⌘I)\n3. Under "Open with:", select OpenMarkdownReader\n4. Click "Change All..." to apply to all .md files'
+    });
+
+    config.askedAboutDefaultApp = true;
+    saveConfig();
+  } else if (result.response === 2) {
+    // Don't Ask Again
+    config.askedAboutDefaultApp = true;
+    saveConfig();
+  }
+  // "Not Now" doesn't save - will ask again next launch
+}
+
 app.whenReady().then(() => {
   const args = parseArgs(process.argv);
-  
+
   if (args.watch) {
     watchFileMode = true;
   }
-  
+
   if (args.theme) {
     config.theme = args.theme;
   }
@@ -1384,6 +1444,9 @@ app.whenReady().then(() => {
   }
 
   setupMenu();
+
+  // Prompt to set as default app (after a delay)
+  promptSetAsDefaultApp();
 
   // Handle files or daily notes passed via CLI on launch
   if (args.files.length > 0 || args.scratch || args.ref) {
