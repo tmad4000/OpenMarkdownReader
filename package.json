@@ -37,6 +37,12 @@
   "build": {
     "appId": "com.jacobcole.openmarkdownreader",
     "productName": "OpenMarkdownReader",
+    "extraResources": [
+      {
+        "from": "cli.sh",
+        "to": "cli.sh"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
