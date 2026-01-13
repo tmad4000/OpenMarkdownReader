@@ -1063,6 +1063,11 @@ mark.find-match.active {
   position: relative;
 }
 
+/* Add spacing between sibling sections */
+.md-section + .md-section {
+  margin-top: 24px;
+}
+
 .md-section > h1,
 .md-section > h2,
 .md-section > h3,

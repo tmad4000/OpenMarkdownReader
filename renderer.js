@@ -337,6 +337,16 @@ if (tabBar) {
       tabs.splice(newIndex, 0, draggedTabData);
     }
   });
+
+  // Scroll wheel navigation for tabs - convert vertical scroll to horizontal
+  tabBar.addEventListener('wheel', (e) => {
+    // Use deltaX if available (horizontal scroll), otherwise convert deltaY
+    const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+    if (delta !== 0) {
+      e.preventDefault();
+      tabBar.scrollLeft += delta;
+    }
+  }, { passive: false });
 }
 
 // Tab rename functionality
