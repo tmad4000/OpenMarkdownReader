@@ -3493,6 +3493,29 @@ markdownBody.addEventListener('click', (e) => {
   }
 });
 
+// Right-click in content area shows tab context menu (for easy access to tab actions)
+markdownBody.addEventListener('contextmenu', (e) => {
+  // If user has selected text, let the default context menu appear for copy
+  const selection = window.getSelection();
+  if (selection && selection.toString().length > 0) return;
+
+  // Don't show on links - let the default link context menu appear
+  if (e.target.closest('a')) return;
+
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  e.preventDefault();
+  const tabIndex = tabs.findIndex(t => t.id === activeTabId);
+  window.electronAPI.showTabContextMenu({
+    tabId: activeTabId,
+    filePath: tab.filePath,
+    tabIndex,
+    totalTabs: tabs.length,
+    directory: currentDirectory
+  });
+});
+
 
 // ==========================================
 // RICH EDITOR (EasyMDE) INTEGRATION
