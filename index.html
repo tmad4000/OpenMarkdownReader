@@ -71,12 +71,72 @@
 	      </svg>
 	      Toolbar
 	    </button>
-    <button id="publish-btn" class="publish-btn hidden" title="Publish to noos (globalbr.ai)">
+    <button id="share-btn" class="share-btn hidden" title="Share to web">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
-        <path d="M4.22 6.28a.75.75 0 001.06 0L7.25 4.31v5.94a.75.75 0 001.5 0V4.31l1.97 1.97a.75.75 0 001.06-1.06l-3.25-3.25a.75.75 0 00-1.06 0L4.22 5.22a.75.75 0 000 1.06z"/>
+        <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z"/>
+        <path d="M6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-2.75h-.25a.75.75 0 01-.75-.75zm.75-3a1 1 0 112 0 1 1 0 01-2 0z"/>
       </svg>
+      <span class="share-btn-label">Share</span>
     </button>
+
+    <!-- Share Popover -->
+    <div id="share-popover" class="share-popover hidden">
+      <div class="share-popover-content">
+        <!-- Unpublished state -->
+        <div id="share-unpublished" class="share-state">
+          <div class="share-header">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+              <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z"/>
+            </svg>
+            <span>Publish to Web</span>
+          </div>
+          <p class="share-description">Share this document as an unlisted page on globalbr.ai. Anyone with the link can view it.</p>
+          <p class="share-warning">⚠️ Links are permanent and cannot be deleted.</p>
+          <button id="share-publish-btn" class="share-action-btn share-publish">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+              <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
+              <path d="M4.22 6.28a.75.75 0 001.06 0L7.25 4.31v5.94a.75.75 0 001.5 0V4.31l1.97 1.97a.75.75 0 001.06-1.06l-3.25-3.25a.75.75 0 00-1.06 0L4.22 5.22a.75.75 0 000 1.06z"/>
+            </svg>
+            Publish
+          </button>
+        </div>
+
+        <!-- Published state -->
+        <div id="share-published" class="share-state hidden">
+          <div class="share-header share-header-live">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+              <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+              <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z"/>
+            </svg>
+            <span>Published as Unlisted</span>
+          </div>
+          <div class="share-url-row">
+            <input type="text" id="share-url-input" class="share-url-input" readonly>
+            <button id="share-copy-btn" class="share-icon-btn" title="Copy link">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+                <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+              </svg>
+            </button>
+          </div>
+          <button id="share-open-btn" class="share-action-btn share-secondary">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+              <path d="M3.75 2A1.75 1.75 0 002 3.75v8.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 12.25v-3.5a.75.75 0 00-1.5 0v3.5a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25v-8.5a.25.25 0 01.25-.25h3.5a.75.75 0 000-1.5h-3.5z"/>
+              <path d="M10 1a.75.75 0 000 1.5h2.44L8.22 6.72a.75.75 0 001.06 1.06l4.22-4.22V6a.75.75 0 001.5 0V1.75a.75.75 0 00-.75-.75H10z"/>
+            </svg>
+            Open in Browser
+          </button>
+        </div>
+
+        <!-- Publishing state -->
+        <div id="share-publishing" class="share-state hidden">
+          <div class="share-header">
+            <div class="share-spinner"></div>
+            <span>Publishing...</span>
+          </div>
+        </div>
+      </div>
+    </div>
 	    <button id="edit-toggle-btn" class="edit-toggle-btn" title="Toggle Edit Mode (⌘E)">
 	      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
 	        <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064l6.286-6.286z"/>
@@ -266,6 +326,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="vendor/marked.min.js"></script>
   <script src="vendor/highlight.min.js"></script>

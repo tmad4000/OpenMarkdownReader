@@ -16,6 +16,45 @@ let settings = {
 
 let easyMDE = null;
 
+// Toast notification system
+const toastContainer = document.getElementById('toast-container');
+
+function showToast(message, type = 'success', duration = 4000) {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  const icon = type === 'success'
+    ? '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg>'
+    : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.657 2.343 8 8 0 012.343 13.657zM6.03 4.97a.75.75 0 00-1.06 1.06L6.94 8 4.97 9.97a.75.75 0 101.06 1.06L8 9.06l1.97 1.97a.75.75 0 101.06-1.06L9.06 8l1.97-1.97a.75.75 0 10-1.06-1.06L8 6.94 6.03 4.97z"/></svg>';
+
+  toast.innerHTML = `
+    ${icon}
+    <span class="toast-message">${message}</span>
+    <button class="toast-close" title="Dismiss">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+        <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+      </svg>
+    </button>
+  `;
+
+  const closeBtn = toast.querySelector('.toast-close');
+  closeBtn.addEventListener('click', () => dismissToast(toast));
+
+  toastContainer.appendChild(toast);
+
+  if (duration > 0) {
+    setTimeout(() => dismissToast(toast), duration);
+  }
+
+  return toast;
+}
+
+function dismissToast(toast) {
+  if (!toast || toast.classList.contains('hiding')) return;
+  toast.classList.add('hiding');
+  setTimeout(() => toast.remove(), 200);
+}
+
 // Platform helpers
 const isMac = typeof navigator !== 'undefined' &&
   typeof navigator.platform === 'string' &&
@@ -105,7 +144,16 @@ const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
 const editToggleBtn = document.getElementById('edit-toggle-btn');
-const publishBtn = document.getElementById('publish-btn');
+// Share popover elements
+const shareBtn = document.getElementById('share-btn');
+const sharePopover = document.getElementById('share-popover');
+const shareUnpublished = document.getElementById('share-unpublished');
+const sharePublished = document.getElementById('share-published');
+const sharePublishing = document.getElementById('share-publishing');
+const sharePublishBtn = document.getElementById('share-publish-btn');
+const shareUrlInput = document.getElementById('share-url-input');
+const shareCopyBtn = document.getElementById('share-copy-btn');
+const shareOpenBtn = document.getElementById('share-open-btn');
 const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
@@ -133,7 +181,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     scrollPos: 0,
     isEditing: false,
     isModified: false,
-    externalChangePending: false
+    externalChangePending: false,
+    publishedUrl: null  // URL if published to globalbr.ai
   };
   tabs.push(tab);
 
@@ -520,8 +569,14 @@ function updateTabUI(tabId) {
 	    saveBtn.classList.toggle('hidden', !tab.isEditing);
 	    saveBtn.disabled = !tab.isModified;
 	    saveBtn.classList.toggle('disabled', !tab.isModified);
-	    // Show publish button when there's content
-	    publishBtn.classList.toggle('hidden', !tab.content);
+	    // Show share button when there's content
+	    shareBtn.classList.toggle('hidden', !tab.content);
+	    // Update share button state based on publication status
+	    shareBtn.classList.toggle('published', !!tab.publishedUrl);
+	    const shareBtnLabel = shareBtn.querySelector('.share-btn-label');
+	    if (shareBtnLabel) {
+	      shareBtnLabel.textContent = tab.publishedUrl ? 'Live' : 'Share';
+	    }
 	  }
 	}
 
@@ -1376,8 +1431,49 @@ saveBtn.addEventListener('click', () => {
   saveFile();
 });
 
-// Publish button - upload to noos as unlisted file
-publishBtn.addEventListener('click', async () => {
+// Share popover functionality
+function updateSharePopoverState() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  // Update popover state based on publication status
+  if (tab.publishedUrl) {
+    shareUnpublished.classList.add('hidden');
+    sharePublished.classList.remove('hidden');
+    sharePublishing.classList.add('hidden');
+    shareUrlInput.value = tab.publishedUrl;
+  } else {
+    shareUnpublished.classList.remove('hidden');
+    sharePublished.classList.add('hidden');
+    sharePublishing.classList.add('hidden');
+  }
+}
+
+function toggleSharePopover() {
+  const isHidden = sharePopover.classList.contains('hidden');
+  if (isHidden) {
+    updateSharePopoverState();
+    sharePopover.classList.remove('hidden');
+  } else {
+    sharePopover.classList.add('hidden');
+  }
+}
+
+// Close popover when clicking outside
+document.addEventListener('click', (e) => {
+  if (!sharePopover.contains(e.target) && !shareBtn.contains(e.target)) {
+    sharePopover.classList.add('hidden');
+  }
+});
+
+// Share button opens popover
+shareBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleSharePopover();
+});
+
+// Publish button in popover
+sharePublishBtn.addEventListener('click', async () => {
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab || !tab.content) return;
 
@@ -1389,8 +1485,9 @@ publishBtn.addEventListener('click', async () => {
 
   const fileName = tab.fileName || 'untitled.md';
 
-  publishBtn.classList.add('publishing');
-  publishBtn.textContent = 'Publishing...';
+  // Show publishing state
+  shareUnpublished.classList.add('hidden');
+  sharePublishing.classList.remove('hidden');
 
   try {
     const response = await fetch('https://globalbr.ai/api/files/anonymous', {
@@ -1411,38 +1508,47 @@ publishBtn.addEventListener('click', async () => {
     const result = await response.json();
     const shareUrl = result.shareUrl || `https://globalbr.ai${result.url}`;
 
-    // Copy to clipboard
+    // Store the published URL in tab
+    tab.publishedUrl = shareUrl;
+
+    // Update UI
+    updateSharePopoverState();
+    updateTabUI(tab.id);
+
+    // Copy to clipboard automatically
     navigator.clipboard.writeText(shareUrl);
+    shareCopyBtn.classList.add('copied');
+    setTimeout(() => shareCopyBtn.classList.remove('copied'), 1500);
 
-    // Show success
-    publishBtn.textContent = 'Copied!';
-    publishBtn.style.background = '#1f6feb';
-
-    // Reset after delay
-    setTimeout(() => {
-      publishBtn.classList.remove('publishing');
-      publishBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
-        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V.75a.75.75 0 00-1.5 0v5.94L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
-      </svg>Publish`;
-      publishBtn.style.background = '';
-    }, 2000);
+    // Show success toast
+    showToast('Published! URL copied to clipboard', 'success');
 
     console.log('Published to:', shareUrl);
   } catch (err) {
     console.error('Publish failed:', err);
-    publishBtn.textContent = 'Failed';
-    publishBtn.style.background = '#da3633';
-
-    setTimeout(() => {
-      publishBtn.classList.remove('publishing');
-      publishBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
-        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V.75a.75.75 0 00-1.5 0v5.94L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
-      </svg>Publish`;
-      publishBtn.style.background = '';
-    }, 2000);
+    // Show error state
+    sharePublishing.classList.add('hidden');
+    shareUnpublished.classList.remove('hidden');
+    showToast('Failed to publish: ' + err.message, 'error');
   }
+});
+
+// Copy button
+shareCopyBtn.addEventListener('click', () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.publishedUrl) return;
+
+  navigator.clipboard.writeText(tab.publishedUrl);
+  shareCopyBtn.classList.add('copied');
+  setTimeout(() => shareCopyBtn.classList.remove('copied'), 1500);
+});
+
+// Open in browser button
+shareOpenBtn.addEventListener('click', () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.publishedUrl) return;
+
+  window.electronAPI.openExternal(tab.publishedUrl);
 });
 
 // Listen for file loaded from main process
