@@ -2698,20 +2698,19 @@ function updateFindResults() {
 }
 
 function searchInEditor(query) {
-  // Use EasyMDE's value if active, otherwise plain textarea
-  const text = easyMDE ? easyMDE.value() : editor.value;
+  const text = editor.value;
   const regex = new RegExp(escapeRegExp(query), 'gi');
   let match;
-
+  
   findState.matches = [];
-
+  
   while ((match = regex.exec(text)) !== null) {
     findState.matches.push({
       start: match.index,
       end: match.index + match[0].length
     });
   }
-
+  
   if (findState.matches.length > 0) {
     findState.currentIndex = 0;
     jumpToMatch(0);
@@ -2792,55 +2791,28 @@ function searchInPreview(query) {
 
 function jumpToMatch(index) {
   if (findState.matches.length === 0) return;
-
+  
   // Wrap index
   if (index < 0) index = findState.matches.length - 1;
   if (index >= findState.matches.length) index = 0;
-
+  
   findState.currentIndex = index;
   updateFindCountUI();
-
+  
   const tab = tabs.find(t => t.id === activeTabId);
-
+  
   if (tab.isEditing) {
     const match = findState.matches[index];
-
-    if (easyMDE) {
-      // Convert character offset to CodeMirror {line, ch} position
-      const cm = easyMDE.codemirror;
-      const text = easyMDE.value();
-
-      function offsetToPos(offset) {
-        let line = 0;
-        let ch = 0;
-        for (let i = 0; i < offset && i < text.length; i++) {
-          if (text[i] === '\n') {
-            line++;
-            ch = 0;
-          } else {
-            ch++;
-          }
-        }
-        return { line, ch };
-      }
-
-      const from = offsetToPos(match.start);
-      const to = offsetToPos(match.end);
-
-      cm.focus();
-      cm.setSelection(from, to);
-      cm.scrollIntoView({ from, to }, 100);
-    } else {
-      editor.focus();
-      editor.setSelectionRange(match.start, match.end);
-    }
+    editor.focus();
+    editor.setSelectionRange(match.start, match.end);
+    // Note: scrolling to cursor in textarea is automatic on focus/selection usually
   } else {
     // Preview
     const mark = findState.matches[index];
-
+    
     // Remove active class from all
     findState.matches.forEach(m => m.classList.remove('active'));
-
+    
     mark.classList.add('active');
     mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -3217,49 +3189,16 @@ toggleEditMode = function() {
     return;
   }
 
-  // Capture scroll position before switching
-  let scrollPercent = 0;
-  if (tab.isEditing) {
-    // Switching FROM edit mode - get editor scroll position
-    if (easyMDE) {
-      const scrollInfo = easyMDE.codemirror.getScrollInfo();
-      scrollPercent = scrollInfo.top / Math.max(1, scrollInfo.height - scrollInfo.clientHeight);
-    } else {
-      scrollPercent = editor.scrollTop / Math.max(1, editor.scrollHeight - editor.clientHeight);
-    }
-  } else {
-    // Switching FROM preview mode - get preview scroll position
-    scrollPercent = markdownBody.scrollTop / Math.max(1, markdownBody.scrollHeight - markdownBody.clientHeight);
-  }
-
   tab.isEditing = !tab.isEditing;
 
   if (tab.isEditing) {
     tab.originalContent = tab.content;
     showEditor(tab.content);
-
-    // Restore scroll position in editor after a brief delay for layout
-    setTimeout(() => {
-      if (easyMDE) {
-        const scrollInfo = easyMDE.codemirror.getScrollInfo();
-        const targetScroll = scrollPercent * (scrollInfo.height - scrollInfo.clientHeight);
-        easyMDE.codemirror.scrollTo(null, targetScroll);
-      } else {
-        const targetScroll = scrollPercent * (editor.scrollHeight - editor.clientHeight);
-        editor.scrollTop = targetScroll;
-      }
-    }, 50);
   } else {
     // Capture content
     tab.content = easyMDE ? easyMDE.value() : editor.value;
     hideEditor();
     renderContent(tab.content, tab.fileName);
-
-    // Restore scroll position in preview after rendering
-    setTimeout(() => {
-      const targetScroll = scrollPercent * (markdownBody.scrollHeight - markdownBody.clientHeight);
-      markdownBody.scrollTop = targetScroll;
-    }, 50);
   }
 
   updateTabUI(activeTabId);
@@ -3402,8 +3341,7 @@ editor.addEventListener('input', triggerAutoSave);
 	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
 	    styleSelectedText: true,
 	    minHeight: "100%",
-	    maxHeight: "100%",
-	    previewRender: (plainText) => marked.parse(plainText)
+	    maxHeight: "100%"
 	  });
 	  
 	  // Cmd/Ctrl+click links inside editor (Obsidian-style)
