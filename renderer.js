@@ -116,6 +116,9 @@ const tocCloseBtn = document.getElementById('toc-close');
 const csvView = document.getElementById('csv-view');
 const csvTableContainer = document.getElementById('csv-table-container');
 const csvToggleRawBtn = document.getElementById('csv-toggle-raw');
+const titlebar = document.getElementById('titlebar');
+const titlebarDragSpacer = document.querySelector('.titlebar-drag-spacer');
+const tabBarWrapper = document.querySelector('.tab-bar-wrapper');
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null) {
@@ -347,6 +350,37 @@ if (tabBar) {
       tabBar.scrollLeft += delta;
     }
   }, { passive: false });
+}
+
+// Right-click on titlebar empty space shows active tab context menu
+function showActiveTabContextMenu(e) {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  e.preventDefault();
+  const tabIndex = tabs.findIndex(t => t.id === activeTabId);
+  window.electronAPI.showTabContextMenu({
+    tabId: activeTabId,
+    filePath: tab.filePath,
+    tabIndex,
+    totalTabs: tabs.length,
+    directory: currentDirectory
+  });
+}
+
+// Add context menu to titlebar drag spacer (empty space on right)
+if (titlebarDragSpacer) {
+  titlebarDragSpacer.addEventListener('contextmenu', showActiveTabContextMenu);
+}
+
+// Add context menu to tab bar wrapper (clicks on empty space between/around tabs)
+if (tabBarWrapper) {
+  tabBarWrapper.addEventListener('contextmenu', (e) => {
+    // Only trigger if clicking directly on wrapper, not on tabs or buttons
+    if (e.target === tabBarWrapper || e.target === tabBar) {
+      showActiveTabContextMenu(e);
+    }
+  });
 }
 
 // Tab rename functionality
