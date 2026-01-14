@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:">
+	  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' https://globalbr.ai">
   <title>OpenMarkdownReader</title>
 	  <link rel="stylesheet" href="styles.css">
 		  <link rel="stylesheet" href="vendor/fontawesome-css/all.min.css">
@@ -74,9 +74,8 @@
     <button id="publish-btn" class="publish-btn hidden" title="Publish to noos (globalbr.ai)">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
-        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V.75a.75.75 0 00-1.5 0v5.94L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
+        <path d="M4.22 6.28a.75.75 0 001.06 0L7.25 4.31v5.94a.75.75 0 001.5 0V4.31l1.97 1.97a.75.75 0 001.06-1.06l-3.25-3.25a.75.75 0 00-1.06 0L4.22 5.22a.75.75 0 000 1.06z"/>
       </svg>
-      Publish
     </button>
 	    <button id="edit-toggle-btn" class="edit-toggle-btn" title="Toggle Edit Mode (⌘E)">
 	      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">

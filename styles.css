@@ -663,38 +663,40 @@ mark.find-match.active {
   opacity: 0.6;
 }
 
-/* Publish button */
+/* Publish button - icon-only compact style */
 .publish-btn {
   -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #238636;
-  border: none;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
   border-radius: 6px;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
+  color: #238636;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .publish-btn:hover {
-  background: #2ea043;
+  background: rgba(35, 134, 54, 0.1);
+  color: #2ea043;
 }
 
 .publish-btn:active {
-  background: #196c2e;
+  background: rgba(35, 134, 54, 0.2);
+  color: #196c2e;
 }
 
 .publish-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .publish-btn.publishing {
-  opacity: 0.7;
+  opacity: 0.5;
   cursor: wait;
 }
 
@@ -1105,13 +1107,13 @@ mark.find-match.active {
 
 /* Extra spacing before h2 sections (major divisions) */
 .md-section[data-level="2"] + .md-section[data-level="2"] {
-  margin-top: 48px;
+  margin-top: 40px;
 }
 
 /* Extra spacing when transitioning to a higher-level section */
 .md-section + .md-section[data-level="1"],
 .md-section + .md-section[data-level="2"] {
-  margin-top: 48px;
+  margin-top: 40px;
 }
 
 .md-section > h1,
