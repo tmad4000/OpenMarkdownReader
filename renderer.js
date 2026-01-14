@@ -569,16 +569,14 @@ function updateTabUI(tabId) {
 	    saveBtn.classList.toggle('hidden', !tab.isEditing);
 	    saveBtn.disabled = !tab.isModified;
 	    saveBtn.classList.toggle('disabled', !tab.isModified);
-	    // Show share button when there's content
-	    shareBtn.classList.toggle('hidden', !tab.content);
-	    // Update share button state based on publication status
-	    shareBtn.classList.toggle('published', !!tab.publishedUrl);
-	    const shareBtnLabel = shareBtn.querySelector('.share-btn-label');
-	    if (shareBtnLabel) {
-	      shareBtnLabel.textContent = tab.publishedUrl ? 'Live' : 'Share';
-	    }
-	  }
-	}
+	            // Show share button when there's content
+    // Show share button when there's content
+    shareBtn.classList.toggle('hidden', !tab.content);
+    // Update share button state based on publication status
+    shareBtn.classList.toggle('published', !!tab.publishedUrl);
+    shareBtn.title = tab.publishedUrl ? 'Document is live' : 'Share to web';
+  }
+}
 
 // Close a tab
 async function closeTab(tabId, silent = false) {

@@ -669,15 +669,12 @@ mark.find-match.active {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  width: 28px;
   height: 28px;
-  padding: 0 10px;
   background: none;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -699,10 +696,6 @@ mark.find-match.active {
 
 .share-btn.published:hover {
   background: rgba(35, 134, 54, 0.1);
-}
-
-.share-btn-label {
-  display: inline;
 }
 
 /* Share Popover */
