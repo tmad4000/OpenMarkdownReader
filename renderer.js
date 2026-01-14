@@ -105,6 +105,7 @@ const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
 const editor = document.getElementById('editor');
 const editToggleBtn = document.getElementById('edit-toggle-btn');
+const publishBtn = document.getElementById('publish-btn');
 const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
@@ -519,6 +520,8 @@ function updateTabUI(tabId) {
 	    saveBtn.classList.toggle('hidden', !tab.isEditing);
 	    saveBtn.disabled = !tab.isModified;
 	    saveBtn.classList.toggle('disabled', !tab.isModified);
+	    // Show publish button when there's content
+	    publishBtn.classList.toggle('hidden', !tab.content);
 	  }
 	}
 
@@ -1371,6 +1374,75 @@ editToggleBtn.addEventListener('click', () => {
 // Save button
 saveBtn.addEventListener('click', () => {
   saveFile();
+});
+
+// Publish button - upload to noos as unlisted file
+publishBtn.addEventListener('click', async () => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.content) return;
+
+  // Get current content (from editor if editing, otherwise from tab)
+  let content = tab.content;
+  if (tab.isEditing) {
+    content = easyMDE ? easyMDE.value() : editor.value;
+  }
+
+  const fileName = tab.fileName || 'untitled.md';
+
+  publishBtn.classList.add('publishing');
+  publishBtn.textContent = 'Publishing...';
+
+  try {
+    const response = await fetch('https://globalbr.ai/api/files/anonymous', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        fileName,
+        contentType: 'text/markdown'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Upload failed');
+    }
+
+    const result = await response.json();
+    const shareUrl = result.shareUrl || `https://globalbr.ai${result.url}`;
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(shareUrl);
+
+    // Show success
+    publishBtn.textContent = 'Copied!';
+    publishBtn.style.background = '#1f6feb';
+
+    // Reset after delay
+    setTimeout(() => {
+      publishBtn.classList.remove('publishing');
+      publishBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
+        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V.75a.75.75 0 00-1.5 0v5.94L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
+      </svg>Publish`;
+      publishBtn.style.background = '';
+    }, 2000);
+
+    console.log('Published to:', shareUrl);
+  } catch (err) {
+    console.error('Publish failed:', err);
+    publishBtn.textContent = 'Failed';
+    publishBtn.style.background = '#da3633';
+
+    setTimeout(() => {
+      publishBtn.classList.remove('publishing');
+      publishBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
+        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V.75a.75.75 0 00-1.5 0v5.94L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
+      </svg>Publish`;
+      publishBtn.style.background = '';
+    }, 2000);
+  }
 });
 
 // Listen for file loaded from main process

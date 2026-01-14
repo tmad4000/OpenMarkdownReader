@@ -663,6 +663,41 @@ mark.find-match.active {
   opacity: 0.6;
 }
 
+/* Publish button */
+.publish-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #238636;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.publish-btn:hover {
+  background: #2ea043;
+}
+
+.publish-btn:active {
+  background: #196c2e;
+}
+
+.publish-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.publish-btn.publishing {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 /* Edit toggle button */
 .edit-toggle-btn {
   -webkit-app-region: no-drag;
@@ -1063,9 +1098,20 @@ mark.find-match.active {
   position: relative;
 }
 
-/* Add spacing between sibling sections */
+/* Add spacing between sibling sections - more breathing room */
 .md-section + .md-section {
-  margin-top: 24px;
+  margin-top: 32px;
+}
+
+/* Extra spacing before h2 sections (major divisions) */
+.md-section[data-level="2"] + .md-section[data-level="2"] {
+  margin-top: 48px;
+}
+
+/* Extra spacing when transitioning to a higher-level section */
+.md-section + .md-section[data-level="1"],
+.md-section + .md-section[data-level="2"] {
+  margin-top: 48px;
 }
 
 .md-section > h1,
