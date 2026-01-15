@@ -2805,3 +2805,21 @@ mark.find-match.active {
 .editor-preview li, .editor-preview-side li {
   margin: 4px 0 !important;
 }
+
+/* Broken wiki links */
+.wiki-link-broken {
+  color: var(--danger-color, #f85149);
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--danger-color, #f85149);
+  cursor: help;
+}
+
+/* Warning toast style */
+.toast.warning {
+  border-color: #d29922;
+}
+
+.toast.warning svg {
+  color: #d29922;
+}

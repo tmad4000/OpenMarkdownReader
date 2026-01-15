@@ -23,9 +23,12 @@ function showToast(message, type = 'success', duration = 4000) {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
 
-  const icon = type === 'success'
-    ? '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg>'
-    : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.657 2.343 8 8 0 012.343 13.657zM6.03 4.97a.75.75 0 00-1.06 1.06L6.94 8 4.97 9.97a.75.75 0 101.06 1.06L8 9.06l1.97 1.97a.75.75 0 101.06-1.06L9.06 8l1.97-1.97a.75.75 0 10-1.06-1.06L8 6.94 6.03 4.97z"/></svg>';
+  const icons = {
+    success: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg>',
+    error: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.657 2.343 8 8 0 012.343 13.657zM6.03 4.97a.75.75 0 00-1.06 1.06L6.94 8 4.97 9.97a.75.75 0 101.06 1.06L8 9.06l1.97 1.97a.75.75 0 101.06-1.06L9.06 8l1.97-1.97a.75.75 0 10-1.06-1.06L8 6.94 6.03 4.97z"/></svg>',
+    warning: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm1 6a1 1 0 11-2 0 1 1 0 012 0z"/></svg>'
+  };
+  const icon = icons[type] || icons.success;
 
   toast.innerHTML = `
     ${icon}
@@ -103,6 +106,72 @@ let directoryFiles = [];
 // Command palette file cache (prefetched per directory)
 let allFilesCache = null;
 let allFilesCachePromise = null;
+
+// Wiki link index: maps page names (lowercase, without .md) to file paths
+let wikiLinkIndex = new Map();
+let wikiLinkConflicts = new Set(); // Page names with multiple matches
+
+// Build wiki link index from allFilesCache
+function buildWikiLinkIndex() {
+  wikiLinkIndex.clear();
+  wikiLinkConflicts.clear();
+
+  if (!allFilesCache || !currentDirectory) return;
+
+  // Index all markdown files by their base name (without extension)
+  allFilesCache.forEach(file => {
+    if (!file.isMarkdown) return;
+
+    // Get the base name without .md extension
+    const baseName = file.name.replace(/\.md$/i, '').toLowerCase();
+
+    if (wikiLinkIndex.has(baseName)) {
+      // Conflict: multiple files with the same base name
+      wikiLinkConflicts.add(baseName);
+    } else {
+      wikiLinkIndex.set(baseName, file.path);
+    }
+  });
+
+  // Log conflicts if any
+  if (wikiLinkConflicts.size > 0) {
+    console.log('Wiki link conflicts detected:', Array.from(wikiLinkConflicts));
+  }
+}
+
+// Process wiki links in markdown content: [[page]] or [[page|display text]]
+function processWikiLinks(markdown) {
+  if (!currentDirectory || wikiLinkIndex.size === 0) {
+    return markdown;
+  }
+
+  const shownConflictWarnings = new Set();
+
+  // Match [[page]] or [[page|alias]]
+  const wikiLinkPattern = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+
+  return markdown.replace(wikiLinkPattern, (match, pageName, displayText) => {
+    const lookupName = pageName.trim().toLowerCase();
+    const display = displayText ? displayText.trim() : pageName.trim();
+
+    // Check if this page exists in our index
+    const targetPath = wikiLinkIndex.get(lookupName);
+
+    if (targetPath) {
+      // Show conflict warning once per page
+      if (wikiLinkConflicts.has(lookupName) && !shownConflictWarnings.has(lookupName)) {
+        shownConflictWarnings.add(lookupName);
+        showToast(`Multiple files match "${pageName}" - using first match`, 'warning', 5000);
+      }
+
+      // Convert to a regular markdown link with the full path
+      return `[${display}](${targetPath})`;
+    }
+
+    // Page not found - return as a broken link with special styling
+    return `<span class="wiki-link-broken" title="Page not found: ${escapeHtml(pageName)}">${escapeHtml(display)}</span>`;
+  });
+}
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -1068,11 +1137,14 @@ window.electronAPI.onDirectoryLoaded((data) => {
   // Update sidebar path display
   updateSidebarPath(currentDirectory);
 
-  // Pre-fetch all files for command palette
+  // Pre-fetch all files for command palette and wiki links
   allFilesCache = null;
+  wikiLinkIndex.clear();
   allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
     .then(files => {
       allFilesCache = files;
+      // Build wiki link index for [[page]] links
+      buildWikiLinkIndex();
       // If palette is open, update results immediately
       if (!commandPalette.classList.contains('hidden')) {
         updateCommandPaletteResults();
@@ -2439,7 +2511,9 @@ function renderMarkdown(mdContent) {
     hideCSVView();
     fallbackHeadingSlugCounts = new Map();
 
-    const html = marked.parse(mdContent);
+    // Process wiki links [[page]] -> [page](path) before parsing
+    const processedContent = processWikiLinks(mdContent);
+    const html = marked.parse(processedContent);
     markdownBody.innerHTML = html;
 
     buildCollapsibleSections();
