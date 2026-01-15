@@ -2182,6 +2182,42 @@ ipcMain.handle('show-tab-context-menu', async (event, tabInfo) => {
   menu.popup({ window: win });
 });
 
+// Folder path context menu (for sidebar path)
+ipcMain.handle('show-folder-context-menu', async (event, folderPath) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!folderPath) return;
+
+  const menuTemplate = [
+    {
+      label: 'Reveal in Finder',
+      click: () => shell.showItemInFolder(folderPath)
+    },
+    {
+      label: 'Copy Path',
+      click: () => {
+        require('electron').clipboard.writeText(folderPath);
+      }
+    },
+    {
+      label: 'Copy Name',
+      click: () => {
+        require('electron').clipboard.writeText(path.basename(folderPath));
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Open in Terminal',
+      click: () => {
+        const { exec } = require('child_process');
+        exec(`open -a Terminal "${folderPath}"`);
+      }
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  menu.popup({ window: win });
+});
+
 // Reveal in Finder
 ipcMain.handle('reveal-in-finder', async (event, filePath) => {
   if (filePath && fs.existsSync(filePath)) {

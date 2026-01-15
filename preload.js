@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Tab context menu
   showTabContextMenu: (tabInfo) => ipcRenderer.invoke('show-tab-context-menu', tabInfo),
+  showFolderContextMenu: (folderPath) => ipcRenderer.invoke('show-folder-context-menu', folderPath),
   revealInFinder: (filePath) => ipcRenderer.invoke('reveal-in-finder', filePath),
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
   onCloseTabById: (callback) => ipcRenderer.on('close-tab-by-id', (event, tabId) => callback(tabId)),

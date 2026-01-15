@@ -112,41 +112,55 @@ let directoryFiles = [];
 let allFilesCache = null;
 let allFilesCachePromise = null;
 
-// Wiki link index: maps page names (lowercase, without .md) to file paths
-let wikiLinkIndex = new Map();
-let wikiLinkConflicts = new Set(); // Page names with multiple matches
+// Wiki link indices:
+// - wikiLinkByPath: maps relative paths (folder/filename without .md) to full paths
+// - wikiLinkByName: maps base names (filename without .md) to full paths
+let wikiLinkByPath = new Map();
+let wikiLinkByName = new Map();
+let wikiLinkConflicts = new Set(); // Base names with multiple matches
 
-// Build wiki link index from allFilesCache
+// Build wiki link indices from allFilesCache
 function buildWikiLinkIndex() {
-  wikiLinkIndex.clear();
+  wikiLinkByPath.clear();
+  wikiLinkByName.clear();
   wikiLinkConflicts.clear();
 
   if (!allFilesCache || !currentDirectory) return;
 
-  // Index all markdown files by their base name (without extension)
+  // Index all markdown files by both relative path and base name
   allFilesCache.forEach(file => {
     if (!file.isMarkdown) return;
 
-    // Get the base name without .md extension
+    // Get relative path from directory root (without .md extension)
+    const relativePath = file.path
+      .replace(currentDirectory + '/', '')
+      .replace(/\.md$/i, '')
+      .toLowerCase();
+
+    // Get base name without .md extension
     const baseName = file.name.replace(/\.md$/i, '').toLowerCase();
 
-    if (wikiLinkIndex.has(baseName)) {
-      // Conflict: multiple files with the same base name
+    // Index by relative path (unique, no conflicts)
+    wikiLinkByPath.set(relativePath, file.path);
+
+    // Index by base name (may have conflicts)
+    if (wikiLinkByName.has(baseName)) {
       wikiLinkConflicts.add(baseName);
     } else {
-      wikiLinkIndex.set(baseName, file.path);
+      wikiLinkByName.set(baseName, file.path);
     }
   });
 
   // Log conflicts if any
   if (wikiLinkConflicts.size > 0) {
-    console.log('Wiki link conflicts detected:', Array.from(wikiLinkConflicts));
+    console.log('Wiki link name conflicts detected:', Array.from(wikiLinkConflicts));
   }
 }
 
-// Process wiki links in markdown content: [[page]] or [[page|display text]]
+// Process wiki links in markdown content: [[page]] or [[folder/page|display text]]
+// Supports: [[filename]], [[folder/filename]], [[folder/filename|Display Text]]
 function processWikiLinks(markdown) {
-  if (!currentDirectory || wikiLinkIndex.size === 0) {
+  if (!currentDirectory || (wikiLinkByPath.size === 0 && wikiLinkByName.size === 0)) {
     return markdown;
   }
 
@@ -159,16 +173,26 @@ function processWikiLinks(markdown) {
     const lookupName = pageName.trim().toLowerCase();
     const display = displayText ? displayText.trim() : pageName.trim();
 
-    // Check if this page exists in our index
-    const targetPath = wikiLinkIndex.get(lookupName);
+    // Try path-based lookup first (folder/filename)
+    let targetPath = wikiLinkByPath.get(lookupName);
+
+    // If not found by path, try name-only lookup
+    if (!targetPath) {
+      // Extract just the filename part if it's a path
+      const justName = lookupName.includes('/')
+        ? lookupName.split('/').pop()
+        : lookupName;
+
+      targetPath = wikiLinkByName.get(justName);
+
+      // Show conflict warning if needed
+      if (targetPath && wikiLinkConflicts.has(justName) && !shownConflictWarnings.has(justName)) {
+        shownConflictWarnings.add(justName);
+        showToast(`Multiple files match "${justName}" - using first match`, 'warning', 5000);
+      }
+    }
 
     if (targetPath) {
-      // Show conflict warning once per page
-      if (wikiLinkConflicts.has(lookupName) && !shownConflictWarnings.has(lookupName)) {
-        shownConflictWarnings.add(lookupName);
-        showToast(`Multiple files match "${pageName}" - using first match`, 'warning', 5000);
-      }
-
       // Convert to a regular markdown link with the full path
       return `[${display}](${targetPath})`;
     }
@@ -1059,6 +1083,14 @@ sidebarPathText.addEventListener('click', () => {
   }
 });
 
+// Right-click on path to show context menu
+sidebarPathText.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (currentDirectory) {
+    window.electronAPI.showFolderContextMenu(currentDirectory);
+  }
+});
+
 // New folder from sidebar
 sidebarNewFolderBtn.addEventListener('click', () => {
   if (currentDirectory) {
@@ -1228,7 +1260,8 @@ window.electronAPI.onDirectoryLoaded((data) => {
 
   // Pre-fetch all files for command palette and wiki links
   allFilesCache = null;
-  wikiLinkIndex.clear();
+  wikiLinkByPath.clear();
+  wikiLinkByName.clear();
   allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
     .then(files => {
       allFilesCache = files;
