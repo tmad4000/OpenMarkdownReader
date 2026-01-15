@@ -274,6 +274,22 @@
     </div>
   </div>
 
+  <!-- Global Search -->
+  <div id="global-search" class="global-search hidden">
+    <div class="global-search-backdrop"></div>
+    <div class="global-search-modal">
+      <div class="global-search-header">
+        <svg class="search-icon" viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+          <path d="M10.68 11.74a6 6 0 01-7.922-8.982 6 6 0 018.982 7.922l3.04 3.04a.749.749 0 01-.326 1.275.749.749 0 01-.734-.215l-3.04-3.04zM11.5 7a4.5 4.5 0 10-9 0 4.5 4.5 0 009 0z"/>
+        </svg>
+        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search in files..." autocomplete="off">
+        <span class="global-search-hint">Press Enter to search</span>
+      </div>
+      <div id="global-search-status" class="global-search-status hidden"></div>
+      <div id="global-search-results" class="global-search-results"></div>
+    </div>
+  </div>
+
   <!-- Keyboard Shortcuts Modal -->
   <div id="keyboard-shortcuts-modal" class="shortcuts-modal hidden">
     <div class="shortcuts-backdrop"></div>
@@ -305,6 +321,7 @@
           <h3>Edit</h3>
           <div class="shortcut-row"><span class="shortcut-keys">⌘E</span><span>Toggle Edit Mode</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⌘F</span><span>Find in File</span></div>
+          <div class="shortcut-row"><span class="shortcut-keys">⇧⌘F</span><span>Search in Files</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⌘Z</span><span>Undo</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⇧⌘Z</span><span>Redo</span></div>
         </div>

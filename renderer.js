@@ -4428,3 +4428,209 @@ selectCommandPaletteItem = function(index, event = null) {
 }
 
 window.electronAPI.onShowRecentPalette(showRecentPalette);
+
+// ==========================================
+// GLOBAL SEARCH (Cmd+Shift+F)
+// ==========================================
+
+const globalSearch = document.getElementById('global-search');
+const globalSearchInput = document.getElementById('global-search-input');
+const globalSearchStatus = document.getElementById('global-search-status');
+const globalSearchResults = document.getElementById('global-search-results');
+let globalSearchSelectedIndex = 0;
+let globalSearchMatches = []; // Flat list of all matches for keyboard nav
+
+function showGlobalSearch() {
+  if (!currentDirectory) {
+    showToast('Open a folder first to search across files', 'warning');
+    return;
+  }
+  globalSearch.classList.remove('hidden');
+  globalSearchInput.value = '';
+  globalSearchInput.focus();
+  globalSearchStatus.classList.add('hidden');
+  globalSearchResults.innerHTML = '<div class="global-search-empty">Type to search across all files in the folder</div>';
+  globalSearchSelectedIndex = 0;
+  globalSearchMatches = [];
+}
+
+function hideGlobalSearch() {
+  globalSearch.classList.add('hidden');
+  globalSearchInput.value = '';
+  globalSearchMatches = [];
+}
+
+async function performGlobalSearch(query) {
+  if (!query.trim()) {
+    globalSearchResults.innerHTML = '<div class="global-search-empty">Type to search across all files in the folder</div>';
+    globalSearchStatus.classList.add('hidden');
+    globalSearchMatches = [];
+    return;
+  }
+
+  globalSearchStatus.textContent = 'Searching...';
+  globalSearchStatus.classList.remove('hidden');
+  globalSearchResults.innerHTML = '';
+
+  try {
+    const result = await window.electronAPI.searchInFiles(currentDirectory, query.trim());
+
+    if (result.results.length === 0) {
+      globalSearchResults.innerHTML = '<div class="global-search-empty">No matches found</div>';
+      globalSearchStatus.textContent = '0 results';
+      globalSearchMatches = [];
+      return;
+    }
+
+    // Update status
+    const fileCount = result.results.length;
+    const matchCount = result.totalMatches;
+    const truncatedNote = result.truncated ? ' (showing first 500)' : '';
+    globalSearchStatus.textContent = `${matchCount} result${matchCount !== 1 ? 's' : ''} in ${fileCount} file${fileCount !== 1 ? 's' : ''}${truncatedNote}`;
+
+    // Build flat list of matches for keyboard navigation
+    globalSearchMatches = [];
+
+    // Render results grouped by file
+    const html = result.results.map(file => {
+      const matchesHtml = file.matches.map(match => {
+        const matchId = globalSearchMatches.length;
+        globalSearchMatches.push({ filePath: file.filePath, lineNum: match.lineNum });
+
+        // Highlight the match in the content
+        const content = escapeHtml(match.content);
+        const highlightedContent = highlightMatch(content, escapeHtml(query.trim()));
+
+        return `
+          <div class="global-search-match" data-match-id="${matchId}" data-file="${escapeHtml(file.filePath)}" data-line="${match.lineNum}">
+            <span class="global-search-line-num">${match.lineNum}</span>
+            <span class="global-search-line-content">${highlightedContent}</span>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="global-search-file">
+          <div class="global-search-file-header" data-file="${escapeHtml(file.filePath)}">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+              <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+            </svg>
+            <span class="global-search-file-path">${escapeHtml(file.relativePath)}</span>
+            <span class="global-search-file-count">${file.matches.length}</span>
+          </div>
+          ${matchesHtml}
+        </div>
+      `;
+    }).join('');
+
+    globalSearchResults.innerHTML = html;
+    globalSearchSelectedIndex = 0;
+    updateGlobalSearchSelection();
+
+    // Add click handlers
+    globalSearchResults.querySelectorAll('.global-search-match').forEach(el => {
+      el.addEventListener('click', () => {
+        const filePath = el.dataset.file;
+        const lineNum = parseInt(el.dataset.line, 10);
+        openSearchResult(filePath, lineNum);
+      });
+    });
+
+    globalSearchResults.querySelectorAll('.global-search-file-header').forEach(el => {
+      el.addEventListener('click', () => {
+        const filePath = el.dataset.file;
+        openSearchResult(filePath, 1);
+      });
+    });
+
+  } catch (err) {
+    console.error('Search error:', err);
+    globalSearchResults.innerHTML = `<div class="global-search-empty">Search failed: ${escapeHtml(err.message)}</div>`;
+    globalSearchStatus.textContent = 'Error';
+  }
+}
+
+function highlightMatch(content, query) {
+  // Case-insensitive highlight
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return content.replace(regex, '<mark>$1</mark>');
+}
+
+function updateGlobalSearchSelection() {
+  globalSearchResults.querySelectorAll('.global-search-match').forEach((el, i) => {
+    el.classList.toggle('selected', i === globalSearchSelectedIndex);
+  });
+
+  // Scroll selected item into view
+  const selected = globalSearchResults.querySelector('.global-search-match.selected');
+  if (selected) {
+    selected.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function openSearchResult(filePath, lineNum) {
+  hideGlobalSearch();
+  // Open file and scroll to line
+  window.electronAPI.openFileByPath(filePath, { reuseTab: activeTabId });
+  // TODO: scroll to line after file loads
+}
+
+// Event handlers
+globalSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    hideGlobalSearch();
+    return;
+  }
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (globalSearchMatches.length > 0 && globalSearchSelectedIndex < globalSearchMatches.length) {
+      const match = globalSearchMatches[globalSearchSelectedIndex];
+      openSearchResult(match.filePath, match.lineNum);
+    } else {
+      performGlobalSearch(globalSearchInput.value);
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (globalSearchMatches.length > 0) {
+      globalSearchSelectedIndex = Math.min(globalSearchSelectedIndex + 1, globalSearchMatches.length - 1);
+      updateGlobalSearchSelection();
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (globalSearchMatches.length > 0) {
+      globalSearchSelectedIndex = Math.max(globalSearchSelectedIndex - 1, 0);
+      updateGlobalSearchSelection();
+    }
+    return;
+  }
+});
+
+// Debounce search as user types
+let globalSearchDebounce = null;
+globalSearchInput.addEventListener('input', () => {
+  clearTimeout(globalSearchDebounce);
+  globalSearchDebounce = setTimeout(() => {
+    performGlobalSearch(globalSearchInput.value);
+  }, 300);
+});
+
+// Click outside to close
+globalSearch.querySelector('.global-search-backdrop').addEventListener('click', hideGlobalSearch);
+
+// Listen for menu command
+window.electronAPI.onShowGlobalSearch(showGlobalSearch);
+
+// Keyboard shortcut (Cmd+Shift+F)
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    showGlobalSearch();
+  }
+});

@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Find
   onFindInFile: (callback) => ipcRenderer.on('find-in-file', () => callback()),
 
+  // Global search
+  searchInFiles: (dirPath, query, options) => ipcRenderer.invoke('search-in-files', dirPath, query, options),
+  onShowGlobalSearch: (callback) => ipcRenderer.on('show-global-search', () => callback()),
+
   // Recent files
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
 

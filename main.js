@@ -1019,6 +1019,14 @@ function setupMenu() {
             if (win) win.webContents.send('find-in-file');
           }
         },
+        {
+          label: 'Search in Files',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-global-search');
+          }
+        },
         { type: 'separator' },
         {
           label: 'Toggle Edit Mode',
@@ -2166,6 +2174,68 @@ ipcMain.handle('reveal-in-finder', async (event, filePath) => {
 ipcMain.handle('copy-to-clipboard', async (event, text) => {
   require('electron').clipboard.writeText(text);
   return true;
+});
+
+// Global search: search content in all files within a directory
+ipcMain.handle('search-in-files', async (event, dirPath, query, options = {}) => {
+  if (!dirPath || !query) return { results: [], totalMatches: 0 };
+
+  const results = [];
+  let totalMatches = 0;
+  const maxResults = options.maxResults || 500;
+  const caseSensitive = options.caseSensitive || false;
+  const searchQuery = caseSensitive ? query : query.toLowerCase();
+
+  // Get all text files recursively
+  const files = getAllFilesRecursive(dirPath, 10);
+  const textFiles = files.filter(f => f.isMarkdown || f.isTextFile);
+
+  for (const file of textFiles) {
+    if (totalMatches >= maxResults) break;
+
+    try {
+      const content = fs.readFileSync(file.path, 'utf-8');
+      const lines = content.split('\n');
+      const matches = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        if (totalMatches >= maxResults) break;
+
+        const line = lines[i];
+        const searchLine = caseSensitive ? line : line.toLowerCase();
+
+        if (searchLine.includes(searchQuery)) {
+          matches.push({
+            lineNum: i + 1,
+            content: line.slice(0, 200), // Truncate long lines
+            matchStart: searchLine.indexOf(searchQuery),
+            matchLength: query.length
+          });
+          totalMatches++;
+        }
+      }
+
+      if (matches.length > 0) {
+        // Get relative path from directory
+        const relativePath = path.relative(dirPath, file.path);
+        results.push({
+          filePath: file.path,
+          fileName: file.name,
+          relativePath,
+          matches
+        });
+      }
+    } catch (err) {
+      // Skip files that can't be read
+      console.error(`Error reading ${file.path}:`, err.message);
+    }
+  }
+
+  return {
+    results,
+    totalMatches,
+    truncated: totalMatches >= maxResults
+  };
 });
 
 // Get all files and folders in directory
