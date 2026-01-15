@@ -1369,13 +1369,13 @@ mark.find-match.active {
 
 /* Extra spacing before h2 sections (major divisions) */
 .md-section[data-level="2"] + .md-section[data-level="2"] {
-  margin-top: 40px;
+  margin-top: 44px;
 }
 
 /* Extra spacing when transitioning to a higher-level section */
 .md-section + .md-section[data-level="1"],
 .md-section + .md-section[data-level="2"] {
-  margin-top: 40px;
+  margin-top: 44px;
 }
 
 .md-section > h1,

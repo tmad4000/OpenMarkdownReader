@@ -1129,6 +1129,26 @@ function setupMenu() {
               }
             },
             {
+              label: 'Extra Wide (1300px)',
+              type: 'radio',
+              checked: config.contentWidth === 1300,
+              click: () => {
+                config.contentWidth = 1300;
+                saveConfig();
+                broadcastSetting('content-width', 1300);
+              }
+            },
+            {
+              label: 'Ultra Wide (1500px)',
+              type: 'radio',
+              checked: config.contentWidth === 1500,
+              click: () => {
+                config.contentWidth = 1500;
+                saveConfig();
+                broadcastSetting('content-width', 1500);
+              }
+            },
+            {
               label: 'Full Width',
               type: 'radio',
               checked: config.contentWidth === 'full',
