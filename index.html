@@ -19,6 +19,16 @@
         <path d="M2 4.5A1.5 1.5 0 013.5 3h13A1.5 1.5 0 0118 4.5v11a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 012 15.5v-11zM3.5 4a.5.5 0 00-.5.5v11a.5.5 0 00.5.5H7V4H3.5zM8 4v12h8.5a.5.5 0 00.5-.5v-11a.5.5 0 00-.5-.5H8z"/>
       </svg>
     </button>
+    <button id="nav-back-btn" class="nav-btn" title="Go Back (⌘[)" disabled>
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path fill-rule="evenodd" d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z"/>
+      </svg>
+    </button>
+    <button id="nav-forward-btn" class="nav-btn" title="Go Forward (⌘])" disabled>
+      <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path fill-rule="evenodd" d="M8.22 3.47a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06l2.97-2.97H3.75a.75.75 0 010-1.5h7.44L8.22 4.53a.75.75 0 010-1.06z"/>
+      </svg>
+    </button>
     <div class="tab-bar-wrapper">
       <div id="tab-bar" class="tab-bar"></div>
       <button id="new-tab-btn" class="new-tab-btn" title="New Tab (⌘T)">+</button>
@@ -334,6 +344,8 @@
         </div>
         <div class="shortcuts-section">
           <h3>Navigation</h3>
+          <div class="shortcut-row"><span class="shortcut-keys">⌘[</span><span>Go Back</span></div>
+          <div class="shortcut-row"><span class="shortcut-keys">⌘]</span><span>Go Forward</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⌘1-9</span><span>Switch to Tab</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⌥⌘←</span><span>Previous Tab</span></div>
           <div class="shortcut-row"><span class="shortcut-keys">⌥⌘→</span><span>Next Tab</span></div>

@@ -1046,6 +1046,27 @@ function setupMenu() {
       ]
     },
     {
+      label: 'Go',
+      submenu: [
+        {
+          label: 'Back',
+          accelerator: 'CmdOrCtrl+[',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('nav-back');
+          }
+        },
+        {
+          label: 'Forward',
+          accelerator: 'CmdOrCtrl+]',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('nav-forward');
+          }
+        }
+      ]
+    },
+    {
       label: 'View',
       submenu: [
         {

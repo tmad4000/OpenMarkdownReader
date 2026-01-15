@@ -173,6 +173,33 @@ html, body {
   color: var(--text-color);
 }
 
+/* Navigation Buttons (Back/Forward) */
+.nav-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  margin-left: 2px;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--code-bg);
+  color: var(--text-color);
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* Main Container */
 .main-container {
   display: flex;

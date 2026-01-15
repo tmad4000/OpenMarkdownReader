@@ -100,6 +100,11 @@ let tabIdCounter = 0;
 let closedTabs = []; // Stack of recently closed tabs for Cmd+Shift+T
 const MAX_CLOSED_TABS = 50;
 
+// Navigation history (browser-style back/forward)
+let navHistory = []; // Stack of { tabId, filePath }
+let navHistoryIndex = -1; // Current position in history
+let navIsNavigating = false; // Flag to prevent adding to history during back/forward
+
 // Directory state
 let currentDirectory = null;
 let directoryFiles = [];
@@ -204,6 +209,8 @@ const markdownBody = document.getElementById('markdown-body');
 const openBtn = document.getElementById('open-btn');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
+const navBackBtn = document.getElementById('nav-back-btn');
+const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
@@ -574,6 +581,83 @@ function startTabRename(tabId) {
   input.addEventListener('mousedown', (e) => e.stopPropagation());
 }
 
+// Navigation history functions
+function pushNavHistory(tabId, filePath) {
+  // Don't push during back/forward navigation
+  if (navIsNavigating) return;
+
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  // Don't push if same as current position
+  if (navHistoryIndex >= 0 && navHistory[navHistoryIndex]) {
+    const current = navHistory[navHistoryIndex];
+    if (current.tabId === tabId && current.filePath === filePath) return;
+  }
+
+  // Clear forward history when navigating to new location
+  if (navHistoryIndex < navHistory.length - 1) {
+    navHistory = navHistory.slice(0, navHistoryIndex + 1);
+  }
+
+  // Push new entry
+  navHistory.push({ tabId, filePath: filePath || tab.filePath });
+  navHistoryIndex = navHistory.length - 1;
+
+  // Limit history size
+  if (navHistory.length > 100) {
+    navHistory.shift();
+    navHistoryIndex--;
+  }
+
+  updateNavButtons();
+}
+
+function navGoBack() {
+  if (navHistoryIndex <= 0) return;
+
+  navIsNavigating = true;
+  navHistoryIndex--;
+  const entry = navHistory[navHistoryIndex];
+
+  // Find the tab or open the file
+  const tab = tabs.find(t => t.id === entry.tabId);
+  if (tab) {
+    switchToTab(entry.tabId);
+  } else if (entry.filePath) {
+    // Tab was closed, reopen the file
+    window.electronAPI.openFileByPath(entry.filePath);
+  }
+
+  navIsNavigating = false;
+  updateNavButtons();
+}
+
+function navGoForward() {
+  if (navHistoryIndex >= navHistory.length - 1) return;
+
+  navIsNavigating = true;
+  navHistoryIndex++;
+  const entry = navHistory[navHistoryIndex];
+
+  // Find the tab or open the file
+  const tab = tabs.find(t => t.id === entry.tabId);
+  if (tab) {
+    switchToTab(entry.tabId);
+  } else if (entry.filePath) {
+    // Tab was closed, reopen the file
+    window.electronAPI.openFileByPath(entry.filePath);
+  }
+
+  navIsNavigating = false;
+  updateNavButtons();
+}
+
+function updateNavButtons() {
+  navBackBtn.disabled = navHistoryIndex <= 0;
+  navForwardBtn.disabled = navHistoryIndex >= navHistory.length - 1;
+}
+
 // Switch to a tab
 function switchToTab(tabId) {
   // Save current tab state
@@ -613,6 +697,11 @@ function switchToTab(tabId) {
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
     document.title = 'OpenMarkdownReader';
+  }
+
+  // Add to navigation history
+  if (tab) {
+    pushNavHistory(tabId, tab.filePath);
   }
 
   updateTabUI(tabId);
@@ -4634,3 +4723,28 @@ document.addEventListener('keydown', (e) => {
     showGlobalSearch();
   }
 });
+
+// ==========================================
+// NAVIGATION HISTORY (Back/Forward)
+// ==========================================
+
+// Button click handlers
+navBackBtn.addEventListener('click', navGoBack);
+navForwardBtn.addEventListener('click', navGoForward);
+
+// Keyboard shortcuts (Cmd+[ and Cmd+])
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey) {
+    if (e.key === '[') {
+      e.preventDefault();
+      navGoBack();
+    } else if (e.key === ']') {
+      e.preventDefault();
+      navGoForward();
+    }
+  }
+});
+
+// Listen for menu commands
+window.electronAPI.onNavBack?.(() => navGoBack());
+window.electronAPI.onNavForward?.(() => navGoForward());
