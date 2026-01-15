@@ -850,6 +850,13 @@ function setupMenu() {
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
+        {
+          label: 'Restart',
+          click: () => {
+            app.relaunch();
+            app.exit(0);
+          }
+        },
         { role: 'quit' }
       ]
     },
