@@ -1185,6 +1185,16 @@ function setupMenu() {
               }
             },
             {
+              label: 'Super Wide (1800px)',
+              type: 'radio',
+              checked: config.contentWidth === 1800,
+              click: () => {
+                config.contentWidth = 1800;
+                saveConfig();
+                broadcastSetting('content-width', 1800);
+              }
+            },
+            {
               label: 'Full Width',
               type: 'radio',
               checked: config.contentWidth === 'full',
@@ -1199,6 +1209,16 @@ function setupMenu() {
         {
           label: 'Content Margins',
           submenu: [
+            {
+              label: 'Minimal',
+              type: 'radio',
+              checked: config.contentPadding === 8,
+              click: () => {
+                config.contentPadding = 8;
+                saveConfig();
+                broadcastSetting('content-padding', 8);
+              }
+            },
             {
               label: 'Compact',
               type: 'radio',
@@ -1227,6 +1247,16 @@ function setupMenu() {
                 config.contentPadding = 28;
                 saveConfig();
                 broadcastSetting('content-padding', 28);
+              }
+            },
+            {
+              label: 'Extra Spacious',
+              type: 'radio',
+              checked: config.contentPadding === 40,
+              click: () => {
+                config.contentPadding = 40;
+                saveConfig();
+                broadcastSetting('content-padding', 40);
               }
             }
           ]

@@ -1567,7 +1567,7 @@ function startNewFileRename(el, tempItem, dirPath, defaultName) {
       renderFileTree();
 
       // Open the file in a new tab in edit mode
-      window.electronAPI.openFileByPath(result.filePath);
+      window.electronAPI.openFileByPath(result.filePath, { forceEdit: true });
     } else {
       // Show error and remove temp item
       alert(`Could not create file: ${result.error}`);
