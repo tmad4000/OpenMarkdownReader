@@ -1371,6 +1371,14 @@ function setupMenu() {
         },
         {
           label: 'Report an Issue…',
+          accelerator: 'CmdOrCtrl+Shift+I',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-report-issue');
+          }
+        },
+        {
+          label: 'GitHub Issues',
           click: () => shell.openExternal('https://github.com/tmad4000/OpenMarkdownReader/issues')
         },
         { type: 'separator' },

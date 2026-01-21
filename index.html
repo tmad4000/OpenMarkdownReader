@@ -373,6 +373,32 @@
     </div>
   </div>
 
+  <!-- Report Issue Modal -->
+  <div id="report-issue-modal" class="report-issue-modal hidden">
+    <div class="report-issue-backdrop"></div>
+    <div class="report-issue-content">
+      <div class="report-issue-header">
+        <h2>Report an Issue</h2>
+        <button class="report-issue-close">&times;</button>
+      </div>
+      <div class="report-issue-body">
+        <div class="report-issue-field">
+          <label for="report-issue-title">Title</label>
+          <input type="text" id="report-issue-title" placeholder="Brief description of the issue">
+        </div>
+        <div class="report-issue-field">
+          <label for="report-issue-content">Details (optional)</label>
+          <textarea id="report-issue-content" rows="4" placeholder="Steps to reproduce, expected vs actual behavior..."></textarea>
+        </div>
+        <div class="report-issue-buttons">
+          <button id="report-issue-cancel" class="report-issue-btn">Cancel</button>
+          <button id="report-issue-submit" class="report-issue-btn report-issue-btn-primary">Submit</button>
+        </div>
+        <div class="report-issue-status" id="report-issue-status"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notifications -->
   <div id="toast-container" class="toast-container"></div>
 

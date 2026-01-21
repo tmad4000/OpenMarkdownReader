@@ -1953,6 +1953,116 @@ document.addEventListener('keydown', (e) => {
 
 window.electronAPI.onShowKeyboardShortcuts(showKeyboardShortcuts);
 
+// Report Issue modal
+const reportIssueModal = document.getElementById('report-issue-modal');
+const reportIssueBackdrop = reportIssueModal.querySelector('.report-issue-backdrop');
+const reportIssueClose = reportIssueModal.querySelector('.report-issue-close');
+const reportIssueTitle = document.getElementById('report-issue-title');
+const reportIssueContent = document.getElementById('report-issue-content');
+const reportIssueCancel = document.getElementById('report-issue-cancel');
+const reportIssueSubmit = document.getElementById('report-issue-submit');
+const reportIssueStatus = document.getElementById('report-issue-status');
+
+// OpenMarkdownReader Issues list ID in Noos
+const NOOS_ISSUE_LIST_ID = 'mEDpHWSRdT1DwfqfH2Iuv';
+const NOOS_API_URL = 'https://globalbr.ai/api';
+
+function showReportIssue() {
+  reportIssueTitle.value = '';
+  reportIssueContent.value = '';
+  reportIssueStatus.className = 'report-issue-status';
+  reportIssueStatus.textContent = '';
+  reportIssueSubmit.disabled = false;
+  reportIssueModal.classList.remove('hidden');
+  reportIssueTitle.focus();
+}
+
+function hideReportIssue() {
+  reportIssueModal.classList.add('hidden');
+}
+
+async function submitIssue() {
+  const title = reportIssueTitle.value.trim();
+  const content = reportIssueContent.value.trim();
+
+  if (!title) {
+    reportIssueStatus.className = 'report-issue-status error';
+    reportIssueStatus.textContent = 'Please enter a title for your issue.';
+    reportIssueTitle.focus();
+    return;
+  }
+
+  reportIssueSubmit.disabled = true;
+  reportIssueStatus.className = 'report-issue-status loading';
+  reportIssueStatus.textContent = 'Submitting...';
+
+  try {
+    const response = await fetch(`${NOOS_API_URL}/nodes/anonymous-submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        listId: NOOS_ISSUE_LIST_ID,
+        title,
+        content,
+        type: 'issue',
+        metadata: {
+          app: 'OpenMarkdownReader',
+          platform: navigator.platform,
+          timestamp: new Date().toISOString()
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    reportIssueStatus.className = 'report-issue-status success';
+    reportIssueStatus.textContent = 'Issue submitted successfully! Thank you for your feedback.';
+
+    // Clear form and close after delay
+    setTimeout(() => {
+      hideReportIssue();
+    }, 2000);
+
+  } catch (err) {
+    console.error('Submit issue error:', err);
+    reportIssueStatus.className = 'report-issue-status error';
+    reportIssueStatus.textContent = `Failed to submit: ${err.message}`;
+    reportIssueSubmit.disabled = false;
+  }
+}
+
+reportIssueBackdrop.addEventListener('click', hideReportIssue);
+reportIssueClose.addEventListener('click', hideReportIssue);
+reportIssueCancel.addEventListener('click', hideReportIssue);
+reportIssueSubmit.addEventListener('click', submitIssue);
+
+// Submit on Enter in title field (if content is empty) or Cmd+Enter anywhere
+reportIssueTitle.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !reportIssueContent.value.trim()) {
+    e.preventDefault();
+    submitIssue();
+  }
+});
+
+reportIssueContent.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    submitIssue();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !reportIssueModal.classList.contains('hidden')) {
+    hideReportIssue();
+  }
+});
+
+window.electronAPI.onShowReportIssue(showReportIssue);
+
 // Custom width dialog
 const customWidthDialog = document.getElementById('custom-width-dialog');
 const customWidthInput = document.getElementById('custom-width-input');
