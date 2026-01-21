@@ -1118,6 +1118,16 @@ function setupMenu() {
             });
           }
         },
+        {
+          label: 'Terminal View',
+          type: 'checkbox',
+          checked: false,
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: (menuItem) => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('toggle-terminal-view', menuItem.checked);
+          }
+        },
         { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },

@@ -3032,3 +3032,117 @@ mark.find-match.active {
 [data-theme="light"] .global-search-line-content mark {
   background: rgba(255, 213, 0, 0.5);
 }
+
+/* Terminal View Mode */
+.terminal-view #content {
+  background: #1e1e1e;
+  max-width: none !important;
+}
+
+.terminal-view .markdown-body {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 0;
+}
+
+/* Disable markdown rendering in terminal view */
+.terminal-view .markdown-body h1,
+.terminal-view .markdown-body h2,
+.terminal-view .markdown-body h3,
+.terminal-view .markdown-body h4,
+.terminal-view .markdown-body h5,
+.terminal-view .markdown-body h6 {
+  font-size: inherit;
+  font-weight: normal;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.terminal-view .markdown-body code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.terminal-view .markdown-body pre {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.terminal-view .markdown-body a {
+  color: #569cd6;
+}
+
+.terminal-view .markdown-body blockquote {
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+}
+
+.terminal-view .markdown-body ul,
+.terminal-view .markdown-body ol {
+  padding-left: 0;
+  list-style: none;
+}
+
+.terminal-view .markdown-body li {
+  margin: 0;
+}
+
+.terminal-view .markdown-body hr {
+  border: none;
+  height: auto;
+  margin: 0;
+}
+
+.terminal-view .markdown-body hr::before {
+  content: '────────────────────────────────────────';
+  color: #6a6a6a;
+}
+
+.terminal-view .markdown-body table {
+  border-collapse: collapse;
+  font-family: inherit;
+}
+
+.terminal-view .markdown-body table th,
+.terminal-view .markdown-body table td {
+  border: 1px solid #6a6a6a;
+  padding: 4px 8px;
+}
+
+/* Terminal view indicator in status bar */
+.terminal-view-indicator {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--mono-font, monospace);
+}
+
+.terminal-view .terminal-view-indicator {
+  display: flex;
+}
+
+/* Light theme terminal option (if user prefers) */
+[data-theme="light"].terminal-view #content,
+[data-theme="light"].terminal-view .markdown-body {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}

@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onToggleEdit: (callback) => ipcRenderer.on('toggle-edit', () => callback()),
   onRevert: (callback) => ipcRenderer.on('revert', () => callback()),
   onSetReadOnly: (callback) => ipcRenderer.on('set-read-only', (event, isReadOnly) => callback(isReadOnly)),
+  onToggleTerminalView: (callback) => ipcRenderer.on('toggle-terminal-view', (event, enabled) => callback(enabled)),
 
   // File watching
   onSetWatchMode: (callback) => ipcRenderer.on('set-watch-mode', (event, watchMode) => callback(watchMode)),

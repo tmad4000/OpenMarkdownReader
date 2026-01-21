@@ -11,7 +11,8 @@ let settings = {
   tocVisible: false,
   csvViewAsTable: true, // Default to showing CSV as table
   richEditorMode: true, // Default to Rich
-  richToolbarVisible: false // Default toolbar closed
+  richToolbarVisible: false, // Default toolbar closed
+  terminalView: false // Terminal display mode
 };
 
 let easyMDE = null;
@@ -2068,6 +2069,16 @@ window.electronAPI.onSetReadOnly((isReadOnly) => {
     }
   }
 });
+
+// Listen for terminal view toggle
+window.electronAPI.onToggleTerminalView((enabled) => {
+  settings.terminalView = enabled;
+  applyTerminalView();
+});
+
+function applyTerminalView() {
+  document.documentElement.classList.toggle('terminal-view', settings.terminalView);
+}
 
 // Listen for watch mode toggle
 window.electronAPI.onSetWatchMode((watchMode) => {
