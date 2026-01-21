@@ -354,6 +354,25 @@
     </div>
   </div>
 
+  <!-- Custom Width Dialog -->
+  <div id="custom-width-dialog" class="custom-width-dialog hidden">
+    <div class="custom-width-backdrop"></div>
+    <div class="custom-width-modal">
+      <div class="custom-width-header">
+        <h3>Custom Content Width</h3>
+        <button class="custom-width-close">&times;</button>
+      </div>
+      <div class="custom-width-body">
+        <p>Enter a width in pixels (300-3000):</p>
+        <input type="number" id="custom-width-input" class="custom-width-input" min="300" max="3000" step="50" placeholder="e.g., 1000">
+        <div class="custom-width-buttons">
+          <button id="custom-width-cancel" class="custom-width-btn">Cancel</button>
+          <button id="custom-width-apply" class="custom-width-btn custom-width-btn-primary">Apply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notifications -->
   <div id="toast-container" class="toast-container"></div>
 

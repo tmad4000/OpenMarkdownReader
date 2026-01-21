@@ -1213,6 +1213,18 @@ function setupMenu() {
                 saveConfig();
                 broadcastSetting('content-width', 'full');
               }
+            },
+            { type: 'separator' },
+            {
+              label: typeof config.contentWidth === 'number' && ![700, 900, 1100, 1300, 1500, 1800].includes(config.contentWidth)
+                ? `Custom (${config.contentWidth}px)`
+                : 'Custom...',
+              type: 'radio',
+              checked: typeof config.contentWidth === 'number' && ![700, 900, 1100, 1300, 1500, 1800].includes(config.contentWidth),
+              click: async () => {
+                const win = getFocusedWindow();
+                if (win) win.webContents.send('show-custom-width-dialog');
+              }
             }
           ]
         },
@@ -2084,6 +2096,20 @@ ipcMain.handle('toggle-auto-save', async () => {
     });
   }
   return config.autoSave;
+});
+
+// Set custom content width
+ipcMain.handle('set-custom-width', async (event, width) => {
+  const numWidth = parseInt(width, 10);
+  if (numWidth >= 300 && numWidth <= 3000) {
+    config.contentWidth = numWidth;
+    saveConfig();
+    broadcastSetting('content-width', numWidth);
+    // Rebuild menu to show custom width in label
+    Menu.setApplicationMenu(createMenu());
+    return true;
+  }
+  return false;
 });
 
 // Watch a file for changes

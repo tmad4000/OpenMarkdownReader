@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSetTheme: (callback) => ipcRenderer.on('set-theme', (event, theme) => callback(theme)),
   onSetAutoSave: (callback) => ipcRenderer.on('set-auto-save', (event, enabled) => callback(enabled)),
   toggleAutoSave: () => ipcRenderer.invoke('toggle-auto-save'),
+  setCustomWidth: (width) => ipcRenderer.invoke('set-custom-width', width),
+  onShowCustomWidthDialog: (callback) => ipcRenderer.on('show-custom-width-dialog', () => callback()),
 
   // Command palette
   onShowCommandPalette: (callback) => ipcRenderer.on('show-command-palette', () => callback()),

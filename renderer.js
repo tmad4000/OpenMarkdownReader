@@ -71,7 +71,7 @@ const textFileExtensions = [
   // Plain text
   '.txt', '.text',
   // Data formats
-  '.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.toml',
+  '.csv', '.tsv', '.json', '.jsonl', '.xml', '.yaml', '.yml', '.toml',
   // Config files
   '.conf', '.config', '.ini', '.cfg', '.env', '.properties',
   // Code/Script files
@@ -1953,6 +1953,55 @@ document.addEventListener('keydown', (e) => {
 
 window.electronAPI.onShowKeyboardShortcuts(showKeyboardShortcuts);
 
+// Custom width dialog
+const customWidthDialog = document.getElementById('custom-width-dialog');
+const customWidthInput = document.getElementById('custom-width-input');
+const customWidthBackdrop = customWidthDialog.querySelector('.custom-width-backdrop');
+const customWidthClose = customWidthDialog.querySelector('.custom-width-close');
+const customWidthCancel = document.getElementById('custom-width-cancel');
+const customWidthApply = document.getElementById('custom-width-apply');
+
+function showCustomWidthDialog() {
+  customWidthInput.value = typeof settings.contentWidth === 'number' ? settings.contentWidth : 900;
+  customWidthDialog.classList.remove('hidden');
+  customWidthInput.focus();
+  customWidthInput.select();
+}
+
+function hideCustomWidthDialog() {
+  customWidthDialog.classList.add('hidden');
+}
+
+async function applyCustomWidth() {
+  const width = parseInt(customWidthInput.value, 10);
+  if (width >= 300 && width <= 3000) {
+    const success = await window.electronAPI.setCustomWidth(width);
+    if (success) {
+      hideCustomWidthDialog();
+      showToast(`Content width set to ${width}px`, 'success', 2000);
+    } else {
+      showToast('Invalid width value', 'error');
+    }
+  } else {
+    showToast('Width must be between 300 and 3000 pixels', 'error');
+  }
+}
+
+customWidthBackdrop.addEventListener('click', hideCustomWidthDialog);
+customWidthClose.addEventListener('click', hideCustomWidthDialog);
+customWidthCancel.addEventListener('click', hideCustomWidthDialog);
+customWidthApply.addEventListener('click', applyCustomWidth);
+customWidthInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    applyCustomWidth();
+  } else if (e.key === 'Escape') {
+    hideCustomWidthDialog();
+  }
+});
+
+window.electronAPI.onShowCustomWidthDialog(showCustomWidthDialog);
+
 // Listen for refresh file (Cmd+R)
 window.electronAPI.onRefreshFile(async () => {
   const tab = tabs.find(t => t.id === activeTabId);
@@ -2642,6 +2691,8 @@ function renderMarkdown(mdContent) {
   try {
     // Hide CSV view if it was showing
     hideCSVView();
+    // Clear chat view if it was showing
+    document.documentElement.classList.remove('chat-view');
     fallbackHeadingSlugCounts = new Map();
 
     // Process wiki links [[page]] -> [page](path) before parsing
@@ -2699,6 +2750,175 @@ function applyLinkTooltips() {
   });
 }
 
+// JSONL Chat Parser for Claude Code sessions
+function isJsonlFile(filename) {
+  return path.extname(filename).toLowerCase() === '.jsonl';
+}
+
+function parseClaudeCodeSession(content) {
+  const messages = [];
+  const lines = content.trim().split('\n');
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const obj = JSON.parse(line);
+
+      // Skip summary entries
+      if (obj.type === 'summary') continue;
+
+      if (obj.type === 'user' && obj.message) {
+        messages.push({
+          role: 'human',
+          content: typeof obj.message.content === 'string' ? obj.message.content : '',
+          timestamp: obj.timestamp
+        });
+      } else if (obj.type === 'assistant' && obj.message && obj.message.content) {
+        const contentBlocks = obj.message.content;
+        let textContent = '';
+        let thinking = '';
+        const toolCalls = [];
+
+        if (Array.isArray(contentBlocks)) {
+          for (const block of contentBlocks) {
+            if (block.type === 'text') {
+              textContent += block.text || '';
+            } else if (block.type === 'thinking') {
+              thinking = block.thinking || '';
+            } else if (block.type === 'tool_use') {
+              toolCalls.push({
+                name: block.name,
+                input: block.input
+              });
+            }
+          }
+        }
+
+        if (textContent || thinking || toolCalls.length > 0) {
+          messages.push({
+            role: 'assistant',
+            content: textContent,
+            thinking: thinking,
+            toolCalls: toolCalls,
+            timestamp: obj.timestamp
+          });
+        }
+      } else if (obj.type === 'tool_result') {
+        // Tool results - could add these as separate messages if needed
+      }
+    } catch (e) {
+      // Skip invalid JSON lines
+    }
+  }
+
+  return messages;
+}
+
+function renderChatView(messages) {
+  let html = '';
+
+  for (const msg of messages) {
+    const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+    const roleLabel = msg.role === 'human' ? 'Human' : 'Assistant';
+
+    html += `<div class="chat-message ${msg.role}">`;
+    html += `<div class="chat-message-header">`;
+    html += `<span class="chat-message-role">${roleLabel}</span>`;
+    if (timestamp) {
+      html += `<span class="chat-message-timestamp">${timestamp}</span>`;
+    }
+    html += `</div>`;
+
+    // Thinking block (collapsed by default)
+    if (msg.thinking) {
+      const thinkingPreview = msg.thinking.slice(0, 100).replace(/\n/g, ' ') + '...';
+      html += `<div class="chat-thinking" onclick="this.classList.toggle('expanded')">`;
+      html += `<div class="chat-thinking-header">`;
+      html += `<span class="chat-tool-toggle">▶</span>`;
+      html += `<span>Thinking</span>`;
+      html += `<span style="color: #666; font-weight: normal;">${escapeHtml(thinkingPreview)}</span>`;
+      html += `</div>`;
+      html += `<div class="chat-thinking-content">${escapeHtml(msg.thinking)}</div>`;
+      html += `</div>`;
+    }
+
+    // Tool calls (collapsed by default)
+    if (msg.toolCalls && msg.toolCalls.length > 0) {
+      for (const tool of msg.toolCalls) {
+        const inputStr = typeof tool.input === 'object' ? JSON.stringify(tool.input, null, 2) : String(tool.input);
+        const inputPreview = inputStr.slice(0, 80).replace(/\n/g, ' ');
+        html += `<div class="chat-tool-call" onclick="this.classList.toggle('expanded')">`;
+        html += `<div class="chat-tool-header">`;
+        html += `<span class="chat-tool-toggle">▶</span>`;
+        html += `<span class="chat-tool-name">${escapeHtml(tool.name)}</span>`;
+        html += `<span style="color: #666;">${escapeHtml(inputPreview)}${inputStr.length > 80 ? '...' : ''}</span>`;
+        html += `</div>`;
+        html += `<div class="chat-tool-content">${escapeHtml(inputStr)}</div>`;
+        html += `</div>`;
+      }
+    }
+
+    // Main content
+    if (msg.content) {
+      // Simple markdown-like rendering for code blocks
+      let content = escapeHtml(msg.content);
+      // Convert code blocks
+      content = content.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
+      // Convert inline code
+      content = content.replace(/`([^`]+)`/g, '<code>$1</code>');
+      html += `<div class="chat-message-content">${content}</div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  return html;
+}
+
+function detectChatPatterns(content) {
+  // Check for common chat patterns in plain text
+  const patterns = [
+    /^Human:/m,
+    /^Assistant:/m,
+    /^User:/m,
+    /^AI:/m,
+    /^> Human:/m,
+    /^> Assistant:/m
+  ];
+
+  let matchCount = 0;
+  for (const pattern of patterns) {
+    if (pattern.test(content)) matchCount++;
+  }
+
+  return matchCount >= 2; // Need at least 2 different patterns
+}
+
+function parseTextChat(content) {
+  const messages = [];
+  const lines = content.split('\n');
+  let currentMessage = null;
+
+  for (const line of lines) {
+    // Check for role markers
+    const humanMatch = line.match(/^(Human|User|>?\s*Human|>?\s*User):\s*(.*)/i);
+    const assistantMatch = line.match(/^(Assistant|AI|Claude|>?\s*Assistant|>?\s*AI|>?\s*Claude):\s*(.*)/i);
+
+    if (humanMatch) {
+      if (currentMessage) messages.push(currentMessage);
+      currentMessage = { role: 'human', content: humanMatch[2] };
+    } else if (assistantMatch) {
+      if (currentMessage) messages.push(currentMessage);
+      currentMessage = { role: 'assistant', content: assistantMatch[2] };
+    } else if (currentMessage) {
+      currentMessage.content += '\n' + line;
+    }
+  }
+
+  if (currentMessage) messages.push(currentMessage);
+  return messages;
+}
+
 // Render content based on file type
 function renderContent(content, filename) {
   const tab = tabs.find(t => t.id === activeTabId);
@@ -2713,6 +2933,23 @@ function renderContent(content, filename) {
     return;
   }
 
+  // Check if it's a JSONL file (Claude Code session) - render as chat
+  if (isJsonlFile(filename)) {
+    const messages = parseClaudeCodeSession(content);
+    if (messages.length > 0) {
+      hideCSVView();
+      document.documentElement.classList.add('terminal-view', 'chat-view');
+      markdownBody.innerHTML = renderChatView(messages);
+      dropZone.classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+      markdownBody.classList.remove('hidden');
+      tocContent.innerHTML = `<div class="toc-empty">${messages.length} messages</div>`;
+      window.scrollTo(0, 0);
+      return;
+    }
+    // Fall through to render as code if parsing fails
+  }
+
   // Check if it's a markdown file - render as markdown
   if (isMarkdownFile(filename)) {
     renderMarkdown(content);
@@ -2721,6 +2958,7 @@ function renderContent(content, filename) {
 
   // For other text files, show as syntax-highlighted code block
   hideCSVView();
+  document.documentElement.classList.remove('chat-view');
   const ext = path.extname(filename).slice(1) || 'plaintext';
   const escapedContent = escapeHtml(content);
   markdownBody.innerHTML = `<pre><code class="language-${ext}">${escapedContent}</code></pre>`;
