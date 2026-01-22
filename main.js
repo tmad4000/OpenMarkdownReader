@@ -2026,12 +2026,18 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
         } else if (entry.isFile()) {
           const isMarkdown = isMarkdownFileExt(entry.name);
           const isTextFile = isTextFileExt(entry.name);
+          let mtime = 0;
+          try {
+            mtime = fs.statSync(fullPath).mtimeMs;
+          } catch (e) {}
+
           files.push({
             name: entry.name,
             path: fullPath,
             type: 'file',
             isMarkdown,
-            isTextFile
+            isTextFile,
+            mtime
           });
         }
       }
@@ -2398,12 +2404,18 @@ function getDirectoryContents(dirPath) {
       } else if (entry.isFile()) {
         const isMarkdown = isMarkdownFileExt(entry.name);
         const isTextFile = isTextFileExt(entry.name);
+        let mtime = 0;
+        try {
+          mtime = fs.statSync(fullPath).mtimeMs;
+        } catch (e) {}
+        
         files.push({
           name: entry.name,
           path: fullPath,
           type: 'file',
           isMarkdown,
-          isTextFile
+          isTextFile,
+          mtime
         });
       }
     }

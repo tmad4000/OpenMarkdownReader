@@ -12,7 +12,8 @@ let settings = {
   csvViewAsTable: true, // Default to showing CSV as table
   richEditorMode: true, // Default to Rich
   richToolbarVisible: false, // Default toolbar closed
-  terminalView: false // Terminal display mode
+  terminalView: false, // Terminal display mode
+  sidebarViewMode: 'tree' // 'tree' or 'recent'
 };
 
 let easyMDE = null;
@@ -239,6 +240,7 @@ const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
+const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
 const sidebarPath = document.getElementById('sidebar-path');
 const sidebarPathText = document.getElementById('sidebar-path-text');
 const fileTree = document.getElementById('file-tree');
@@ -1061,6 +1063,20 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
+// Toggle recent files view
+sidebarRecentBtn.addEventListener('click', () => {
+  if (settings.sidebarViewMode === 'tree') {
+    settings.sidebarViewMode = 'recent';
+    sidebarRecentBtn.classList.add('active');
+    sidebarRecentBtn.style.color = 'var(--link-color)'; // Visual feedback
+  } else {
+    settings.sidebarViewMode = 'tree';
+    sidebarRecentBtn.classList.remove('active');
+    sidebarRecentBtn.style.color = '';
+  }
+  renderFileTree();
+});
+
 // Update sidebar path display
 function updateSidebarPath(dirPath) {
   if (!dirPath) {
@@ -1299,12 +1315,125 @@ const expandedFolders = new Set();
 function renderFileTree() {
   fileTree.innerHTML = '';
 
+  if (settings.sidebarViewMode === 'recent') {
+    renderRecentFilesTree();
+    return;
+  }
+
   if (!directoryFiles.length) {
     fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">No files</div>';
     return;
   }
 
   renderFileTreeItems(directoryFiles, fileTree, 0);
+}
+
+async function renderRecentFilesTree() {
+  // Use cached files if available, otherwise fetch
+  let files = allFilesCache;
+  if (!files) {
+    fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
+    try {
+      files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+      allFilesCache = files;
+    } catch (e) {
+      fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
+      return;
+    }
+  }
+
+  const now = Date.now();
+  const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
+  
+  // Filter for files modified in last week (and only files, not folders)
+  const recentFiles = files.filter(f => 
+    f.type === 'file' && 
+    f.mtime && 
+    (now - f.mtime < ONE_WEEK)
+  );
+
+  if (recentFiles.length === 0) {
+    fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">No recently modified files</div>';
+    return;
+  }
+
+  // Sort by mtime desc
+  recentFiles.sort((a, b) => b.mtime - a.mtime);
+
+  // Group by parent folder
+  const grouped = new Map();
+  recentFiles.forEach(file => {
+    const relativePath = file.path.replace(currentDirectory, '');
+    const parentFolder = relativePath.split('/').slice(0, -1).join('/') || '/'; // Root is /
+    
+    if (!grouped.has(parentFolder)) {
+      grouped.set(parentFolder, []);
+    }
+    grouped.get(parentFolder).push(file);
+  });
+
+  // Render groups
+  // We sort groups by the mtime of their most recent file
+  const sortedGroups = Array.from(grouped.entries()).sort((a, b) => {
+    const maxMtimeA = Math.max(...a[1].map(f => f.mtime));
+    const maxMtimeB = Math.max(...b[1].map(f => f.mtime));
+    return maxMtimeB - maxMtimeA;
+  });
+
+  sortedGroups.forEach(([folderPath, groupFiles]) => {
+    // Render folder header
+    const folderEl = document.createElement('div');
+    folderEl.className = 'file-tree-item file-tree-folder expanded';
+    folderEl.style.paddingLeft = '12px';
+    folderEl.style.opacity = '0.7';
+    folderEl.style.marginTop = '4px';
+    folderEl.innerHTML = `
+      <svg class="folder-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+        <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
+      </svg>
+      <span style="font-size: 11px; font-weight: 600;">${folderPath === '/' ? '(root)' : folderPath.replace(/^\//, '')}</span>
+    `;
+    fileTree.appendChild(folderEl);
+
+    // Render files
+    groupFiles.forEach(file => {
+      const el = document.createElement('div');
+      el.className = 'file-tree-item file-tree-file';
+      // Indent slightly more for list view feel
+      el.style.paddingLeft = '28px'; 
+      el.style.height = 'auto'; // Allow variable height
+      el.style.paddingTop = '6px';
+      el.style.paddingBottom = '6px';
+      
+      const isTextFile = file.isMarkdown || file.isTextFile;
+      if (!isTextFile) el.classList.add('non-markdown');
+      
+      // Calculate relative time string
+      const date = new Date(file.mtime);
+      const timeString = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      el.innerHTML = `
+        <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-top: 2px;">
+          <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+        </svg>
+        <div style="display: flex; flex-direction: column; min-width: 0;">
+          <span style="line-height: 1.2;">${escapeHtml(file.name)}</span>
+          <span style="font-size: 10px; color: var(--text-secondary); opacity: 0.8;">${timeString}</span>
+        </div>
+      `;
+      
+      el.addEventListener('click', (e) => {
+        const options = {};
+        if (e.metaKey) {
+          options.newTab = true;
+          options.background = !e.shiftKey;
+        }
+        window.electronAPI.openFileByPath(file.path, options);
+      });
+      
+      fileTree.appendChild(el);
+    });
+  });
 }
 
 function renderFileTreeItems(items, container, depth) {
