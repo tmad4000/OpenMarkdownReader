@@ -13,7 +13,8 @@ let settings = {
   richEditorMode: true, // Default to Rich
   richToolbarVisible: false, // Default toolbar closed
   terminalView: false, // Terminal display mode
-  sidebarViewMode: 'tree' // 'tree' or 'recent'
+  sidebarViewMode: 'tree', // 'tree' or 'recent'
+  sidebarSortMode: 'name' // 'name' or 'date'
 };
 
 let easyMDE = null;
@@ -240,8 +241,10 @@ const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
+const sidebarSortBtn = document.getElementById('sidebar-sort-btn');
 const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
 const sidebarPath = document.getElementById('sidebar-path');
+const devRestartBtn = document.getElementById('dev-restart-btn');
 const sidebarPathText = document.getElementById('sidebar-path-text');
 const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
@@ -1063,19 +1066,57 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
+// Toggle sort mode
+sidebarSortBtn.addEventListener('click', () => {
+  if (settings.sidebarSortMode === 'name') {
+    settings.sidebarSortMode = 'date';
+    sidebarSortBtn.classList.add('active');
+    sidebarSortBtn.style.color = 'var(--link-color)';
+  } else {
+    settings.sidebarSortMode = 'name';
+    sidebarSortBtn.classList.remove('active');
+    sidebarSortBtn.style.color = '';
+  }
+  
+  // Sort and re-render
+  if (directoryFiles) {
+    sortDirectoryFiles(directoryFiles);
+    renderFileTree();
+  }
+});
+
 // Toggle recent files view
 sidebarRecentBtn.addEventListener('click', () => {
   if (settings.sidebarViewMode === 'tree') {
     settings.sidebarViewMode = 'recent';
     sidebarRecentBtn.classList.add('active');
-    sidebarRecentBtn.style.color = 'var(--link-color)'; // Visual feedback
+    sidebarRecentBtn.style.color = 'var(--link-color)';
+    sidebarRecentBtn.title = 'View: Recent by Folder (Click for Timeline)';
+  } else if (settings.sidebarViewMode === 'recent') {
+    settings.sidebarViewMode = 'timeline';
+    sidebarRecentBtn.classList.add('active');
+    sidebarRecentBtn.style.color = '#8250df'; // Purple for timeline
+    sidebarRecentBtn.title = 'View: Timeline (Click for File Tree)';
   } else {
     settings.sidebarViewMode = 'tree';
     sidebarRecentBtn.classList.remove('active');
     sidebarRecentBtn.style.color = '';
+    sidebarRecentBtn.title = 'Show Recently Modified';
   }
   renderFileTree();
 });
+
+// Dev restart button
+if (devRestartBtn) {
+  devRestartBtn.addEventListener('click', () => {
+    window.electronAPI.restartApp();
+  });
+
+  window.electronAPI.onSourceCodeChanged(() => {
+    devRestartBtn.classList.remove('hidden');
+    showToast('Source code changed. Restart required.', 'warning', 5000);
+  });
+}
 
 // Update sidebar path display
 function updateSidebarPath(dirPath) {
@@ -1272,6 +1313,9 @@ window.electronAPI.onDirectoryLoaded((data) => {
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
 
+  // Apply current sort
+  sortDirectoryFiles(directoryFiles);
+
   // Update sidebar path display
   updateSidebarPath(currentDirectory);
 
@@ -1310,6 +1354,38 @@ window.electronAPI.onDirectoryLoaded((data) => {
 });
 
 // Track expanded folders
+// Sort directory files recursively
+function sortDirectoryFiles(items) {
+  if (!items) return;
+
+  items.sort((a, b) => {
+    // Always keep folders on top
+    if (a.type !== b.type) {
+      return a.type === 'folder' ? -1 : 1;
+    }
+
+    if (settings.sidebarSortMode === 'date') {
+      // Sort by mtime descending (newest first)
+      // Use 0 as fallback if mtime is missing
+      const mtimeA = a.mtime || 0;
+      const mtimeB = b.mtime || 0;
+      if (mtimeA !== mtimeB) {
+        return mtimeB - mtimeA;
+      }
+    }
+
+    // Fallback to name sort (A-Z)
+    return a.name.localeCompare(b.name);
+  });
+
+  // Recurse into children
+  items.forEach(item => {
+    if (item.type === 'folder' && item.children) {
+      sortDirectoryFiles(item.children);
+    }
+  });
+}
+
 const expandedFolders = new Set();
 
 function renderFileTree() {
@@ -1317,6 +1393,11 @@ function renderFileTree() {
 
   if (settings.sidebarViewMode === 'recent') {
     renderRecentFilesTree();
+    return;
+  }
+
+  if (settings.sidebarViewMode === 'timeline') {
+    renderRecentFilesTimeline();
     return;
   }
 
@@ -1380,6 +1461,8 @@ async function renderRecentFilesTree() {
     return maxMtimeB - maxMtimeA;
   });
 
+  fileTree.innerHTML = '';
+
   sortedGroups.forEach(([folderPath, groupFiles]) => {
     // Render folder header
     const folderEl = document.createElement('div');
@@ -1387,12 +1470,21 @@ async function renderRecentFilesTree() {
     folderEl.style.paddingLeft = '12px';
     folderEl.style.opacity = '0.7';
     folderEl.style.marginTop = '4px';
+    folderEl.style.cursor = 'pointer';
+    folderEl.title = 'Click to reveal in file tree';
     folderEl.innerHTML = `
       <svg class="folder-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
       </svg>
       <span style="font-size: 11px; font-weight: 600;">${folderPath === '/' ? '(root)' : folderPath.replace(/^\//, '')}</span>
     `;
+    
+    // Click to reveal
+    const fullFolderPath = folderPath === '/' ? currentDirectory : path.join(currentDirectory, folderPath);
+    folderEl.addEventListener('click', () => {
+      revealFolderInTree(fullFolderPath);
+    });
+
     fileTree.appendChild(folderEl);
 
     // Render files
@@ -1436,6 +1528,204 @@ async function renderRecentFilesTree() {
   });
 }
 
+async function renderRecentFilesTimeline() {
+  let files = allFilesCache;
+  if (!files) {
+    fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
+    try {
+      files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+      allFilesCache = files;
+    } catch (e) {
+      fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
+      return;
+    }
+  }
+
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const ONE_WEEK = 7 * ONE_DAY;
+  
+  const recentFiles = files.filter(f => 
+    f.type === 'file' && 
+    f.mtime && 
+    (now - f.mtime < ONE_WEEK)
+  );
+
+  if (recentFiles.length === 0) {
+    fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">No recently modified files</div>';
+    return;
+  }
+
+  // Sort by mtime desc
+  recentFiles.sort((a, b) => b.mtime - a.mtime);
+
+  // Group by Day (Today, Yesterday, Date)
+  const groupedByDay = new Map();
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  recentFiles.forEach(file => {
+    const fileDate = new Date(file.mtime);
+    fileDate.setHours(0, 0, 0, 0);
+    
+    let dayLabel;
+    if (fileDate.getTime() === today.getTime()) {
+      dayLabel = 'Today';
+    } else if (fileDate.getTime() === yesterday.getTime()) {
+      dayLabel = 'Yesterday';
+    } else {
+      dayLabel = fileDate.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    }
+
+    if (!groupedByDay.has(dayLabel)) {
+      groupedByDay.set(dayLabel, []);
+    }
+    groupedByDay.get(dayLabel).push(file);
+  });
+
+  fileTree.innerHTML = '';
+
+  groupedByDay.forEach((dayFiles, dayLabel) => {
+    // Render Day Header
+    const dayHeader = document.createElement('div');
+    dayHeader.className = 'file-tree-item';
+    dayHeader.style.fontSize = '11px';
+    dayHeader.style.fontWeight = '700';
+    dayHeader.style.textTransform = 'uppercase';
+    dayHeader.style.color = 'var(--text-secondary)';
+    dayHeader.style.marginTop = '12px';
+    dayHeader.style.marginBottom = '4px';
+    dayHeader.style.paddingLeft = '12px';
+    dayHeader.style.letterSpacing = '0.5px';
+    dayHeader.style.cursor = 'default';
+    dayHeader.textContent = dayLabel;
+    fileTree.appendChild(dayHeader);
+
+    // Group files by folder within this day
+    const filesByFolder = new Map();
+    dayFiles.forEach(file => {
+      const relativePath = file.path.replace(currentDirectory, '');
+      const parentFolder = relativePath.split('/').slice(0, -1).join('/') || '/';
+      
+      if (!filesByFolder.has(parentFolder)) {
+        filesByFolder.set(parentFolder, []);
+      }
+      filesByFolder.get(parentFolder).push(file);
+    });
+
+    filesByFolder.forEach((groupFiles, folderPath) => {
+      // Render Folder Sub-header
+      const folderEl = document.createElement('div');
+      folderEl.className = 'file-tree-item file-tree-folder expanded';
+      folderEl.style.paddingLeft = '12px';
+      folderEl.style.opacity = '0.8';
+      folderEl.style.cursor = 'pointer';
+      folderEl.title = 'Click to reveal in file tree';
+      folderEl.innerHTML = `
+        <svg class="folder-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+          <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
+        </svg>
+        <span style="font-size: 11px; font-weight: 500;">${folderPath === '/' ? '(root)' : folderPath.replace(/^\//, '')}</span>
+      `;
+      
+      // Click to reveal
+      const fullFolderPath = folderPath === '/' ? currentDirectory : path.join(currentDirectory, folderPath);
+      folderEl.addEventListener('click', () => {
+        revealFolderInTree(fullFolderPath);
+      });
+
+      fileTree.appendChild(folderEl);
+
+      // Render Files
+      groupFiles.forEach(file => {
+        const el = document.createElement('div');
+        el.className = 'file-tree-item file-tree-file';
+        el.style.paddingLeft = '28px'; 
+        el.style.height = 'auto';
+        el.style.paddingTop = '4px';
+        el.style.paddingBottom = '4px';
+        
+        const isTextFile = file.isMarkdown || file.isTextFile;
+        if (!isTextFile) el.classList.add('non-markdown');
+        
+        const date = new Date(file.mtime);
+        const timeString = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+        el.innerHTML = `
+          <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" style="margin-top: 2px;">
+            <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
+          </svg>
+          <div style="display: flex; align-items: baseline; min-width: 0; gap: 6px;">
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(file.name)}</span>
+            <span style="font-size: 10px; color: var(--text-secondary); opacity: 0.7; white-space: nowrap;">${timeString}</span>
+          </div>
+        `;
+        
+        el.addEventListener('click', (e) => {
+          const options = {};
+          if (e.metaKey) {
+            options.newTab = true;
+            options.background = !e.shiftKey;
+          }
+          window.electronAPI.openFileByPath(file.path, options);
+        });
+        
+        fileTree.appendChild(el);
+      });
+    });
+  });
+}
+
+async function revealFolderInTree(targetPath) {
+  // Switch to tree view
+  settings.sidebarViewMode = 'tree';
+  sidebarRecentBtn.classList.remove('active');
+  sidebarRecentBtn.style.color = '';
+  
+  // Re-render tree
+  renderFileTree();
+
+  if (!targetPath || targetPath === currentDirectory) return;
+
+  // We need to expand the path to this folder
+  // Path parts relative to root
+  const relativePath = targetPath.startsWith(currentDirectory) 
+    ? targetPath.replace(currentDirectory + '/', '') // Remove root + slash
+    : targetPath;
+    
+  const parts = relativePath.split('/').filter(p => p);
+  
+  let currentPath = currentDirectory;
+  
+  // Expand each segment
+  for (const part of parts) {
+    currentPath += '/' + part;
+    
+    // 1. Find the element in current DOM
+    const folderEl = fileTree.querySelector(`.file-tree-folder[data-path="${currentPath}"]`);
+    
+    if (folderEl) {
+      if (!expandedFolders.has(currentPath)) {
+        await toggleFolder(currentPath, folderEl);
+      }
+      // If it's the target, scroll into view
+      if (currentPath === targetPath) {
+        folderEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Highlight briefly
+        folderEl.classList.add('active');
+        setTimeout(() => folderEl.classList.remove('active'), 2000);
+      }
+    } else {
+      // Should not happen if logic is correct and tree is rendered
+      console.warn('Could not find folder element to expand:', currentPath);
+      break;
+    }
+  }
+}
+
 function renderFileTreeItems(items, container, depth) {
   items.forEach(item => {
     const el = document.createElement('div');
@@ -1444,6 +1734,7 @@ function renderFileTreeItems(items, container, depth) {
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
       el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${item.isNew ? ' new-folder' : ''}`;
+      el.dataset.path = item.path;
       el.innerHTML = `
         <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
           <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
@@ -1515,6 +1806,9 @@ async function toggleFolder(folderPath, element) {
     element.classList.add('expanded');
 
     const contents = await window.electronAPI.getDirectoryContents(folderPath);
+
+    // Apply current sort
+    sortDirectoryFiles(contents);
 
     // Store children in our data structure
     const folderItem = findItemByPath(directoryFiles, folderPath);

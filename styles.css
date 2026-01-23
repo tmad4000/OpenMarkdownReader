@@ -554,6 +554,42 @@ mark.find-match.active {
   color: var(--text-color);
 }
 
+/* Dev Restart Button */
+.dev-restart-btn {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  margin-right: 8px;
+  background: rgba(210, 153, 34, 0.15); /* Orange tint */
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  border-radius: 14px;
+  color: #d29922;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  animation: pulse 2s infinite;
+}
+
+.dev-restart-btn:hover {
+  background: rgba(210, 153, 34, 0.25);
+  border-color: rgba(210, 153, 34, 0.6);
+}
+
+.dev-restart-btn svg {
+  color: inherit;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(210, 153, 34, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0); }
+}
+
 /* Watch indicator */
 .watch-indicator {
   -webkit-app-region: no-drag;
@@ -1291,7 +1327,7 @@ mark.find-match.active {
   line-height: 1.25;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   scroll-margin-top: 70px;
 }
@@ -1364,6 +1400,7 @@ mark.find-match.active {
   cursor: pointer;
   opacity: 0.7;
   flex: 0 0 auto;
+  flex-shrink: 0;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
