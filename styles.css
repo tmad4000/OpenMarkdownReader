@@ -293,7 +293,8 @@ html, body {
 }
 
 .file-tree {
-  flex: 1;
+  flex: 1 1 auto; /* Allow grow and shrink */
+  min-height: 0; /* Crucial for scrolling inside flex items */
   overflow-y: auto;
   padding: 8px 0;
 }

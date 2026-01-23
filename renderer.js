@@ -1,5 +1,27 @@
 // marked and hljs are loaded from CDN in index.html
 
+// Forward logs to main process for terminal debugging
+if (window.electronAPI && window.electronAPI.logToMain) {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+
+  console.log = (...args) => {
+    originalLog(...args);
+    window.electronAPI.logToMain('log', ...args);
+  };
+
+  console.error = (...args) => {
+    originalError(...args);
+    window.electronAPI.logToMain('error', ...args);
+  };
+  
+  console.warn = (...args) => {
+    originalWarn(...args);
+    window.electronAPI.logToMain('warn', ...args);
+  };
+}
+
 // Settings
 let settings = {
   readOnlyMode: false,
@@ -1310,11 +1332,16 @@ function createNewFileInDirectory(dirPath) {
 
 // Listen for directory loaded
 window.electronAPI.onDirectoryLoaded((data) => {
+  console.log('Directory loaded:', data);
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
 
-  // Apply current sort
-  sortDirectoryFiles(directoryFiles);
+  try {
+    // Apply current sort
+    sortDirectoryFiles(directoryFiles);
+  } catch (err) {
+    console.error('Error sorting files:', err);
+  }
 
   // Update sidebar path display
   updateSidebarPath(currentDirectory);
@@ -1343,14 +1370,10 @@ window.electronAPI.onDirectoryLoaded((data) => {
       allFilesCachePromise = null;
     });
 
-  renderFileTree();
-
-  // Show sidebar if hidden
-  if (!settings.sidebarVisible) {
-    settings.sidebarVisible = true;
-    sidebar.classList.remove('hidden');
-    sidebarToggle.classList.add('active');
-  }
+  // Show sidebar
+  settings.sidebarVisible = true;
+  sidebar.classList.remove('hidden');
+  sidebarToggle.classList.add('active');
 });
 
 // Track expanded folders
@@ -1375,7 +1398,7 @@ function sortDirectoryFiles(items) {
     }
 
     // Fallback to name sort (A-Z)
-    return a.name.localeCompare(b.name);
+    return (a.name || '').localeCompare(b.name || '');
   });
 
   // Recurse into children
@@ -1389,6 +1412,7 @@ function sortDirectoryFiles(items) {
 const expandedFolders = new Set();
 
 function renderFileTree() {
+  console.log('Rendering file tree. Mode:', settings.sidebarViewMode, 'Files:', directoryFiles.length);
   fileTree.innerHTML = '';
 
   if (settings.sidebarViewMode === 'recent') {
@@ -1407,17 +1431,22 @@ function renderFileTree() {
   }
 
   renderFileTreeItems(directoryFiles, fileTree, 0);
+  console.log(`[Renderer] fileTree now has ${fileTree.children.length} children`);
 }
 
 async function renderRecentFilesTree() {
+  console.log('renderRecentFilesTree called. Cache:', allFilesCache ? allFilesCache.length : 'null');
   // Use cached files if available, otherwise fetch
   let files = allFilesCache;
   if (!files) {
     fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
     try {
+      console.log('Fetching all files recursively...');
       files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+      console.log('Fetched files:', files.length);
       allFilesCache = files;
     } catch (e) {
+      console.error('Error loading recursive files:', e);
       fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
       return;
     }
@@ -1480,7 +1509,7 @@ async function renderRecentFilesTree() {
     `;
     
     // Click to reveal
-    const fullFolderPath = folderPath === '/' ? currentDirectory : path.join(currentDirectory, folderPath);
+    const fullFolderPath = folderPath === '/' ? currentDirectory : window.electronAPI.pathJoin(currentDirectory, folderPath);
     folderEl.addEventListener('click', () => {
       revealFolderInTree(fullFolderPath);
     });
@@ -1632,7 +1661,7 @@ async function renderRecentFilesTimeline() {
       `;
       
       // Click to reveal
-      const fullFolderPath = folderPath === '/' ? currentDirectory : path.join(currentDirectory, folderPath);
+      const fullFolderPath = folderPath === '/' ? currentDirectory : window.electronAPI.pathJoin(currentDirectory, folderPath);
       folderEl.addEventListener('click', () => {
         revealFolderInTree(fullFolderPath);
       });

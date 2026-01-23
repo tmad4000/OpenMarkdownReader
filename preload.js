@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // File operations
@@ -108,5 +109,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
   onCloseTabById: (callback) => ipcRenderer.on('close-tab-by-id', (event, tabId) => callback(tabId)),
   onCloseOtherTabs: (callback) => ipcRenderer.on('close-other-tabs', (event, tabId) => callback(tabId)),
-  onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId))
+  onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId)),
+
+  // Dev tools
+  onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
+  restartApp: () => ipcRenderer.send('restart-app'),
+  logToMain: (level, ...args) => ipcRenderer.send('log-to-main', level, ...args),
+  pathJoin: (...args) => path.join(...args)
 });
