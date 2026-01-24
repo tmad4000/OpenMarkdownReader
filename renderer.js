@@ -3843,9 +3843,37 @@ function updateCommandPaletteResults() {
   const query = commandPaletteInput.value.toLowerCase().trim();
   const isCommandQuery = query.startsWith('>');
   const searchText = isCommandQuery ? query.substring(1).trim() : query;
+  
+  // URL detection
+  const isUrl = /^https?:\/\//i.test(commandPaletteInput.value.trim());
+  
+  // File path detection (absolute path or home-relative)
+  const inputVal = commandPaletteInput.value.trim();
+  const isPath = inputVal.startsWith('/') || inputVal.startsWith('~/') || (inputVal.match(/^[a-zA-Z]:\\/) !== null); // Basic check
 
   // Build list of searchable items: folder files + open tabs + commands
   let allItems = [];
+
+  // 0. Add URL/File option if detected
+  if (isUrl) {
+    allItems.push({
+      name: `Open URL: ${inputVal}`,
+      path: inputVal,
+      type: 'url',
+      isCommand: true,
+      icon: '🌐',
+      action: () => window.electronAPI.openExternal(inputVal)
+    });
+  } else if (isPath) {
+    allItems.push({
+      name: `Open File: ${inputVal}`,
+      path: inputVal,
+      type: 'file-path',
+      isCommand: true,
+      icon: '📄',
+      action: () => window.electronAPI.openFileByPath(inputVal)
+    });
+  }
 
   // 1. Add built-in commands
   builtInCommands.forEach(cmd => {
@@ -3896,6 +3924,7 @@ function updateCommandPaletteResults() {
   let filteredItems = allItems;
   if (searchText && !isCommandQuery) {
     filteredItems = allItems.filter(item => {
+      if (item.type === 'url' || item.type === 'file-path') return true; // Keep URL/Path item always
       if (item.isCommand) return item.name.toLowerCase().includes(searchText);
       return item.name.toLowerCase().includes(searchText) || (item.path && item.path.toLowerCase().includes(searchText));
     });
@@ -3903,8 +3932,14 @@ function updateCommandPaletteResults() {
     filteredItems = allItems.filter(item => item.isCommand);
   }
 
-  // Sort: Commands first if query starts with >, otherwise open tabs first
+  // Sort: URLs/Paths first, then Commands if query starts with >, otherwise open tabs first
   filteredItems.sort((a, b) => {
+    // 0. URL/Path priority
+    const aPriority = a.type === 'url' || a.type === 'file-path';
+    const bPriority = b.type === 'url' || b.type === 'file-path';
+    if (aPriority && !bPriority) return -1;
+    if (!aPriority && bPriority) return 1;
+
     if (isCommandQuery) {
       if (a.isCommand && !b.isCommand) return -1;
       if (!a.isCommand && b.isCommand) return 1;
@@ -3949,7 +3984,8 @@ function updateCommandPaletteResults() {
   commandPaletteResults.innerHTML = displayItems.map((item, index) => {
     const isSelected = index === commandPaletteSelectedIndex;
     const icon = item.isCommand ? (item.icon || '⌘') : (item.isOpenTab ? '📄' : '📁');
-    const pathDir = item.isCommand ? (item.description || 'Command') : (item.path ? item.path.substring(0, item.path.lastIndexOf(path.sep)) : '');
+    const pathSep = window.electronAPI.pathSep || '/';
+    const pathDir = item.isCommand ? (item.description || 'Command') : (item.path ? item.path.substring(0, item.path.lastIndexOf(pathSep)) : '');
     const isOpenBadge = item.isOpenTab ? '<span class="command-palette-badge">Open</span>' : '';
     const isCommandBadge = item.isCommand ? '<span class="command-palette-badge" style="background: var(--accent-color); color: white;">Command</span>' : '';
 

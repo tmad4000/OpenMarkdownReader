@@ -115,5 +115,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
   restartApp: () => ipcRenderer.send('restart-app'),
   logToMain: (level, ...args) => ipcRenderer.send('log-to-main', level, ...args),
-  pathJoin: (...args) => path.join(...args)
+  pathJoin: (...args) => path.join(...args),
+  pathSep: path.sep
 });

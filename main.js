@@ -570,6 +570,7 @@ function createWindow(filePath = null) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false, // Allow preload to use Node modules like 'path'
       preload: path.join(__dirname, 'preload.js')
     }
   });
@@ -753,6 +754,11 @@ function createWindow(filePath = null) {
   });
 
   win.loadFile('index.html');
+
+  // Open DevTools in development mode
+  if (!app.isPackaged) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
 
   // Load file after window is ready
   win.webContents.on('did-finish-load', () => {
@@ -2429,7 +2435,37 @@ function getDirectoryContents(dirPath) {
   return [...folders, ...files];
 }
 
-// Legacy function for backwards compatibility
-function getMarkdownFilesInDirectory(dirPath) {
-  return getDirectoryContents(dirPath);
+// Dev Helper: Watch for source file changes
+if (!app.isPackaged) {
+  const sourceFiles = ['main.js', 'renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  let debounceTimer = null;
+
+  try {
+    fs.watch(__dirname, (eventType, filename) => {
+      if (filename && sourceFiles.includes(filename)) {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          windows.forEach(win => {
+            if (!win.isDestroyed()) {
+              win.webContents.send('source-code-changed');
+            }
+          });
+        }, 500); // Debounce for 500ms
+      }
+    });
+  } catch (err) {
+    console.error('Failed to setup dev file watcher:', err);
+  }
 }
+
+// Restart app (for dev mode or manual restart)
+ipcMain.on('restart-app', () => {
+  app.relaunch();
+  app.exit(0);
+});
+
+// Log to main process (for terminal visibility)
+ipcMain.on('log-to-main', (event, level, ...args) => {
+  console[level]('[Renderer]', ...args);
+});
+
