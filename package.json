@@ -83,9 +83,13 @@
       ]
     },
     "mas": {
+      "identity": "Apple Distribution: IdeaFlow, Inc. (JESMXK96LG)",
       "entitlements": "build/entitlements.mas.plist",
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "provisioningProfile": "build/embedded.provisionprofile"
+    },
+    "pkg": {
+      "identity": "B2D608D3556482EE684046BF24F561FB62FA81B4"
     },
     "files": [
       "**/*",

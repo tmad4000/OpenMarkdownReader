@@ -3,6 +3,18 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
+// Detect if running as Mac App Store (sandboxed) build
+// MAS apps have a receipt file in the app bundle
+function isMASBuild() {
+  if (process.platform !== 'darwin') return false;
+  try {
+    const receiptPath = path.join(app.getAppPath(), '..', '_MASReceipt', 'receipt');
+    return fs.existsSync(receiptPath);
+  } catch {
+    return false;
+  }
+}
+
 const windows = new Set();
 let isReadOnlyMode = true; // Default to read-only
 let watchFileMode = false; // Watch for external file changes
@@ -1404,12 +1416,12 @@ function setupMenu() {
         },
         {
           label: `Install '${CLI_COMMAND_NAMES.join("' and '")}' Commands in PATH…`,
-          enabled: process.platform === 'darwin',
+          visible: process.platform === 'darwin' && !isMASBuild(),
           click: () => installCliCommand()
         },
         {
           label: `Uninstall '${CLI_COMMAND_NAMES.join("' and '")}' Commands…`,
-          enabled: process.platform === 'darwin',
+          visible: process.platform === 'darwin' && !isMASBuild(),
           click: () => uninstallCliCommand()
         }
       ]
