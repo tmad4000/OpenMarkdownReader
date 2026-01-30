@@ -5,11 +5,11 @@
   "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder",
-    "build:mac": "electron-builder --mac",
-    "build:dmg": "electron-builder --mac dmg",
-    "build:mas": "electron-builder --mac mas"
+    "start": "node scripts/generate-build-info.js && electron .",
+    "build": "node scripts/generate-build-info.js && electron-builder",
+    "build:mac": "node scripts/generate-build-info.js && electron-builder --mac",
+    "build:dmg": "node scripts/generate-build-info.js && electron-builder --mac dmg",
+    "build:mas": "node scripts/generate-build-info.js && electron-builder --mac mas"
   },
   "keywords": [
     "markdown",

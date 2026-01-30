@@ -2174,7 +2174,12 @@ sharePublishBtn.addEventListener('click', async () => {
     // Show error state
     sharePublishing.classList.add('hidden');
     shareUnpublished.classList.remove('hidden');
-    showToast('Failed to publish: ' + err.message, 'error');
+
+    if (err.message && err.message.includes('storage not configured')) {
+      showToast('File storage is not configured on the server. Check globalbr.ai/settings to set up storage.', 'error');
+    } else {
+      showToast('Failed to publish: ' + err.message, 'error');
+    }
   }
 });
 
@@ -5628,3 +5633,33 @@ document.addEventListener('keydown', (e) => {
 // Listen for menu commands
 window.electronAPI.onNavBack?.(() => navGoBack());
 window.electronAPI.onNavForward?.(() => navGoForward());
+
+// Update banner
+(function setupUpdateBanner() {
+  const banner = document.getElementById('update-banner');
+  const bannerText = document.getElementById('update-banner-text');
+  const bannerLink = document.getElementById('update-banner-link');
+  const bannerDismiss = document.getElementById('update-banner-dismiss');
+  if (!banner) return;
+
+  function showUpdate(release) {
+    bannerText.textContent = `Update available: v${release.version}`;
+    bannerLink.onclick = (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternal(release.url);
+    };
+    banner.classList.remove('hidden');
+  }
+
+  bannerDismiss.addEventListener('click', () => {
+    banner.classList.add('hidden');
+  });
+
+  // Listen for push from main process
+  window.electronAPI.onUpdateAvailable?.((release) => showUpdate(release));
+
+  // Also poll on load (for windows created after the check ran)
+  window.electronAPI.getUpdateInfo?.().then((release) => {
+    if (release) showUpdate(release);
+  });
+})();

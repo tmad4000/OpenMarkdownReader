@@ -3648,3 +3648,57 @@ mark.find-match.active {
   color: var(--link-color, #0969da);
   border: 1px solid rgba(9, 105, 218, 0.3);
 }
+
+/* Update banner */
+.update-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--link-color, #0969da);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  transition: transform 0.3s ease;
+}
+
+.update-banner.hidden {
+  display: none;
+}
+
+.update-banner-btn {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  padding: 3px 10px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.update-banner-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.update-banner-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.update-banner-dismiss:hover {
+  color: #fff;
+}

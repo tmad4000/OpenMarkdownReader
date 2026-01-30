@@ -111,6 +111,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCloseOtherTabs: (callback) => ipcRenderer.on('close-other-tabs', (event, tabId) => callback(tabId)),
   onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId)),
 
+  // Updates
+  getBuildInfo: () => ipcRenderer.invoke('get-build-info'),
+  getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (event, data) => callback(data)),
+
   // Dev tools
   onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
   restartApp: () => ipcRenderer.send('restart-app'),
