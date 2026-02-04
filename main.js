@@ -36,6 +36,8 @@ let isReadOnlyMode = true; // Default to read-only
 let watchFileMode = false; // Watch for external file changes
 const fileWatchers = new Map(); // Track active file watchers
 const fileWatchDebounceTimers = new Map(); // Track debounce timers per watcher
+// Track files received via open-file before app is ready (Finder double-click / Open With)
+const pendingOpenFiles = [];
 
 // Argument Parsing
 function parseArgs(argv) {
@@ -1536,18 +1538,16 @@ function loadMarkdownFile(win, filePath, options = {}) {
 // Handle file open from Finder (drag to dock icon or Open With)
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
-  console.log('[open-file] Received:', filePath, 'isReady:', app.isReady());
   if (app.isReady()) {
     const win = getFocusedWindow();
-    console.log('[open-file] Window found:', !!win);
     if (win) {
       openPathInWindow(win, filePath);
     } else {
       createWindow(filePath);
     }
   } else {
-    console.log('[open-file] App not ready, deferring...');
-    app.whenReady().then(() => createWindow(filePath));
+    // Queue the file - whenReady handler will process it instead of creating a blank window
+    pendingOpenFiles.push(filePath);
   }
 });
 
@@ -1730,7 +1730,16 @@ app.whenReady().then(() => {
   // Prompt to set as default app (after a delay)
   promptSetAsDefaultApp();
 
-  // Handle files, daily notes, or new file passed via CLI on launch
+  // Merge any files received via open-file event (Finder double-click / Open With)
+  // These arrive before ready and are queued in pendingOpenFiles
+  if (pendingOpenFiles.length > 0) {
+    pendingOpenFiles.forEach(f => {
+      if (!args.files.includes(f)) args.files.push(f);
+    });
+    pendingOpenFiles.length = 0;
+  }
+
+  // Handle files, daily notes, or new file passed via CLI or Finder on launch
   if (args.files.length > 0 || args.scratch || args.ref || args.newFile) {
     const win = createWindow();
     win.webContents.on('did-finish-load', () => {
