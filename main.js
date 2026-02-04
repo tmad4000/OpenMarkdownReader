@@ -800,6 +800,7 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
     win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
+    win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget !== false });
 
     if (initialPath) {
       openPathInWindow(win, initialPath);
@@ -1362,6 +1363,19 @@ function setupMenu() {
             saveConfig();
             windows.forEach(win => {
               win.webContents.send('set-watch-mode', menuItem.checked);
+            });
+          }
+        },
+        {
+          label: 'Noos Feedback Widget',
+          id: 'noos-widget-item',
+          type: 'checkbox',
+          checked: config.noosWidget !== false, // default on
+          click: (menuItem) => {
+            config.noosWidget = menuItem.checked;
+            saveConfig();
+            windows.forEach(win => {
+              win.webContents.send('setting-changed', { key: 'noos-widget', value: menuItem.checked });
             });
           }
         },
