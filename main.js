@@ -1542,6 +1542,10 @@ app.on('open-file', (event, filePath) => {
     const win = getFocusedWindow();
     if (win) {
       openPathInWindow(win, filePath);
+      // Bring window to foreground when opened from Finder
+      win.show();
+      win.focus();
+      app.focus({ steal: true });
     } else {
       createWindow(filePath);
     }
