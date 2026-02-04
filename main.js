@@ -1536,14 +1536,17 @@ function loadMarkdownFile(win, filePath, options = {}) {
 // Handle file open from Finder (drag to dock icon or Open With)
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
+  console.log('[open-file] Received:', filePath, 'isReady:', app.isReady());
   if (app.isReady()) {
     const win = getFocusedWindow();
+    console.log('[open-file] Window found:', !!win);
     if (win) {
       openPathInWindow(win, filePath);
     } else {
       createWindow(filePath);
     }
   } else {
+    console.log('[open-file] App not ready, deferring...');
     app.whenReady().then(() => createWindow(filePath));
   }
 });
