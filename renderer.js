@@ -1370,10 +1370,11 @@ window.electronAPI.onDirectoryLoaded((data) => {
       allFilesCachePromise = null;
     });
 
-  // Show sidebar
+  // Show sidebar and render the file tree
   settings.sidebarVisible = true;
   sidebar.classList.remove('hidden');
   sidebarToggle.classList.add('active');
+  renderFileTree();
 });
 
 // Track expanded folders
@@ -4364,7 +4365,9 @@ window.electronAPI.onRestoreSession((data) => {
     currentDirectory = data.directory;
     window.electronAPI.getDirectoryContents(data.directory).then(files => {
       directoryFiles = files;
-      buildFileTree(files, data.directory);
+      sortDirectoryFiles(directoryFiles);
+      updateSidebarPath(currentDirectory);
+      renderFileTree();
     }).catch(console.error);
   }
 
@@ -5663,3 +5666,20 @@ window.electronAPI.onNavForward?.(() => navGoForward());
     if (release) showUpdate(release);
   });
 })();
+
+// Noos widget toggle
+function setNoosWidgetVisible(visible) {
+  const widgetEl = document.getElementById('noos-feedback-widget');
+  if (widgetEl) {
+    widgetEl.style.display = visible ? '' : 'none';
+  }
+  if (!visible && window.NoosFeedback) {
+    window.NoosFeedback.close();
+  }
+}
+
+window.electronAPI.onSettingChanged?.((data) => {
+  if (data.key === 'noos-widget') {
+    setNoosWidgetVisible(data.value);
+  }
+});
