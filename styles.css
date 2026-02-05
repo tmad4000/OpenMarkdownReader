@@ -3702,3 +3702,8 @@ mark.find-match.active {
 .update-banner-dismiss:hover {
   color: #fff;
 }
+
+/* Noos feedback widget - hidden by default */
+#noos-feedback-widget {
+  display: none;
+}

@@ -802,7 +802,7 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
     win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
-    win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget !== false });
+    win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget === true });
 
     if (initialPath) {
       openPathInWindow(win, initialPath);
@@ -1372,7 +1372,7 @@ function setupMenu() {
           label: 'Noos Feedback Widget',
           id: 'noos-widget-item',
           type: 'checkbox',
-          checked: config.noosWidget !== false, // default on
+          checked: config.noosWidget === true, // default off
           click: (menuItem) => {
             config.noosWidget = menuItem.checked;
             saveConfig();
