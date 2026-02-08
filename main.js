@@ -161,6 +161,7 @@ let config = {
   contentWidth: 900,
   contentPadding: 20,
   editorMonospace: false, // Use monospace font in editor
+  compactTables: false, // Compact table cells (nowrap + horizontal scroll)
   restoreSession: true, // Whether to restore previous session on launch
   session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
   cliCommandPath: null,
@@ -802,6 +803,7 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
     win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
+    win.webContents.send('setting-changed', { setting: 'compact-tables', value: config.compactTables || false });
     win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget === true });
 
     if (initialPath) {
@@ -1352,6 +1354,16 @@ function setupMenu() {
             config.editorMonospace = menuItem.checked;
             saveConfig();
             broadcastSetting('editor-monospace', menuItem.checked);
+          }
+        },
+        {
+          label: 'Compact Tables',
+          type: 'checkbox',
+          checked: config.compactTables || false,
+          click: (menuItem) => {
+            config.compactTables = menuItem.checked;
+            saveConfig();
+            broadcastSetting('compact-tables', menuItem.checked);
           }
         },
         {

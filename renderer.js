@@ -29,6 +29,7 @@ let settings = {
   contentWidth: 900,
   contentPadding: 20,
   editorMonospace: false,
+  compactTables: false,
   watchFileMode: false,
   tocVisible: false,
   csvViewAsTable: true, // Default to showing CSV as table
@@ -2810,6 +2811,9 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   } else if (setting === 'editor-monospace') {
     settings.editorMonospace = !!value;
     applyEditorFont();
+  } else if (setting === 'compact-tables') {
+    settings.compactTables = !!value;
+    document.body.classList.toggle('compact-tables', !!value);
   }
 });
 
