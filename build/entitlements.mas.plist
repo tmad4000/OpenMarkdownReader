@@ -6,6 +6,10 @@
     <key>com.apple.security.app-sandbox</key>
     <true/>
 
+    <!-- Required for Electron/V8 JIT compilation -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
     <!-- Allow read/write access to user-selected files (via Open/Save dialogs) -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
