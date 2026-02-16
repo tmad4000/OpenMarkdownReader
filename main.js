@@ -6,6 +6,10 @@ const windows = new Set();
 let isReadOnlyMode = true; // Default to read-only
 let watchFileMode = false; // Watch for external file changes
 const fileWatchers = new Map(); // Track active file watchers
+const isMac = process.platform === 'darwin';
+
+// Pending file path from command-line args (Windows file associations)
+let pendingFilePath = null;
 
 // Configuration Management
 const configPath = path.join(app.getPath('userData'), 'config.json');
@@ -68,20 +72,24 @@ function clearRecentFiles() {
 loadConfig();
 
 function createWindow(filePath = null) {
-  const win = new BrowserWindow({
+  const winOptions = {
     width: 900,
     height: 700,
     minWidth: 400,
     minHeight: 300,
-    titleBarStyle: 'hiddenInset',
-    // backgroundColor: '#ffffff', // Removed to respect system theme
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
-  });
+  };
+
+  if (isMac) {
+    winOptions.titleBarStyle = 'hiddenInset';
+  }
+
+  const win = new BrowserWindow(winOptions);
 
   windows.add(win);
   win.on('closed', () => windows.delete(win));
@@ -205,7 +213,8 @@ function buildRecentFilesMenu() {
     validRecent.forEach(item => {
       const icon = item.type === 'folder' ? '📁 ' : '';
       const displayName = path.basename(item.path);
-      const displayPath = item.path.replace(process.env.HOME, '~');
+      const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+      const displayPath = homeDir ? item.path.replace(homeDir, '~') : item.path;
 
       recentItems.push({
         label: `${icon}${displayName}`,
@@ -245,7 +254,8 @@ function buildRecentFilesMenu() {
 
 function setupMenu() {
   const template = [
-    {
+    // macOS app menu (the first menu with app name)
+    ...(isMac ? [{
       label: 'OpenMarkdownReader',
       submenu: [
         { role: 'about' },
@@ -256,7 +266,7 @@ function setupMenu() {
         { type: 'separator' },
         { role: 'quit' }
       ]
-    },
+    }] : []),
     {
       label: 'File',
       submenu: [
@@ -500,8 +510,10 @@ function setupMenu() {
       submenu: [
         { role: 'minimize' },
         { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' }
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' }
+        ] : [])
       ]
     }
   ];
@@ -590,7 +602,7 @@ function loadMarkdownFile(win, filePath, options = {}) {
   }
 }
 
-// Handle file open from Finder (drag to dock icon or Open With)
+// Handle file open from Finder (drag to dock icon or Open With) - macOS
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
   if (app.isReady()) {
@@ -604,6 +616,34 @@ app.on('open-file', (event, filePath) => {
     app.whenReady().then(() => createWindow(filePath));
   }
 });
+
+// Handle file open from command-line args (Windows file associations / "Open With")
+if (!isMac) {
+  const filePath = process.argv.find((arg, i) => i > 0 && !arg.startsWith('-') && fs.existsSync(arg));
+  if (filePath) {
+    pendingFilePath = path.resolve(filePath);
+  }
+
+  // Handle second-instance for single-instance lock (Windows "Open With" when app is already running)
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', (event, argv) => {
+      const newFilePath = argv.find((arg, i) => i > 0 && !arg.startsWith('-') && fs.existsSync(arg));
+      if (newFilePath) {
+        const win = getFocusedWindow();
+        if (win) {
+          loadMarkdownFile(win, path.resolve(newFilePath));
+          if (win.isMinimized()) win.restore();
+          win.focus();
+        } else {
+          createWindow(path.resolve(newFilePath));
+        }
+      }
+    });
+  }
+}
 
 // Save session state from all windows before quit
 async function saveSession() {
@@ -669,8 +709,12 @@ function restoreSession() {
 app.whenReady().then(() => {
   setupMenu();
 
-  // Try to restore session, otherwise create empty window
-  if (!restoreSession()) {
+  // If launched with a file from command line (Windows), open it directly
+  if (pendingFilePath) {
+    createWindow(pendingFilePath);
+    pendingFilePath = null;
+  } else if (!restoreSession()) {
+    // Try to restore session, otherwise create empty window
     createWindow();
   }
 });
@@ -698,6 +742,7 @@ app.on('activate', () => {
 });
 
 // IPC handlers
+ipcMain.handle('get-platform', () => process.platform);
 ipcMain.handle('open-file-dialog', () => openFileOrFolder());
 ipcMain.handle('open-file-or-folder', () => openFileOrFolder());
 

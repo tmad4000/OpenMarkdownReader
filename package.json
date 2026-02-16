@@ -2,13 +2,14 @@
   "name": "open-markdown-reader",
   "productName": "OpenMarkdownReader",
   "version": "1.0.0",
-  "description": "A beautiful, open-source Markdown file reader and editor for Mac",
+  "description": "A beautiful, open-source Markdown file reader and editor",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
-    "build:dmg": "electron-builder --mac dmg"
+    "build:dmg": "electron-builder --mac dmg",
+    "build:win": "electron-builder --win"
   },
   "keywords": [
     "markdown",
@@ -53,6 +54,25 @@
           "arch": ["universal"]
         }
       ]
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "dmg": {
       "title": "OpenMarkdownReader",

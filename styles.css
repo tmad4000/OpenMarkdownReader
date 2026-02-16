@@ -82,9 +82,20 @@ html, body {
   z-index: 100;
   display: flex;
   align-items: center;
-  padding-left: 80px; /* Space for traffic lights */
+  padding-left: 80px; /* Space for macOS traffic lights */
   padding-right: 12px;
   gap: 8px;
+}
+
+/* Windows: no traffic lights, less left padding */
+body.platform-win32 .titlebar {
+  padding-left: 12px;
+}
+
+/* Windows: no need for large drag spacer either */
+body.platform-win32 .titlebar-drag-spacer {
+  flex: 1 0 20px;
+  min-width: 20px;
 }
 
 /* Draggable spacer at end of tab bar */

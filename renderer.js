@@ -1,5 +1,26 @@
 // marked and hljs are loaded from CDN in index.html
 
+// Platform detection and setup
+let platformName = 'darwin'; // default to macOS, updated async
+window.electronAPI.getPlatform().then(p => {
+  platformName = p;
+  document.body.classList.add(`platform-${p}`);
+
+  // Update shortcut hints for non-macOS platforms
+  if (p !== 'darwin') {
+    const modKey = 'Ctrl';
+    // Update welcome screen hint
+    const hint = document.querySelector('.welcome .hint');
+    if (hint) {
+      hint.textContent = `${modKey}+N new | ${modKey}+O open file or folder | ${modKey}+P search`;
+    }
+    // Update button titles
+    document.querySelectorAll('[title]').forEach(el => {
+      el.title = el.title.replace(/⌘/g, modKey + '+').replace(/⇧/g, 'Shift+');
+    });
+  }
+});
+
 // Settings
 let settings = {
   readOnlyMode: false,
@@ -729,9 +750,9 @@ function renderFileTreeItems(items, container, depth) {
       el.addEventListener('click', (e) => {
         // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
         const options = {};
-        if (e.metaKey) {
+        if (e.metaKey || e.ctrlKey) {
           options.newTab = true;
-          options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+          options.background = !e.shiftKey; // Cmd/Ctrl+click = background, +Shift+click = focus
         }
         window.electronAPI.openFileByPath(item.path, options);
       });
@@ -1740,7 +1761,8 @@ function updateCommandPaletteResults() {
   // Render results
   if (filteredFiles.length === 0) {
     if (!currentDirectory && tabs.filter(t => t.filePath).length === 0) {
-      commandPaletteResults.innerHTML = '<div class="command-palette-empty">No files open yet<br><span style="font-size: 12px; opacity: 0.7;">Open a file or folder with ⌘O</span></div>';
+      const openShortcut = platformName === 'darwin' ? '⌘O' : 'Ctrl+O';
+      commandPaletteResults.innerHTML = `<div class="command-palette-empty">No files open yet<br><span style="font-size: 12px; opacity: 0.7;">Open a file or folder with ${openShortcut}</span></div>`;
     } else if (query) {
       commandPaletteResults.innerHTML = '<div class="command-palette-empty">No matching files</div>';
     } else {
@@ -1753,7 +1775,8 @@ function updateCommandPaletteResults() {
     const relativePath = currentDirectory && file.path.startsWith(currentDirectory) 
       ? file.path.replace(currentDirectory + '/', '') 
       : file.path;
-    const pathDir = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
+    const sep = relativePath.includes('\\') ? '\\' : '/';
+    const pathDir = relativePath.includes(sep) ? relativePath.substring(0, relativePath.lastIndexOf(sep)) : '';
     
     const icon = file.isOpenTab ? 
       // Tab icon
@@ -1819,7 +1842,7 @@ function selectCommandPaletteItem(index, event = null) {
 
     // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
     const options = {};
-    if (event && event.metaKey) {
+    if (event && (event.metaKey || event.ctrlKey)) {
       options.newTab = true;
       options.background = !event.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
     }
@@ -1920,8 +1943,10 @@ async function loadRecentFiles() {
       const displayFiles = recentFiles.slice(0, 5);
 
       recentFilesList.innerHTML = displayFiles.map(item => {
-        const fileName = item.path.split('/').pop();
-        const displayPath = item.path.replace(/^\/Users\/[^/]+/, '~');
+        const fileName = item.path.split(/[/\\]/).pop();
+        const displayPath = platformName === 'darwin'
+          ? item.path.replace(/^\/Users\/[^/]+/, '~')
+          : item.path.replace(/^[A-Z]:\\Users\\[^\\]+/, '~');
         const isFolder = item.type === 'folder';
 
         const icon = isFolder
@@ -2332,7 +2357,8 @@ markdownBody.addEventListener('click', (e) => {
   // Relative file links - try to open the file
   const tab = tabs.find(t => t.id === activeTabId);
   if (tab && tab.filePath) {
-    const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
+    const lastSep = Math.max(tab.filePath.lastIndexOf('/'), tab.filePath.lastIndexOf('\\'));
+    const currentDir = tab.filePath.substring(0, lastSep);
     const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
 
     // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
