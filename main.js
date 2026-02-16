@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
@@ -70,6 +71,62 @@ function clearRecentFiles() {
 
 // Load config on startup
 loadConfig();
+
+// Auto-updater setup
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function setupAutoUpdater() {
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const win = getFocusedWindow();
+    const dialogOpts = {
+      type: 'info',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      title: 'Update Ready',
+      message: `Version ${info.version} has been downloaded.`,
+      detail: 'The update will be installed when you restart the application.'
+    };
+
+    dialog.showMessageBox(win, dialogOpts).then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err);
+  });
+}
+
+function checkForUpdates(silent = true) {
+  if (silent) {
+    autoUpdater.checkForUpdatesAndNotify();
+  } else {
+    autoUpdater.checkForUpdates().then((result) => {
+      if (!result || !result.updateInfo || result.updateInfo.version === app.getVersion()) {
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'No Updates',
+          message: 'You are running the latest version.',
+          detail: `Current version: ${app.getVersion()}`
+        });
+      }
+    }).catch((err) => {
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Update Error',
+        message: 'Could not check for updates.',
+        detail: err.message
+      });
+    });
+  }
+}
 
 function createWindow(filePath = null) {
   const winOptions = {
@@ -259,6 +316,10 @@ function setupMenu() {
       label: 'OpenMarkdownReader',
       submenu: [
         { role: 'about' },
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates(false)
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -515,7 +576,16 @@ function setupMenu() {
           { role: 'front' }
         ] : [])
       ]
-    }
+    },
+    ...(!isMac ? [{
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates(false)
+        }
+      ]
+    }] : [])
   ];
 
   const menu = Menu.buildFromTemplate(template);
@@ -708,6 +778,8 @@ function restoreSession() {
 
 app.whenReady().then(() => {
   setupMenu();
+  setupAutoUpdater();
+  checkForUpdates();
 
   // If launched with a file from command line (Windows), open it directly
   if (pendingFilePath) {

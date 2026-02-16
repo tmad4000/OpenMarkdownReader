@@ -25,6 +25,7 @@
     "url": "https://github.com/tmad4000/OpenMarkdownReader.git"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1"
   },
@@ -102,6 +103,11 @@
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
       "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "tmad4000",
+      "repo": "OpenMarkdownReader"
+    },
     "fileAssociations": [
       {
         "ext": "md",
