@@ -137,6 +137,8 @@ let currentDirectory = null;
 let directoryFiles = [];
 let selectedSidebarFolderPath = null;
 let pendingNewTreeItemId = 0;
+let sidebarLiveWatchTimer = null;
+let sidebarLiveWatchSignature = '';
 // Command palette file cache (prefetched per directory)
 let allFilesCache = null;
 let allFilesCachePromise = null;
@@ -1340,6 +1342,7 @@ if (devRestartBtn) {
 function updateSidebarPath(dirPath) {
   if (!dirPath) {
     sidebarPath.classList.add('hidden');
+    stopSidebarLiveWatcher();
     return;
   }
 
@@ -1350,6 +1353,55 @@ function updateSidebarPath(dirPath) {
   sidebarPathText.textContent = folderName;
   sidebarPathText.title = dirPath; // Full path on hover
   sidebarPath.classList.remove('hidden');
+}
+
+function stopSidebarLiveWatcher() {
+  if (sidebarLiveWatchTimer) {
+    clearInterval(sidebarLiveWatchTimer);
+    sidebarLiveWatchTimer = null;
+  }
+}
+
+async function computeSidebarLiveSignature(dirPath) {
+  if (!dirPath) return '';
+  try {
+    const allFiles = await window.electronAPI.getAllFilesRecursive(dirPath);
+    const signatures = allFiles
+      .map(item => `${item.path || ''}:${item.mtime || ''}`)
+      .sort();
+    return signatures.join('|');
+  } catch {
+    return '';
+  }
+}
+
+async function refreshSidebarFromFilesystem(force = false) {
+  if (!currentDirectory) return;
+  try {
+    const signature = await computeSidebarLiveSignature(currentDirectory);
+    if (!force && signature && signature === sidebarLiveWatchSignature) return;
+    sidebarLiveWatchSignature = signature;
+    const freshTree = await window.electronAPI.getDirectoryContents(currentDirectory);
+    directoryFiles = freshTree;
+    sortDirectoryFiles(directoryFiles);
+    renderFileTree();
+    if (selectedSidebarFolderPath) {
+      setSelectedSidebarFolder(selectedSidebarFolderPath);
+    }
+    syncActiveSidebarFileHighlight();
+  } catch (err) {
+    console.error('Error refreshing sidebar from filesystem watcher:', err);
+  }
+}
+
+function startSidebarLiveWatcher() {
+  stopSidebarLiveWatcher();
+  sidebarLiveWatchSignature = '';
+  if (!currentDirectory) return;
+  refreshSidebarFromFilesystem(true);
+  sidebarLiveWatchTimer = setInterval(() => {
+    refreshSidebarFromFilesystem(false);
+  }, 1500);
 }
 
 function setSelectedSidebarFolder(folderPath) {
@@ -1642,6 +1694,7 @@ window.electronAPI.onDirectoryLoaded((data) => {
   // Show sidebar and render the file tree
   setSidebarVisibility(true);
   renderFileTree();
+  startSidebarLiveWatcher();
 });
 
 // Track expanded folders
@@ -4905,6 +4958,7 @@ window.electronAPI.onRestoreSession((data) => {
       sortDirectoryFiles(directoryFiles);
       updateSidebarPath(currentDirectory);
       renderFileTree();
+      startSidebarLiveWatcher();
     }).catch(console.error);
   }
 
