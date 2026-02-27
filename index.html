@@ -62,6 +62,9 @@
         </svg>
       </span>
     </div>
+    <div id="word-count-indicator" class="word-count-indicator hidden" title="Word count for current document">
+      0 words
+    </div>
     <button id="save-btn" class="save-btn hidden" title="Save (⌘S)">
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
         <path d="M11.013 2.513a1.75 1.75 0 012.475 2.474l-6.5 6.5a.75.75 0 01-.354.198l-3.5 1a.75.75 0 01-.928-.928l1-3.5a.75.75 0 01.198-.354l6.5-6.5a.25.25 0 00-.354-.354l-6.5 6.5-.086.302-.302.086 6.5-6.5z"/>
@@ -162,7 +165,13 @@
     <!-- Sidebar -->
     <div id="sidebar" class="sidebar hidden">
       <div class="sidebar-header">
-        <span class="sidebar-title">Files</span>
+        <div class="sidebar-header-meta">
+          <span class="sidebar-title">Files</span>
+          <span id="sidebar-sort-status" class="sidebar-sort-status" title="Sorted alphabetically (A to Z)">
+            <span id="sidebar-sort-status-label" class="sidebar-sort-status-label">Sort: Name</span>
+            <span id="sidebar-sort-status-indicator" class="sidebar-sort-status-indicator">A-Z</span>
+          </span>
+        </div>
         <div class="sidebar-header-buttons">
           <button id="sidebar-new-file-btn" class="sidebar-btn" title="New File">
             <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
@@ -428,6 +437,10 @@
   <script src="vendor/marked.min.js"></script>
   <script src="vendor/highlight.min.js"></script>
   <script src="vendor/easymde.min.js"></script>
+  <script src="word-count.js"></script>
+  <script src="sidebar-highlight.js"></script>
+  <script src="sidebar-tree-utils.js"></script>
+  <script src="sidebar-sort-indicator.js"></script>
   <script src="renderer.js"></script>
 
   <!-- Noos Feedback Widget -->

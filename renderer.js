@@ -245,8 +245,12 @@ function updateTabDisplay(tabId, fileName, filePath) {
   const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
   if (tabEl) {
     const titleEl = tabEl.querySelector('.tab-title');
-    if (titleEl) titleEl.textContent = fileName;
-    tabEl.title = filePath || fileName;
+    const tooltip = filePath || fileName;
+    if (titleEl) {
+      titleEl.textContent = fileName;
+      titleEl.title = tooltip;
+    }
+    tabEl.title = tooltip;
   }
 }
 
@@ -325,6 +329,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     <span class="tab-title">${escapeHtml(fileName)}</span>
     <span class="tab-close">×</span>
   `;
+  const tabTitleEl = tabEl.querySelector('.tab-title');
+  if (tabTitleEl) tabTitleEl.title = filePath || fileName;
 
   // Append to tab bar
   tabBar.appendChild(tabEl);
@@ -604,6 +610,7 @@ function startTabRename(tabId) {
           tab.fileName = newName;
           titleEl.textContent = newName;
           tabEl.title = result.newPath;
+          titleEl.title = result.newPath;
         } else {
           alert(`Could not rename file: ${result.error}`);
         }
@@ -612,6 +619,7 @@ function startTabRename(tabId) {
         tab.fileName = newName;
         titleEl.textContent = newName;
         tabEl.title = newName;
+        titleEl.title = newName;
       }
     }
 
@@ -1522,6 +1530,7 @@ async function renderRecentFilesTree() {
     groupFiles.forEach(file => {
       const el = document.createElement('div');
       el.className = 'file-tree-item file-tree-file';
+      el.title = file.path;
       // Indent slightly more for list view feel
       el.style.paddingLeft = '28px'; 
       el.style.height = 'auto'; // Allow variable height
@@ -1674,6 +1683,7 @@ async function renderRecentFilesTimeline() {
       groupFiles.forEach(file => {
         const el = document.createElement('div');
         el.className = 'file-tree-item file-tree-file';
+        el.title = file.path;
         el.style.paddingLeft = '28px'; 
         el.style.height = 'auto';
         el.style.paddingTop = '4px';
@@ -1793,6 +1803,7 @@ function renderFileTreeItems(items, container, depth) {
       const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
       el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}${item.isNew ? ' new-file' : ''}`;
       if (item.path) el.dataset.path = item.path;
+      el.title = item.path || item.name;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
@@ -2368,6 +2379,12 @@ window.electronAPI.onCloseTabsToRight((tabId) => {
     const tabsToClose = tabs.slice(tabIndex + 1);
     tabsToClose.forEach(t => closeTab(t.id, true)); // silent close
   }
+});
+
+window.electronAPI.onCreateFileInFolderRequest(async (folderPath) => {
+  if (!folderPath) return;
+  setSelectedSidebarFolder(folderPath);
+  await createNewFileInDirectory(folderPath);
 });
 
 // Listen for reopen closed tab (Cmd+Shift+T)
@@ -3795,6 +3812,19 @@ const builtInCommands = [
     description: 'Choose where daily notes are saved',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
     action: () => window.electronAPI.getDailyNotesFolder()
+  },
+  {
+    name: 'Sidebar: New File in Selected Folder',
+    description: 'Create a new markdown file in the selected sidebar folder',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>',
+    action: async () => {
+      const targetDirectory = getSelectedFolderTargetDirectory();
+      if (!targetDirectory) {
+        showToast('Open a folder first', 'warning', 2500);
+        return;
+      }
+      await createNewFileInDirectory(targetDirectory);
+    }
   }
 ];
 
