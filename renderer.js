@@ -134,6 +134,8 @@ let navIsNavigating = false; // Flag to prevent adding to history during back/fo
 // Directory state
 let currentDirectory = null;
 let directoryFiles = [];
+let selectedSidebarFolderPath = null;
+let pendingNewTreeItemId = 0;
 // Command palette file cache (prefetched per directory)
 let allFilesCache = null;
 let allFilesCachePromise = null;
@@ -269,6 +271,9 @@ const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
 const sidebarSortBtn = document.getElementById('sidebar-sort-btn');
+const sidebarSortStatus = document.getElementById('sidebar-sort-status');
+const sidebarSortStatusLabel = document.getElementById('sidebar-sort-status-label');
+const sidebarSortStatusIndicator = document.getElementById('sidebar-sort-status-indicator');
 const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
 const sidebarPath = document.getElementById('sidebar-path');
 const devRestartBtn = document.getElementById('dev-restart-btn');
@@ -291,6 +296,7 @@ const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
 const saveBtn = document.getElementById('save-btn');
+const wordCountIndicator = document.getElementById('word-count-indicator');
 const tocPanel = document.getElementById('toc-panel');
 const tocContent = document.getElementById('toc-content');
 const tocToggleBtn = document.getElementById('toc-toggle-btn');
@@ -301,6 +307,125 @@ const csvToggleRawBtn = document.getElementById('csv-toggle-raw');
 const titlebar = document.getElementById('titlebar');
 const titlebarDragSpacer = document.querySelector('.titlebar-drag-spacer');
 const tabBarWrapper = document.querySelector('.tab-bar-wrapper');
+const sidebarHighlight = window.SidebarHighlight || null;
+const sidebarSortIndicator = window.SidebarSortIndicator || null;
+const sidebarTreeUtils = window.sidebarTreeUtils || null;
+let draggedSidebarFilePath = null;
+
+function getSidebarSortIndicatorState(mode) {
+  if (sidebarSortIndicator && typeof sidebarSortIndicator.getSidebarSortIndicatorState === 'function') {
+    return sidebarSortIndicator.getSidebarSortIndicatorState(mode);
+  }
+
+  const normalizedMode = mode === 'date' ? 'date' : 'name';
+  if (normalizedMode === 'date') {
+    return {
+      mode: 'date',
+      label: 'Sort: Recent',
+      indicator: 'NEW',
+      tooltip: 'Sorted by most recently modified first',
+      buttonTitle: 'Sort mode: Recent first (click to switch to Name)'
+    };
+  }
+
+  return {
+    mode: 'name',
+    label: 'Sort: Name',
+    indicator: 'A-Z',
+    tooltip: 'Sorted alphabetically (A to Z)',
+    buttonTitle: 'Sort mode: Name (A-Z) (click to switch to Recent first)'
+  };
+}
+
+fileTree.addEventListener('dragover', (e) => {
+  if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
+  e.preventDefault();
+});
+
+fileTree.addEventListener('drop', (e) => {
+  if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
+  e.preventDefault();
+  clearSidebarDropTargetHighlight();
+  draggedSidebarFilePath = null;
+});
+
+function updateSidebarSortUI() {
+  const sortState = getSidebarSortIndicatorState(settings.sidebarSortMode);
+  settings.sidebarSortMode = sortState.mode;
+
+  sidebarSortBtn.classList.toggle('active', sortState.mode === 'date');
+  sidebarSortBtn.style.color = sortState.mode === 'date' ? 'var(--link-color)' : '';
+  sidebarSortBtn.title = sortState.buttonTitle;
+
+  if (!sidebarSortStatus || !sidebarSortStatusLabel || !sidebarSortStatusIndicator) return;
+
+  sidebarSortStatus.dataset.mode = sortState.mode;
+  sidebarSortStatus.title = sortState.tooltip;
+  sidebarSortStatus.setAttribute('aria-label', sortState.tooltip);
+  sidebarSortStatusLabel.textContent = sortState.label;
+  sidebarSortStatusIndicator.textContent = sortState.indicator;
+}
+
+function getActiveSidebarFilePath() {
+  if (sidebarHighlight && typeof sidebarHighlight.findActiveTabFilePath === 'function') {
+    return sidebarHighlight.findActiveTabFilePath(tabs, activeTabId);
+  }
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  return activeTab && activeTab.filePath ? activeTab.filePath : '';
+}
+
+function isActiveSidebarFilePath(itemPath, activeFilePath) {
+  if (sidebarHighlight && typeof sidebarHighlight.isActiveSidebarFilePath === 'function') {
+    return sidebarHighlight.isActiveSidebarFilePath(itemPath, activeFilePath);
+  }
+
+  return !!itemPath && !!activeFilePath && itemPath === activeFilePath;
+}
+
+function syncActiveSidebarFileHighlight() {
+  if (!fileTree) return;
+
+  const activeFilePath = getActiveSidebarFilePath();
+  if (sidebarHighlight && typeof sidebarHighlight.applyActiveSidebarFileHighlight === 'function') {
+    sidebarHighlight.applyActiveSidebarFileHighlight(fileTree, activeFilePath);
+    return;
+  }
+
+  fileTree.querySelectorAll('.file-tree-item.file-tree-file[data-path]').forEach((el) => {
+    const isActive = isActiveSidebarFilePath(el.dataset.path, activeFilePath);
+    el.classList.toggle('active', isActive);
+  });
+}
+const countWords = (window.WordCountUtils && typeof window.WordCountUtils.countWords === 'function')
+  ? window.WordCountUtils.countWords
+  : (text) => {
+    if (typeof text !== 'string' || text.length === 0) return 0;
+    const matches = text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu);
+    return matches ? matches.length : 0;
+  };
+
+function getActiveTabWordCountContent(tab) {
+  if (!tab) return null;
+  if (tab.id === activeTabId && tab.isEditing) {
+    if (easyMDE) return easyMDE.value();
+    return editor.value;
+  }
+  return typeof tab.content === 'string' ? tab.content : '';
+}
+
+function updateDocumentWordCount(tab = tabs.find(t => t.id === activeTabId)) {
+  if (!wordCountIndicator) return;
+  if (!tab) {
+    wordCountIndicator.classList.add('hidden');
+    return;
+  }
+
+  const source = getActiveTabWordCountContent(tab);
+  const total = countWords(source);
+  wordCountIndicator.textContent = `${total.toLocaleString()} word${total === 1 ? '' : 's'}`;
+  wordCountIndicator.classList.remove('hidden');
+}
 
 // Create a new tab
 function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null) {
@@ -749,6 +874,7 @@ function switchToTab(tabId) {
       hideEditor();
       renderContent(tab.content, tab.fileName);
     }
+    updateDocumentWordCount(tab);
     document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
@@ -758,6 +884,7 @@ function switchToTab(tabId) {
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
     document.title = 'OpenMarkdownReader';
+    updateDocumentWordCount(null);
   }
 
   // Add to navigation history
@@ -766,6 +893,7 @@ function switchToTab(tabId) {
   }
 
   updateTabUI(tabId);
+  syncActiveSidebarFileHighlight();
 }
 
 // Show save dialog with Save/Don't Save/Cancel options
@@ -794,6 +922,7 @@ function updateTabUI(tabId) {
     // Update share button state based on publication status
     shareBtn.classList.toggle('published', !!tab.publishedUrl);
     shareBtn.title = tab.publishedUrl ? 'Document is live' : 'Share to web';
+    updateDocumentWordCount(tab);
   }
 }
 
@@ -886,6 +1015,9 @@ function updateTab(tabId, fileName, mdContent, filePath, mtime = null) {
 
     updateTabDisplay(tabId, fileName, filePath);
     updateTabUI(tabId);
+    if (tabId === activeTabId) {
+      syncActiveSidebarFileHighlight();
+    }
   }
 }
 
@@ -970,6 +1102,7 @@ editor.addEventListener('input', () => {
     tab.isModified = true;
     updateTabUI(activeTabId);
     document.title = `${tab.fileName} * - OpenMarkdownReader`;
+    updateDocumentWordCount(tab);
   }
 });
 
@@ -1046,6 +1179,7 @@ async function saveFile() {
       }
       updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
       updateTabUI(activeTabId);
+      syncActiveSidebarFileHighlight();
       document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
   }
@@ -1078,10 +1212,11 @@ async function saveFileAs() {
 
   updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
   updateTabUI(activeTabId);
+  syncActiveSidebarFileHighlight();
   document.title = `${tab.fileName} - OpenMarkdownReader`;
 
   if (settings.watchFileMode) {
-    window.electronAPI.watchFile(tab.filePath);
+    window.electronAPI.watchFile(tab.filePath, getWatcherOptions());
   }
 }
 
@@ -1099,15 +1234,8 @@ openFolderBtn.addEventListener('click', () => {
 
 // Toggle sort mode
 sidebarSortBtn.addEventListener('click', () => {
-  if (settings.sidebarSortMode === 'name') {
-    settings.sidebarSortMode = 'date';
-    sidebarSortBtn.classList.add('active');
-    sidebarSortBtn.style.color = 'var(--link-color)';
-  } else {
-    settings.sidebarSortMode = 'name';
-    sidebarSortBtn.classList.remove('active');
-    sidebarSortBtn.style.color = '';
-  }
+  settings.sidebarSortMode = settings.sidebarSortMode === 'name' ? 'date' : 'name';
+  updateSidebarSortUI();
   
   // Sort and re-render
   if (directoryFiles) {
@@ -1115,6 +1243,8 @@ sidebarSortBtn.addEventListener('click', () => {
     renderFileTree();
   }
 });
+
+updateSidebarSortUI();
 
 // Toggle recent files view
 sidebarRecentBtn.addEventListener('click', () => {
@@ -1165,10 +1295,73 @@ function updateSidebarPath(dirPath) {
   sidebarPath.classList.remove('hidden');
 }
 
-// Click on path to reveal in Finder
+function setSelectedSidebarFolder(folderPath) {
+  selectedSidebarFolderPath = folderPath || null;
+  fileTree.querySelectorAll('.file-tree-folder.selected').forEach(el => {
+    el.classList.remove('selected');
+  });
+  if (!selectedSidebarFolderPath) return;
+  const selectedEl = findFolderElementByPath(selectedSidebarFolderPath);
+  if (selectedEl) {
+    selectedEl.classList.add('selected');
+  }
+}
+
+function getSelectedFolderTargetDirectory() {
+  if (!currentDirectory) return null;
+  if (!selectedSidebarFolderPath) return currentDirectory;
+  if (
+    selectedSidebarFolderPath === currentDirectory ||
+    selectedSidebarFolderPath.startsWith(currentDirectory + window.electronAPI.pathSep)
+  ) {
+    return selectedSidebarFolderPath;
+  }
+  return currentDirectory;
+}
+
+function getTargetItemsForDirectory(dirPath) {
+  if (!dirPath || !currentDirectory) return null;
+  if (dirPath === currentDirectory) return directoryFiles;
+
+  const folderItem = findItemByPath(directoryFiles, dirPath);
+  if (!folderItem) return null;
+  if (!Array.isArray(folderItem.children)) folderItem.children = [];
+  return folderItem.children;
+}
+
+function findFolderElementByPath(folderPath) {
+  return Array.from(fileTree.querySelectorAll('.file-tree-folder'))
+    .find(el => el.dataset.path === folderPath) || null;
+}
+
+async function ensureFolderLoadedForNewItem(dirPath) {
+  if (!dirPath || dirPath === currentDirectory) return;
+
+  const folderItem = findItemByPath(directoryFiles, dirPath);
+  if (!folderItem) return;
+
+  const folderEl = findFolderElementByPath(dirPath);
+  if (!Array.isArray(folderItem.children)) {
+    try {
+      const contents = await window.electronAPI.getDirectoryContents(dirPath);
+      sortDirectoryFiles(contents);
+      folderItem.children = contents;
+    } catch (err) {
+      console.error('Failed to load selected folder contents for new item:', err);
+      if (!Array.isArray(folderItem.children)) folderItem.children = [];
+    }
+  }
+
+  if (folderEl && !expandedFolders.has(dirPath)) {
+    expandedFolders.add(dirPath);
+  }
+}
+
+// Click on path to open in Finder
 sidebarPathText.addEventListener('click', () => {
   if (currentDirectory) {
-    window.electronAPI.revealInFinder(currentDirectory);
+    setSelectedSidebarFolder(currentDirectory);
+    window.electronAPI.openInFinder(currentDirectory);
   }
 });
 
@@ -1176,6 +1369,7 @@ sidebarPathText.addEventListener('click', () => {
 sidebarPathText.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (currentDirectory) {
+    setSelectedSidebarFolder(currentDirectory);
     window.electronAPI.showFolderContextMenu(currentDirectory);
   }
 });
@@ -1276,10 +1470,12 @@ function startNewFolderRename(el, tempItem, dirPath, defaultName) {
 }
 
 // New file from sidebar
-sidebarNewFileBtn.addEventListener('click', () => {
+sidebarNewFileBtn.addEventListener('click', async () => {
   if (currentDirectory) {
-    // Create file in directory with editable name
-    createNewFileInDirectory(currentDirectory);
+    const targetDirectory = getSelectedFolderTargetDirectory();
+    if (targetDirectory) {
+      await createNewFileInDirectory(targetDirectory);
+    }
   } else {
     // No directory open, create untitled tab
     const tabId = createTab('Untitled.md', '', null);
@@ -1294,14 +1490,19 @@ sidebarNewFileBtn.addEventListener('click', () => {
 });
 
 // Create a new file in the directory with inline editing
-function createNewFileInDirectory(dirPath) {
+async function createNewFileInDirectory(dirPath) {
+  await ensureFolderLoadedForNewItem(dirPath);
+
+  const targetItems = getTargetItemsForDirectory(dirPath);
+  if (!targetItems) return;
+
   // Generate a unique default name
   let defaultName = 'Untitled.md';
   let counter = 1;
   const existingNames = new Set();
 
-  // Collect existing file names in root directory
-  for (const item of directoryFiles) {
+  // Collect existing file names in target directory
+  for (const item of targetItems) {
     if (item.type === 'file') {
       existingNames.add(item.name.toLowerCase());
     }
@@ -1318,24 +1519,25 @@ function createNewFileInDirectory(dirPath) {
     path: null, // Will be set after creation
     type: 'file',
     isNew: true,
+    tempId: `new-file-${++pendingNewTreeItemId}`,
     isMarkdown: true,
     isTextFile: true
   };
 
-  // Add to beginning of directoryFiles temporarily
-  directoryFiles.unshift(tempItem);
+  // Add to beginning of target folder temporarily
+  targetItems.unshift(tempItem);
 
   // Re-render the file tree
   renderFileTree();
 
   // Find the new file element and start editing
-  const newFileEl = fileTree.querySelector('.file-tree-file.new-file');
+  const newFileEl = fileTree.querySelector(`.file-tree-file.new-file[data-temp-id="${tempItem.tempId}"]`);
   if (newFileEl) {
     // Scroll into view
     newFileEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     // Start inline editing
-    startNewFileRename(newFileEl, tempItem, dirPath, defaultName);
+    startNewFileRename(newFileEl, tempItem, dirPath, defaultName, targetItems);
   }
 }
 
@@ -1354,6 +1556,7 @@ window.electronAPI.onDirectoryLoaded((data) => {
 
   // Update sidebar path display
   updateSidebarPath(currentDirectory);
+  setSelectedSidebarFolder(currentDirectory);
 
   // Pre-fetch all files for command palette and wiki links
   allFilesCache = null;
@@ -1441,6 +1644,7 @@ function renderFileTree() {
   }
 
   renderFileTreeItems(directoryFiles, fileTree, 0);
+  syncActiveSidebarFileHighlight();
   console.log(`[Renderer] fileTree now has ${fileTree.children.length} children`);
 }
 
@@ -1530,7 +1734,11 @@ async function renderRecentFilesTree() {
     groupFiles.forEach(file => {
       const el = document.createElement('div');
       el.className = 'file-tree-item file-tree-file';
+      el.dataset.path = file.path;
       el.title = file.path;
+      if (isActiveSidebarFilePath(file.path, getActiveSidebarFilePath())) {
+        el.classList.add('active');
+      }
       // Indent slightly more for list view feel
       el.style.paddingLeft = '28px'; 
       el.style.height = 'auto'; // Allow variable height
@@ -1562,10 +1770,17 @@ async function renderRecentFilesTree() {
         }
         window.electronAPI.openFileByPath(file.path, options);
       });
+
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        window.electronAPI.showFileContextMenu(file.path);
+      });
       
       fileTree.appendChild(el);
     });
   });
+
+  syncActiveSidebarFileHighlight();
 }
 
 async function renderRecentFilesTimeline() {
@@ -1677,13 +1892,22 @@ async function renderRecentFilesTimeline() {
         revealFolderInTree(fullFolderPath);
       });
 
+      folderEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        window.electronAPI.showFolderContextMenu(fullFolderPath);
+      });
+
       fileTree.appendChild(folderEl);
 
       // Render Files
       groupFiles.forEach(file => {
         const el = document.createElement('div');
         el.className = 'file-tree-item file-tree-file';
+        el.dataset.path = file.path;
         el.title = file.path;
+        if (isActiveSidebarFilePath(file.path, getActiveSidebarFilePath())) {
+          el.classList.add('active');
+        }
         el.style.paddingLeft = '28px'; 
         el.style.height = 'auto';
         el.style.paddingTop = '4px';
@@ -1713,11 +1937,18 @@ async function renderRecentFilesTimeline() {
           }
           window.electronAPI.openFileByPath(file.path, options);
         });
+
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          window.electronAPI.showFileContextMenu(file.path);
+        });
         
         fileTree.appendChild(el);
       });
     });
   });
+
+  syncActiveSidebarFileHighlight();
 }
 
 async function revealFolderInTree(targetPath) {
@@ -1767,6 +1998,69 @@ async function revealFolderInTree(targetPath) {
   }
 }
 
+function clearSidebarDropTargetHighlight() {
+  fileTree.querySelectorAll('.file-tree-folder.drop-target').forEach(folderEl => {
+    folderEl.classList.remove('drop-target');
+  });
+}
+
+function refreshSidebarCachesAfterFileMove() {
+  allFilesCache = null;
+  allFilesCachePromise = null;
+  wikiLinkByPath.clear();
+  wikiLinkByName.clear();
+  wikiLinkConflicts.clear();
+}
+
+function updateOpenTabsForMovedFile(oldPath, newPath, fileName) {
+  tabs.forEach(tab => {
+    if (tab.filePath === oldPath) {
+      tab.filePath = newPath;
+      tab.fileName = fileName;
+      updateTabDisplay(tab.id, fileName, newPath);
+      if (tab.id === activeTabId) {
+        document.title = `${fileName} - OpenMarkdownReader`;
+      }
+    }
+  });
+}
+
+async function handleSidebarFileMove(sourcePath, targetFolderPath) {
+  if (!sourcePath || !targetFolderPath) return;
+  if (!currentDirectory || settings.sidebarViewMode !== 'tree') return;
+
+  const currentParentDir = window.electronAPI.pathDirname(sourcePath);
+  if (currentParentDir === targetFolderPath) {
+    showToast('File is already in that folder', 'warning', 2500);
+    return;
+  }
+
+  const result = await window.electronAPI.moveFileToDirectory(sourcePath, targetFolderPath);
+  if (!result || !result.success) {
+    showToast(`Could not move file: ${result && result.error ? result.error : 'Unknown error'}`, 'error');
+    return;
+  }
+
+  if (sidebarTreeUtils && typeof sidebarTreeUtils.moveFileInTree === 'function') {
+    const treeMove = sidebarTreeUtils.moveFileInTree(directoryFiles, {
+      sourcePath,
+      targetFolderPath,
+      newPath: result.newPath,
+      newName: result.fileName
+    });
+    if (!treeMove.success) {
+      console.warn('Tree move sync warning:', treeMove.error);
+    }
+  }
+
+  sortDirectoryFiles(directoryFiles);
+  updateOpenTabsForMovedFile(sourcePath, result.newPath, result.fileName);
+  refreshSidebarCachesAfterFileMove();
+  renderFileTree();
+  syncActiveSidebarFileHighlight();
+  showToast(`Moved "${result.fileName}"`, 'success', 2500);
+}
+
 function renderFileTreeItems(items, container, depth) {
   items.forEach(item => {
     const el = document.createElement('div');
@@ -1774,7 +2068,8 @@ function renderFileTreeItems(items, container, depth) {
 
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
-      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${item.isNew ? ' new-folder' : ''}`;
+      const isSelected = !!selectedSidebarFolderPath && item.path === selectedSidebarFolderPath;
+      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}`;
       el.dataset.path = item.path;
       el.innerHTML = `
         <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
@@ -1787,7 +2082,34 @@ function renderFileTreeItems(items, container, depth) {
       `;
       el.addEventListener('click', async (e) => {
         e.stopPropagation();
+        setSelectedSidebarFolder(item.path);
         await toggleFolder(item.path, el);
+      });
+      el.addEventListener('dragover', (e) => {
+        if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drop-target');
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drop-target');
+      });
+      el.addEventListener('drop', async (e) => {
+        if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
+        e.preventDefault();
+        e.stopPropagation();
+        const sourcePath = draggedSidebarFilePath;
+        clearSidebarDropTargetHighlight();
+        draggedSidebarFilePath = null;
+        await handleSidebarFileMove(sourcePath, item.path);
+      });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (item.path) {
+          setSelectedSidebarFolder(item.path);
+          window.electronAPI.showSidebarFolderItemContextMenu(item.path);
+        }
       });
       container.appendChild(el);
 
@@ -1803,6 +2125,10 @@ function renderFileTreeItems(items, container, depth) {
       const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
       el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}${item.isNew ? ' new-file' : ''}`;
       if (item.path) el.dataset.path = item.path;
+      if (item.tempId) el.dataset.tempId = item.tempId;
+      if (item.path && isActiveSidebarFilePath(item.path, getActiveSidebarFilePath())) {
+        el.classList.add('active');
+      }
       el.title = item.path || item.name;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
@@ -1812,6 +2138,24 @@ function renderFileTreeItems(items, container, depth) {
       `;
       // All files are clickable, non-text just shown with muted style
       if (!item.isNew) {
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+          if (!item.path || settings.sidebarViewMode !== 'tree') {
+            e.preventDefault();
+            return;
+          }
+          draggedSidebarFilePath = item.path;
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.path);
+          }
+          el.classList.add('dragging');
+        });
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          draggedSidebarFilePath = null;
+          clearSidebarDropTargetHighlight();
+        });
         el.addEventListener('click', (e) => {
           // Cmd+click = new tab in background, Cmd+Shift+click = new tab and focus
           const options = {};
@@ -1820,6 +2164,13 @@ function renderFileTreeItems(items, container, depth) {
             options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
           }
           window.electronAPI.openFileByPath(item.path, options);
+        });
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (item.path) {
+            window.electronAPI.showFileContextMenu(item.path);
+          }
         });
         // Double-click to rename
         el.querySelector('span').addEventListener('dblclick', (e) => {
@@ -1866,9 +2217,14 @@ async function toggleFolder(folderPath, element) {
     const depth = parseInt(element.style.getPropertyValue('--depth') || '0') + 1;
     renderFileTreeItems(contents, childContainer, depth);
   }
+
+  syncActiveSidebarFileHighlight();
 }
 
 function findItemByPath(items, targetPath) {
+  if (sidebarTreeUtils && typeof sidebarTreeUtils.findItemByPath === 'function') {
+    return sidebarTreeUtils.findItemByPath(items, targetPath);
+  }
   for (const item of items) {
     if (item.path === targetPath) return item;
     if (item.children) {
@@ -1980,7 +2336,7 @@ function startSidebarRename(el, item) {
 }
 
 // Create new file in directory with inline editing
-function startNewFileRename(el, tempItem, dirPath, defaultName) {
+function startNewFileRename(el, tempItem, dirPath, defaultName, targetItems) {
   el.classList.add('renaming');
   const span = el.querySelector('span');
 
@@ -2011,8 +2367,8 @@ function startNewFileRename(el, tempItem, dirPath, defaultName) {
 
     if (!fileName) {
       // Cancel - remove from directoryFiles and re-render
-      const idx = directoryFiles.indexOf(tempItem);
-      if (idx !== -1) directoryFiles.splice(idx, 1);
+      const idx = targetItems.indexOf(tempItem);
+      if (idx !== -1) targetItems.splice(idx, 1);
       renderFileTree();
       return;
     }
@@ -2028,6 +2384,7 @@ function startNewFileRename(el, tempItem, dirPath, defaultName) {
       tempItem.name = finalName;
       tempItem.path = result.filePath;
       delete tempItem.isNew;
+      delete tempItem.tempId;
 
       // Re-render the file tree to reflect actual state
       renderFileTree();
@@ -2037,8 +2394,8 @@ function startNewFileRename(el, tempItem, dirPath, defaultName) {
     } else {
       // Show error and remove temp item
       alert(`Could not create file: ${result.error}`);
-      const idx = directoryFiles.indexOf(tempItem);
-      if (idx !== -1) directoryFiles.splice(idx, 1);
+      const idx = targetItems.indexOf(tempItem);
+      if (idx !== -1) targetItems.splice(idx, 1);
       renderFileTree();
     }
   }
@@ -2305,7 +2662,7 @@ window.electronAPI.onFileLoaded((data) => {
 
     // Start watching if watch mode is on
     if (data.filePath && settings.watchFileMode) {
-      window.electronAPI.watchFile(data.filePath);
+      window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
     // If not background, switch to the new tab
     if (!openInBackground) {
@@ -2330,7 +2687,7 @@ window.electronAPI.onFileLoaded((data) => {
     document.title = `${data.fileName} - OpenMarkdownReader`;
     // Start watching new file
     if (data.filePath && settings.watchFileMode) {
-      window.electronAPI.watchFile(data.filePath);
+      window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
   } else {
     const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime);
@@ -2344,7 +2701,7 @@ window.electronAPI.onFileLoaded((data) => {
     }
     // Start watching if watch mode is on
     if (data.filePath && settings.watchFileMode) {
-      window.electronAPI.watchFile(data.filePath);
+      window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
   }
 });
@@ -2715,6 +3072,47 @@ function applyTerminalView() {
   document.documentElement.classList.toggle('terminal-view', settings.terminalView);
 }
 
+function getWatcherOptions() {
+  return currentDirectory ? { searchRoot: currentDirectory } : {};
+}
+
+function getPathBaseName(filePath) {
+  if (!filePath) return '';
+  const normalized = filePath.replace(/\\/g, '/');
+  const parts = normalized.split('/');
+  return parts[parts.length - 1] || filePath;
+}
+
+function reconcilePathInNavHistory(oldPath, newPath) {
+  for (const entry of navHistory) {
+    if (entry.filePath === oldPath) {
+      entry.filePath = newPath;
+    }
+  }
+}
+
+function isPathInCurrentDirectory(filePath) {
+  if (!filePath || !currentDirectory) return false;
+  return filePath === currentDirectory || filePath.startsWith(`${currentDirectory}/`);
+}
+
+async function refreshSidebarForExternalMove() {
+  if (!currentDirectory) return;
+  try {
+    directoryFiles = await window.electronAPI.getDirectoryContents(currentDirectory);
+    sortDirectoryFiles(directoryFiles);
+    renderFileTree();
+
+    allFilesCache = await window.electronAPI.getAllFilesRecursive(currentDirectory);
+    buildWikiLinkIndex();
+    if (!commandPalette.classList.contains('hidden')) {
+      updateCommandPaletteResults();
+    }
+  } catch (err) {
+    console.error('Error refreshing sidebar after external file move:', err);
+  }
+}
+
 // Listen for watch mode toggle
 window.electronAPI.onSetWatchMode((watchMode) => {
   settings.watchFileMode = watchMode;
@@ -2729,10 +3127,39 @@ window.electronAPI.onSetWatchMode((watchMode) => {
   for (const tab of tabs) {
     if (!tab.filePath) continue;
     if (watchMode) {
-      window.electronAPI.watchFile(tab.filePath);
+      window.electronAPI.watchFile(tab.filePath, getWatcherOptions());
     } else {
       window.electronAPI.unwatchFile(tab.filePath);
     }
+  }
+});
+
+window.electronAPI.onFilePathChanged(async ({ oldPath, newPath }) => {
+  if (!oldPath || !newPath) return;
+
+  let updatedTabCount = 0;
+  const newFileName = getPathBaseName(newPath);
+  for (const tab of tabs) {
+    if (tab.filePath !== oldPath) continue;
+    tab.filePath = newPath;
+    tab.fileName = newFileName;
+    updateTabDisplay(tab.id, newFileName, newPath);
+    updateTabUI(tab.id);
+    if (tab.id === activeTabId) {
+      document.title = `${newFileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+    }
+    updatedTabCount++;
+  }
+
+  if (updatedTabCount === 0) return;
+
+  reconcilePathInNavHistory(oldPath, newPath);
+  if (settings.watchFileMode) {
+    window.electronAPI.watchFile(newPath, getWatcherOptions());
+  }
+
+  if (isPathInCurrentDirectory(oldPath) || isPathInCurrentDirectory(newPath)) {
+    await refreshSidebarForExternalMove();
   }
 });
 
@@ -3511,6 +3938,7 @@ function parseTextChat(content) {
 // Render content based on file type
 function renderContent(content, filename) {
   const tab = tabs.find(t => t.id === activeTabId);
+  updateDocumentWordCount(tab);
 
   // Check if it's a CSV/TSV file and should show as table
   if (isCsvFile(filename) && settings.csvViewAsTable) {
@@ -3712,10 +4140,14 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  // Cmd+S to save
-  if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+  // Cmd+S to save, Cmd+Shift+S to save as
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
-    saveFile();
+    if (e.shiftKey) {
+      saveFileAs();
+    } else {
+      saveFile();
+    }
   }
 
   // Cmd+E to toggle edit
@@ -3815,7 +4247,7 @@ const builtInCommands = [
   },
   {
     name: 'Sidebar: New File in Selected Folder',
-    description: 'Create a new markdown file in the selected sidebar folder',
+    description: 'Create a markdown file in the selected sidebar folder',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>',
     action: async () => {
       const targetDirectory = getSelectedFolderTargetDirectory();
@@ -4506,8 +4938,9 @@ function clearFindHighlights() {
   findState.query = '';
 }
 
-function updateFindResults() {
+function updateFindResults(options = {}) {
   if (!findState.isOpen) return;
+  const { preserveInputFocus = false } = options;
   
   const query = findInput.value;
   if (!query) {
@@ -4523,7 +4956,7 @@ function updateFindResults() {
   if (!tab) return;
   
   if (tab.isEditing) {
-    searchInEditor(query);
+    searchInEditor(query, { preserveInputFocus });
   } else {
     searchInPreview(query);
   }
@@ -4531,7 +4964,8 @@ function updateFindResults() {
   updateFindCountUI();
 }
 
-function searchInEditor(query) {
+function searchInEditor(query, options = {}) {
+  const { preserveInputFocus = false } = options;
   // Use EasyMDE's value if active, otherwise plain textarea
   const text = easyMDE ? easyMDE.value() : editor.value;
   const regex = new RegExp(escapeRegExp(query), 'gi');
@@ -4548,7 +4982,7 @@ function searchInEditor(query) {
 
   if (findState.matches.length > 0) {
     findState.currentIndex = 0;
-    jumpToMatch(0);
+    jumpToMatch(0, { preserveInputFocus });
   }
 }
 
@@ -4624,7 +5058,8 @@ function searchInPreview(query) {
   }
 }
 
-function jumpToMatch(index) {
+function jumpToMatch(index, options = {}) {
+  const { preserveInputFocus = false } = options;
   if (findState.matches.length === 0) return;
 
   // Wrap index
@@ -4661,11 +5096,11 @@ function jumpToMatch(index) {
       const from = offsetToPos(match.start);
       const to = offsetToPos(match.end);
 
-      cm.focus();
+      if (!preserveInputFocus) cm.focus();
       cm.setSelection(from, to);
       cm.scrollIntoView({ from, to }, 100);
     } else {
-      editor.focus();
+      if (!preserveInputFocus) editor.focus();
       editor.setSelectionRange(match.start, match.end);
     }
   } else {
@@ -4704,7 +5139,7 @@ function escapeRegExp(string) {
 
 // Event Listeners for Find
 findInput.addEventListener('input', () => {
-  updateFindResults();
+  updateFindResults({ preserveInputFocus: true });
 });
 
 findInput.addEventListener('keydown', (e) => {
@@ -4911,6 +5346,7 @@ function initRichEditor() {
         updateTabUI(activeTabId);
         document.title = `${tab.fileName} * - OpenMarkdownReader`;
       }
+      updateDocumentWordCount(tab);
     }
   });
 }
@@ -5051,6 +5487,7 @@ switchToTab = function(tabId) {
       hideEditor();
       renderContent(tab.content, tab.fileName);
     }
+    updateDocumentWordCount(tab);
     document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
@@ -5060,9 +5497,16 @@ switchToTab = function(tabId) {
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
     document.title = 'OpenMarkdownReader';
+    updateDocumentWordCount(null);
+  }
+
+  // Preserve browser-style tab/file history behavior for back/forward navigation.
+  if (tab) {
+    pushNavHistory(tabId, tab.filePath);
   }
 
   updateTabUI(tabId);
+  syncActiveSidebarFileHighlight();
   
   // Re-run find if open
   if (typeof updateFindResults === 'function' && findState && findState.isOpen) {
@@ -5170,6 +5614,7 @@ saveFile = async function(options = {}) {
 
         updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
         updateTabUI(activeTabId);
+        syncActiveSidebarFileHighlight();
         document.title = `${tab.fileName} - OpenMarkdownReader`;
     }
   }
@@ -5241,6 +5686,7 @@ closeTab = async function(tabId, silent = false) {
       dropZone.classList.remove('hidden');
       content.classList.add('hidden');
       document.title = 'OpenMarkdownReader';
+      updateDocumentWordCount(null);
     }
   }
 };
@@ -5319,6 +5765,7 @@ editor.addEventListener('input', triggerAutoSave);
 	        updateTabUI(activeTabId);
 	        document.title = `${tab.fileName} * - OpenMarkdownReader`;
 	      }
+	      updateDocumentWordCount(tab);
 	      triggerAutoSave();
 	    }
 	  });

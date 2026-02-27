@@ -382,6 +382,10 @@ html, body {
   font-weight: 500;
 }
 
+.file-tree-folder.selected {
+  background: color-mix(in srgb, var(--link-color) 18%, transparent);
+}
+
 .file-tree-folder .folder-chevron {
   transition: transform 0.15s ease;
 }
