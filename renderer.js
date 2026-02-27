@@ -37,7 +37,8 @@ let settings = {
   richToolbarVisible: false, // Default toolbar closed
   terminalView: false, // Terminal display mode
   sidebarViewMode: 'tree', // 'tree' or 'recent'
-  sidebarSortMode: 'name' // 'name' or 'date'
+  sidebarSortMode: 'name', // 'name' or 'date'
+  sidebarWidth: 240
 };
 
 let easyMDE = null;
@@ -264,6 +265,7 @@ const content = document.getElementById('content');
 const markdownBody = document.getElementById('markdown-body');
 const openBtn = document.getElementById('open-btn');
 const sidebar = document.getElementById('sidebar');
+const sidebarResizer = document.getElementById('sidebar-resizer');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const navBackBtn = document.getElementById('nav-back-btn');
 const navForwardBtn = document.getElementById('nav-forward-btn');
@@ -364,6 +366,60 @@ function updateSidebarSortUI() {
   sidebarSortStatus.setAttribute('aria-label', sortState.tooltip);
   sidebarSortStatusLabel.textContent = sortState.label;
   sidebarSortStatusIndicator.textContent = sortState.indicator;
+}
+
+function clampSidebarWidth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 240;
+  return Math.max(200, Math.min(520, Math.round(n)));
+}
+
+function applySidebarWidth(width) {
+  settings.sidebarWidth = clampSidebarWidth(width);
+  if (sidebar) {
+    sidebar.style.width = `${settings.sidebarWidth}px`;
+  }
+}
+
+function setSidebarVisibility(visible) {
+  settings.sidebarVisible = Boolean(visible);
+  sidebar.classList.toggle('hidden', !settings.sidebarVisible);
+  sidebarToggle.classList.toggle('active', settings.sidebarVisible);
+  if (sidebarResizer) {
+    sidebarResizer.classList.toggle('hidden', !settings.sidebarVisible);
+  }
+}
+
+function initSidebarResizer() {
+  if (!sidebar || !sidebarResizer) return;
+
+  let isResizing = false;
+
+  const onMouseMove = (e) => {
+    if (!isResizing) return;
+    applySidebarWidth(e.clientX);
+  };
+
+  const onMouseUp = () => {
+    if (!isResizing) return;
+    isResizing = false;
+    sidebarResizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  };
+
+  sidebarResizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (!settings.sidebarVisible) return;
+    isResizing = true;
+    sidebarResizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  });
 }
 
 function getActiveSidebarFilePath() {
@@ -1222,9 +1278,7 @@ async function saveFileAs() {
 
 // Sidebar toggle
 sidebarToggle.addEventListener('click', () => {
-  settings.sidebarVisible = !settings.sidebarVisible;
-  sidebar.classList.toggle('hidden', !settings.sidebarVisible);
-  sidebarToggle.classList.toggle('active', settings.sidebarVisible);
+  setSidebarVisibility(!settings.sidebarVisible);
 });
 
 // Open folder
@@ -1245,6 +1299,9 @@ sidebarSortBtn.addEventListener('click', () => {
 });
 
 updateSidebarSortUI();
+applySidebarWidth(settings.sidebarWidth);
+initSidebarResizer();
+setSidebarVisibility(settings.sidebarVisible);
 
 // Toggle recent files view
 sidebarRecentBtn.addEventListener('click', () => {
@@ -1583,9 +1640,7 @@ window.electronAPI.onDirectoryLoaded((data) => {
     });
 
   // Show sidebar and render the file tree
-  settings.sidebarVisible = true;
-  sidebar.classList.remove('hidden');
-  sidebarToggle.classList.add('active');
+  setSidebarVisibility(true);
   renderFileTree();
 });
 
@@ -2742,6 +2797,21 @@ window.electronAPI.onCreateFileInFolderRequest(async (folderPath) => {
   if (!folderPath) return;
   setSelectedSidebarFolder(folderPath);
   await createNewFileInDirectory(folderPath);
+});
+
+window.electronAPI.onRenameTabFileRequest((tabId) => {
+  if (!tabId) return;
+  startTabRename(tabId);
+});
+
+window.electronAPI.onRenameSidebarItemRequest((itemPath) => {
+  if (!itemPath || !Array.isArray(directoryFiles)) return;
+  const item = findItemByPath(directoryFiles, itemPath);
+  if (!item) return;
+  const el = Array.from(fileTree.querySelectorAll('.file-tree-item[data-path]'))
+    .find(node => node.dataset.path === itemPath);
+  if (!el) return;
+  startSidebarRename(el, item);
 });
 
 // Listen for reopen closed tab (Cmd+Shift+T)
@@ -4733,6 +4803,7 @@ window.electronAPI.onCheckUnsaved(async () => {
     directory: currentDirectory,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
+    sidebarWidth: settings.sidebarWidth,
     richToolbarVisible: settings.richToolbarVisible
   };
 
@@ -4804,6 +4875,7 @@ window.electronAPI.onGetSessionState(() => {
     directory: currentDirectory,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
+    sidebarWidth: settings.sidebarWidth,
     richToolbarVisible: settings.richToolbarVisible
   };
   window.electronAPI.reportSessionState(sessionData);
@@ -4817,9 +4889,8 @@ window.electronAPI.onRestoreSession((data) => {
   const shouldShowSidebar = (typeof data.sidebarVisible === 'boolean')
     ? data.sidebarVisible
     : Boolean(data.directory);
-  settings.sidebarVisible = shouldShowSidebar;
-  sidebar.classList.toggle('hidden', !shouldShowSidebar);
-  sidebarToggle.classList.toggle('active', shouldShowSidebar);
+  setSidebarVisibility(shouldShowSidebar);
+  applySidebarWidth(data.sidebarWidth || settings.sidebarWidth);
 
   if (typeof data.richToolbarVisible === 'boolean') {
     settings.richToolbarVisible = data.richToolbarVisible;

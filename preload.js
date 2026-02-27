@@ -116,6 +116,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCloseOtherTabs: (callback) => ipcRenderer.on('close-other-tabs', (event, tabId) => callback(tabId)),
   onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId)),
   onCreateFileInFolderRequest: (callback) => ipcRenderer.on('create-file-in-folder-request', (event, folderPath) => callback(folderPath)),
+  onRenameTabFileRequest: (callback) => ipcRenderer.on('rename-tab-file-request', (event, tabId) => callback(tabId)),
+  onRenameSidebarItemRequest: (callback) => ipcRenderer.on('rename-sidebar-item-request', (event, itemPath) => callback(itemPath)),
 
   // Updates
   getBuildInfo: () => ipcRenderer.invoke('get-build-info'),

@@ -223,6 +223,23 @@ html, body {
   display: none;
 }
 
+.sidebar-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  border-right: 1px solid var(--border-color);
+  flex: 0 0 6px;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+  background: color-mix(in srgb, var(--link-color) 16%, transparent);
+}
+
+.sidebar-resizer.hidden {
+  display: none;
+}
+
 .sidebar-header {
   display: flex;
   align-items: flex-start;
@@ -455,6 +472,7 @@ html, body {
   flex: 1;
   overflow: auto;
   position: relative;
+  min-width: 0;
 }
 
 /* Tab Bar Wrapper */

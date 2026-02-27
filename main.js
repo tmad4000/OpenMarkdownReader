@@ -796,6 +796,40 @@ function createWindow(filePath = null) {
 
   win.loadFile('index.html');
 
+  // Native text/edit context menu parity (Copy/Paste/Look Up/Speech, etc.).
+  win.webContents.on('context-menu', (event, params) => {
+    const template = [];
+    const hasSelection = Boolean(params.selectionText && params.selectionText.trim());
+    const canPaste = Boolean(params.editFlags && params.editFlags.canPaste);
+
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste', enabled: canPaste },
+        { role: 'selectAll' }
+      );
+    } else if (hasSelection) {
+      template.push({ role: 'copy' });
+    }
+
+    if (hasSelection && process.platform === 'darwin') {
+      if (template.length > 0) template.push({ type: 'separator' });
+      template.push(
+        { role: 'lookUpSelection' },
+        { role: 'startSpeaking' },
+        { role: 'stopSpeaking' }
+      );
+    }
+
+    if (template.length === 0) return;
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: win });
+  });
+
   // Open DevTools in development mode
   if (!app.isPackaged) {
     win.webContents.openDevTools({ mode: 'detach' });
@@ -894,6 +928,22 @@ function setupMenu() {
       label: 'OpenMarkdownReader',
       submenu: [
         { role: 'about' },
+        { type: 'separator' },
+        {
+          label: getUpdateStatusLabel(),
+          enabled: false
+        },
+        {
+          label: 'Check for Updates...',
+          enabled: !isMASBuild(),
+          click: () => checkForUpdates({ manual: true })
+        },
+        ...(latestRelease
+          ? [{
+              label: `Download Update (${latestRelease.version})...`,
+              click: () => shell.openExternal(latestRelease.url)
+            }]
+          : []),
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -1685,15 +1735,39 @@ async function promptSetAsDefaultApp() {
 
 // Check GitHub for updates
 let latestRelease = null;
-function checkForUpdates() {
+let updateCheckStatus = 'idle'; // idle | checking | available | up_to_date | error
+let updateCheckError = '';
+let updateLastCheckedAt = null;
+
+function getUpdateStatusLabel() {
+  if (isMASBuild()) return 'Updates are managed by the Mac App Store';
+  if (updateCheckStatus === 'checking') return 'Update Status: Checking...';
+  if (updateCheckStatus === 'available' && latestRelease) {
+    return `Update Status: ${latestRelease.version} available`;
+  }
+  if (updateCheckStatus === 'up_to_date') {
+    return `Update Status: Up to date${updateLastCheckedAt ? ` (checked ${new Date(updateLastCheckedAt).toLocaleTimeString()})` : ''}`;
+  }
+  if (updateCheckStatus === 'error') return `Update Status: Check failed${updateCheckError ? ` (${updateCheckError})` : ''}`;
+  return 'Update Status: Not checked yet';
+}
+
+function checkForUpdates(options = {}) {
+  const manual = Boolean(options.manual);
+  if (isMASBuild()) return;
+  updateCheckStatus = 'checking';
+  updateCheckError = '';
+  updateLastCheckedAt = Date.now();
+  setupMenu();
+
   const repo = 'tmad4000/OpenMarkdownReader';
-  const options = {
+  const requestOptions = {
     hostname: 'api.github.com',
     path: `/repos/${repo}/releases/latest`,
     headers: { 'User-Agent': 'OpenMarkdownReader' }
   };
 
-  const req = https.get(options, (res) => {
+  const req = https.get(requestOptions, (res) => {
     let data = '';
     res.on('data', chunk => data += chunk);
     res.on('end', () => {
@@ -1707,18 +1781,41 @@ function checkForUpdates() {
               url: release.html_url,
               name: release.name || release.tag_name
             };
+            updateCheckStatus = 'available';
             // Notify all windows
             for (const win of windows) {
               if (!win.isDestroyed()) {
                 win.webContents.send('update-available', latestRelease);
               }
             }
+          } else {
+            latestRelease = null;
+            updateCheckStatus = 'up_to_date';
+            if (manual) {
+              const win = getFocusedWindow();
+              if (win && !win.isDestroyed()) {
+                dialog.showMessageBox(win, {
+                  type: 'info',
+                  buttons: ['OK'],
+                  title: 'No Updates Available',
+                  message: `You are up to date (v${buildInfo.version}).`
+                });
+              }
+            }
           }
         }
-      } catch {}
+      } catch (err) {
+        updateCheckStatus = 'error';
+        updateCheckError = (err && err.message) ? err.message : 'parse error';
+      }
+      setupMenu();
     });
   });
-  req.on('error', () => {}); // Silently fail - not critical
+  req.on('error', (err) => {
+    updateCheckStatus = 'error';
+    updateCheckError = (err && err.message) ? err.message : 'network error';
+    setupMenu();
+  });
   req.end();
 }
 
@@ -2426,6 +2523,11 @@ ipcMain.handle('show-tab-context-menu', async (event, tabInfo) => {
   if (filePath) {
     menuTemplate.push(
       {
+        label: 'Rename...',
+        click: () => win.webContents.send('rename-tab-file-request', tabId)
+      },
+      { type: 'separator' },
+      {
         label: 'Open in Finder',
         click: () => {
           openInFinder(filePath, { shell }).catch(() => {});
@@ -2520,14 +2622,18 @@ ipcMain.handle('show-sidebar-folder-item-context-menu', async (event, folderPath
   if (!folderPath) return;
 
   const menuTemplate = [
-    {
-      label: 'New File Here',
-      click: () => win.webContents.send('create-file-in-folder-request', folderPath)
-    },
-    { type: 'separator' },
-    {
-      label: 'Reveal in Finder',
-      click: () => shell.showItemInFolder(folderPath)
+      {
+        label: 'New File Here',
+        click: () => win.webContents.send('create-file-in-folder-request', folderPath)
+      },
+      {
+        label: 'Rename...',
+        click: () => win.webContents.send('rename-sidebar-item-request', folderPath)
+      },
+      { type: 'separator' },
+      {
+        label: 'Reveal in Finder',
+        click: () => shell.showItemInFolder(folderPath)
     },
     {
       label: 'Copy Path',
@@ -2547,6 +2653,11 @@ ipcMain.handle('show-file-context-menu', async (event, filePath) => {
   if (!filePath) return;
 
   const menuTemplate = [
+    {
+      label: 'Rename...',
+      click: () => win.webContents.send('rename-sidebar-item-request', filePath)
+    },
+    { type: 'separator' },
     {
       label: 'Open in Finder',
       click: () => {
