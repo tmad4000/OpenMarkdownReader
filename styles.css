@@ -3882,6 +3882,22 @@ mark.find-match.active {
     background: #fff !important;
     box-shadow: none !important;
     min-height: auto !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+  }
+
+  .EasyMDEContainer .editor-toolbar,
+  .EasyMDEContainer .editor-statusbar,
+  .EasyMDEContainer .editor-preview-side {
+    display: none !important;
+  }
+
+  .EasyMDEContainer .CodeMirror,
+  .EasyMDEContainer .CodeMirror-scroll {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
   }
 
   #markdown-body {
@@ -3897,6 +3913,16 @@ mark.find-match.active {
   #markdown-body .heading-anchor,
   #markdown-body .collapse-toggle {
     display: none !important;
+  }
+
+  #markdown-body h1,
+  #markdown-body h2,
+  #markdown-body h3,
+  #markdown-body h4,
+  #markdown-body h5,
+  #markdown-body h6 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   #markdown-body img {
@@ -3924,6 +3950,13 @@ mark.find-match.active {
   #markdown-body th,
   #markdown-body td {
     word-break: break-word;
+  }
+
+  #markdown-body pre,
+  #markdown-body table,
+  #markdown-body blockquote {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   #csv-view {
