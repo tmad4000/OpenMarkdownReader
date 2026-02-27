@@ -37,9 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File watching
   onSetWatchMode: (callback) => ipcRenderer.on('set-watch-mode', (event, watchMode) => callback(watchMode)),
   toggleWatchMode: () => ipcRenderer.invoke('toggle-watch-mode'),
-  watchFile: (filePath) => ipcRenderer.invoke('watch-file', filePath),
+  watchFile: (filePath, options = {}) => ipcRenderer.invoke('watch-file', filePath, options),
   unwatchFile: (filePath) => ipcRenderer.invoke('unwatch-file', filePath),
   onFileChanged: (callback) => ipcRenderer.on('file-changed', (event, data) => callback(data)),
+  onFilePathChanged: (callback) => ipcRenderer.on('file-path-changed', (event, data) => callback(data)),
   getDailyNotesFolder: () => ipcRenderer.invoke('get-daily-notes-folder'),
   openDailyNotesFolder: () => ipcRenderer.invoke('open-daily-notes-folder'),
   browseDailyNotesFolder: () => ipcRenderer.invoke('browse-daily-notes-folder'),
@@ -52,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
   createFileInDirectory: (dirPath, fileName) => ipcRenderer.invoke('create-file-in-directory', dirPath, fileName),
   createFolderInDirectory: (dirPath, folderName) => ipcRenderer.invoke('create-folder-in-directory', dirPath, folderName),
+  moveFileToDirectory: (sourcePath, targetDirPath) => ipcRenderer.invoke('move-file-to-directory', sourcePath, targetDirPath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
@@ -105,11 +107,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Tab context menu
   showTabContextMenu: (tabInfo) => ipcRenderer.invoke('show-tab-context-menu', tabInfo),
   showFolderContextMenu: (folderPath) => ipcRenderer.invoke('show-folder-context-menu', folderPath),
+  showSidebarFolderItemContextMenu: (folderPath) => ipcRenderer.invoke('show-sidebar-folder-item-context-menu', folderPath),
+  showFileContextMenu: (filePath) => ipcRenderer.invoke('show-file-context-menu', filePath),
+  openInFinder: (filePath) => ipcRenderer.invoke('open-in-finder', filePath),
   revealInFinder: (filePath) => ipcRenderer.invoke('reveal-in-finder', filePath),
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
   onCloseTabById: (callback) => ipcRenderer.on('close-tab-by-id', (event, tabId) => callback(tabId)),
   onCloseOtherTabs: (callback) => ipcRenderer.on('close-other-tabs', (event, tabId) => callback(tabId)),
   onCloseTabsToRight: (callback) => ipcRenderer.on('close-tabs-to-right', (event, tabId) => callback(tabId)),
+  onCreateFileInFolderRequest: (callback) => ipcRenderer.on('create-file-in-folder-request', (event, folderPath) => callback(folderPath)),
 
   // Updates
   getBuildInfo: () => ipcRenderer.invoke('get-build-info'),
@@ -121,5 +127,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restartApp: () => ipcRenderer.send('restart-app'),
   logToMain: (level, ...args) => ipcRenderer.send('log-to-main', level, ...args),
   pathJoin: (...args) => path.join(...args),
-  pathSep: path.sep
+  pathSep: path.sep,
+  pathDirname: (inputPath) => path.dirname(inputPath)
 });

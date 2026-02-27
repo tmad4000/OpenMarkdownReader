@@ -6,6 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "node scripts/generate-build-info.js && electron .",
+    "test": "node --test",
     "build": "node scripts/generate-build-info.js && electron-builder",
     "build:mac": "node scripts/generate-build-info.js && electron-builder --mac",
     "build:dmg": "node scripts/generate-build-info.js && electron-builder --mac dmg",
