@@ -3814,3 +3814,125 @@ mark.find-match.active {
 #noos-feedback-widget {
   display: none;
 }
+
+/* Print layout: export only the document content, not app chrome */
+@media print {
+  @page {
+    margin: 0.75in;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide all UI chrome and overlays */
+  .titlebar,
+  #sidebar,
+  #sidebar-resizer,
+  #drop-zone,
+  #toc-panel,
+  #find-bar,
+  #command-palette,
+  #global-search,
+  #keyboard-shortcuts-modal,
+  #report-issue-modal,
+  .share-popover,
+  .update-banner,
+  #noos-feedback-widget {
+    display: none !important;
+  }
+
+  .main-container,
+  .content-area {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #content {
+    display: block !important;
+    max-width: none !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* If the editor is hidden, keep it hidden in print output */
+  #editor-container.hidden,
+  #markdown-body.hidden,
+  #csv-view.hidden {
+    display: none !important;
+  }
+
+  #editor-container {
+    height: auto !important;
+  }
+
+  #editor {
+    border: 1px solid #d9d9d9 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    min-height: auto !important;
+  }
+
+  #markdown-body {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    font-size: 12pt !important;
+    line-height: 1.55 !important;
+  }
+
+  #markdown-body .heading-anchor,
+  #markdown-body .collapse-toggle {
+    display: none !important;
+  }
+
+  #markdown-body img {
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #markdown-body pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    page-break-inside: avoid;
+  }
+
+  #markdown-body .table-wrap {
+    overflow: visible !important;
+  }
+
+  #markdown-body .table-wrap table,
+  .compact-tables #markdown-body .table-wrap table {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #markdown-body th,
+  #markdown-body td {
+    word-break: break-word;
+  }
+
+  #csv-view {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #csv-view .csv-toolbar {
+    display: none !important;
+  }
+}
