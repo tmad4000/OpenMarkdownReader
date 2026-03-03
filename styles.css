@@ -1381,8 +1381,8 @@ mark.find-match.active {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace !important;
 }
 
-/* Edit mode indicator */
-.tab.editing .tab-title::before {
+/* Modified (unsaved) indicator - blue dot */
+.tab.modified .tab-title::before {
   content: '';
   display: inline-block;
   width: 8px;
@@ -1392,8 +1392,11 @@ mark.find-match.active {
   margin-right: 6px;
 }
 
-.tab.modified .tab-title::after {
-  content: ' *';
+/* Edit mode indicator - shown when in edit mode */
+.tab.editing .tab-title::after {
+  content: ' ✎';
+  color: var(--link-color);
+  font-size: 0.85em;
 }
 
 /* Markdown Styles */
@@ -3819,6 +3822,12 @@ mark.find-match.active {
 @media print {
   @page {
     margin: 0.75in;
+    size: auto;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   html,
@@ -3826,43 +3835,126 @@ mark.find-match.active {
     background: #fff !important;
     color: #000 !important;
     height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
   }
 
-  /* Hide all UI chrome and overlays */
-  .titlebar,
-  #sidebar,
-  #sidebar-resizer,
-  #drop-zone,
-  #toc-panel,
-  #find-bar,
-  #command-palette,
-  #global-search,
-  #keyboard-shortcuts-modal,
-  #report-issue-modal,
-  .share-popover,
-  .update-banner,
-  #noos-feedback-widget {
+  /* Force hide all UI chrome and overlays with maximum specificity */
+  body .titlebar,
+  body #titlebar,
+  body #sidebar,
+  body .sidebar,
+  body #sidebar-resizer,
+  body .sidebar-resizer,
+  body #drop-zone,
+  body .drop-zone,
+  body #toc-panel,
+  body .toc-panel,
+  body #find-bar,
+  body .find-bar,
+  body #command-palette,
+  body .command-palette,
+  body #global-search,
+  body .global-search,
+  body #keyboard-shortcuts-modal,
+  body .shortcuts-modal,
+  body #report-issue-modal,
+  body .report-issue-modal,
+  body #custom-width-dialog,
+  body .custom-width-dialog,
+  body .share-popover,
+  body #share-popover,
+  body .update-banner,
+  body #update-banner,
+  body #noos-feedback-widget,
+  body .toast-container,
+  body #toast-container,
+  body .sidebar-header,
+  body .sidebar-path,
+  body .file-tree,
+  body .tab-bar-wrapper,
+  body .tab-bar,
+  body .new-tab-btn,
+  body .dev-restart-btn,
+  body .watch-indicator,
+  body .autosave-indicator,
+  body .word-count-indicator,
+  body .save-btn,
+  body .share-btn,
+  body .edit-toggle-btn,
+  body .toc-toggle-btn,
+  body .rich-mode-btn,
+  body .rich-toolbar-btn,
+  body .nav-btn,
+  body .sidebar-toggle {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
   }
 
+  /* Ensure main container takes full width */
+  body .main-container,
+  body #main-container,
   .main-container,
-  .content-area {
+  .content-area,
+  body .content-area,
+  body #content-area {
     display: block !important;
+    width: 100% !important;
+    max-width: none !important;
     height: auto !important;
-    min-height: 0 !important;
+    min-height: auto !important;
+    max-height: none !important;
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     padding: 0 !important;
     margin: 0 !important;
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
   }
 
-  #content {
+  /* Hide sidebar completely and ensure content takes full width */
+  .sidebar,
+  #sidebar,
+  .sidebar-resizer,
+  #sidebar-resizer {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 !important;
+    visibility: hidden !important;
+  }
+
+  /* Content should take full width when sidebar is hidden */
+  #content,
+  .content,
+  body #content,
+  body .content {
     display: block !important;
-    max-width: none !important;
     width: 100% !important;
-    min-height: 0 !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     margin: 0 !important;
     padding: 0 !important;
+    position: static !important;
+    left: auto !important;
+    flex: none !important;
   }
 
   /* If the editor is hidden, keep it hidden in print output */
@@ -3872,20 +3964,28 @@ mark.find-match.active {
     display: none !important;
   }
 
-  #editor-container {
+  #editor-container,
+  .editor-container {
     height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
-  #editor {
+  #editor,
+  .editor {
     border: 1px solid #d9d9d9 !important;
     border-radius: 0 !important;
     background: #fff !important;
     box-shadow: none !important;
     min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
+    overflow: visible !important;
   }
 
+  .EasyMDEContainer,
   .EasyMDEContainer .editor-toolbar,
   .EasyMDEContainer .editor-statusbar,
   .EasyMDEContainer .editor-preview-side {
@@ -3893,21 +3993,37 @@ mark.find-match.active {
   }
 
   .EasyMDEContainer .CodeMirror,
-  .EasyMDEContainer .CodeMirror-scroll {
+  .EasyMDEContainer .CodeMirror-scroll,
+  .CodeMirror,
+  .CodeMirror-scroll {
     height: auto !important;
     max-height: none !important;
+    min-height: auto !important;
     overflow: visible !important;
     background: #fff !important;
   }
 
-  #markdown-body {
+  /* Ensure markdown body prints properly across multiple pages */
+  #markdown-body,
+  .markdown-body {
+    display: block !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: transparent !important;
     padding: 0 !important;
+    margin: 0 !important;
     font-size: 12pt !important;
     line-height: 1.55 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    page-break-inside: auto !important;
   }
 
   #markdown-body .heading-anchor,
@@ -3959,13 +4075,21 @@ mark.find-match.active {
     page-break-inside: avoid;
   }
 
-  #csv-view {
+  #csv-view,
+  .csv-view {
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
   }
 
-  #csv-view .csv-toolbar {
+  #csv-view .csv-toolbar,
+  .csv-view .csv-toolbar {
     display: none !important;
+  }
+
+  /* Ensure text content flows across pages */
+  p, div, span, article, section {
+    orphans: 3;
+    widows: 3;
   }
 }
