@@ -32,12 +32,42 @@ console.log(`[RENDERER] Starting at ${new Date().toISOString()}`);
 })();
 
 // Global renderer error handlers — catch and log anything that could cause white screen
+function showErrorOverlay(title, detail) {
+  let overlay = document.getElementById('error-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'error-overlay';
+    overlay.style.cssText = 'position:fixed;bottom:12px;right:12px;max-width:420px;max-height:300px;overflow:auto;' +
+      'background:#1a1a2e;color:#e0e0e0;border:1px solid #c0392b;border-radius:8px;padding:12px 16px;' +
+      'font-family:-apple-system,monospace;font-size:12px;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u00d7';
+    closeBtn.style.cssText = 'position:absolute;top:4px;right:8px;background:none;border:none;color:#888;font-size:18px;cursor:pointer;';
+    closeBtn.onclick = () => overlay.remove();
+    overlay.appendChild(closeBtn);
+    const content = document.createElement('div');
+    content.id = 'error-overlay-content';
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+  }
+  const content = overlay.querySelector('#error-overlay-content');
+  const entry = document.createElement('div');
+  entry.style.cssText = 'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #333;';
+  entry.innerHTML = `<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">${title}</div>` +
+    `<div style="color:#aaa;white-space:pre-wrap;word-break:break-all;">${detail}</div>`;
+  content.appendChild(entry);
+}
+
 window.onerror = (message, source, lineno, colno, error) => {
-  console.error(`[RENDERER UNCAUGHT] ${message} at ${source}:${lineno}:${colno}`, error?.stack || '');
+  const detail = `${message}\n${source}:${lineno}:${colno}${error?.stack ? '\n' + error.stack : ''}`;
+  console.error(`[RENDERER UNCAUGHT] ${detail}`);
+  showErrorOverlay('Uncaught Error', detail);
   return false;
 };
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('[RENDERER UNHANDLED PROMISE]', event.reason?.stack || event.reason);
+  const detail = event.reason?.stack || String(event.reason);
+  console.error('[RENDERER UNHANDLED PROMISE]', detail);
+  showErrorOverlay('Unhandled Promise Rejection', detail);
 });
 
 // Forward logs to main process for terminal debugging
