@@ -1,4 +1,44 @@
-// marked and hljs are loaded from CDN in index.html
+console.log(`[RENDERER] Starting at ${new Date().toISOString()}`);
+
+// Startup health check — detect missing dependencies and show error instead of blank screen
+(function startupHealthCheck() {
+  const missing = [];
+  if (typeof marked === 'undefined') missing.push('marked (Markdown parser)');
+  if (typeof hljs === 'undefined') missing.push('highlight.js (syntax highlighter)');
+  if (typeof EasyMDE === 'undefined') missing.push('EasyMDE (editor)');
+
+  if (missing.length > 0) {
+    const msg = `Startup Error: Missing dependencies — ${missing.join(', ')}. ` +
+      `The app may show a blank screen. Check Help > Open Log File for details.`;
+    // Log to main process if available
+    if (window.electronAPI && window.electronAPI.logToMain) {
+      window.electronAPI.logToMain('error', msg);
+    }
+    // Show visible error instead of blank screen
+    document.body.innerHTML = `
+      <div style="padding: 40px; font-family: -apple-system, sans-serif; color: #c00; max-width: 600px; margin: 40px auto;">
+        <h2 style="margin-bottom: 16px;">OpenMarkdownReader failed to start</h2>
+        <p>Some required libraries could not be loaded:</p>
+        <ul style="margin: 12px 0;">${missing.map(m => `<li>${m}</li>`).join('')}</ul>
+        <p style="color: #666; margin-top: 20px;">This is a packaging error. Please report it at:<br>
+          <a href="https://github.com/tmad4000/OpenMarkdownReader/issues" style="color: #0066cc;">
+            github.com/tmad4000/OpenMarkdownReader/issues</a></p>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+          Diagnostic logs: Help menu → Open Log File</p>
+      </div>`;
+    return;
+  }
+  console.log('Startup health check passed — all dependencies loaded');
+})();
+
+// Global renderer error handlers — catch and log anything that could cause white screen
+window.onerror = (message, source, lineno, colno, error) => {
+  console.error(`[RENDERER UNCAUGHT] ${message} at ${source}:${lineno}:${colno}`, error?.stack || '');
+  return false;
+};
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[RENDERER UNHANDLED PROMISE]', event.reason?.stack || event.reason);
+});
 
 // Forward logs to main process for terminal debugging
 if (window.electronAPI && window.electronAPI.logToMain) {
@@ -1336,6 +1376,11 @@ if (devRestartBtn) {
     devRestartBtn.classList.remove('hidden');
     showToast('Source code changed. Restart required.', 'warning', 5000);
   });
+}
+
+// Listen for toast messages from main process (e.g. diagnostic info copied)
+if (window.electronAPI && window.electronAPI.onShowToast) {
+  window.electronAPI.onShowToast((message, type) => showToast(message, type));
 }
 
 // Update sidebar path display

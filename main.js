@@ -1,9 +1,27 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage, clipboard } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
+
+// Configure electron-log: writes to ~/Library/Logs/OpenMarkdownReader/
+log.initialize();
+log.transports.file.level = 'info';
+log.transports.console.level = 'debug';
+
+// Redirect console to electron-log so all output is captured to file
+Object.assign(console, log.functions);
+
+// Global error handlers — catch anything that would silently kill the app
+process.on('uncaughtException', (error) => {
+  console.error('[UNCAUGHT EXCEPTION]', error.stack || error);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+});
+
 const { getFileIdentity, detectFileMove } = require('./file-watch-utils');
 const {
   findNameCollisionInDirectory
@@ -26,6 +44,9 @@ try {
     buildInfo.version = pkg.version;
   } catch {}
 }
+
+log.info(`OpenMarkdownReader starting — v${buildInfo.version} (build ${buildInfo.buildNumber}, ${buildInfo.gitHash})`);
+log.info(`Platform: ${process.platform} ${os.release()} | Electron: ${process.versions.electron} | Node: ${process.versions.node} | Arch: ${process.arch}`);
 
 // Detect if running as Mac App Store (sandboxed) build
 // MAS apps have a receipt file in the app bundle
@@ -796,6 +817,34 @@ function createWindow(filePath = null) {
 
   win.loadFile('index.html');
 
+  // ── White-screen / crash diagnostics ──
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[LOAD FAIL] code=${errorCode} desc="${errorDescription}" url=${validatedURL}`);
+  });
+
+  win.webContents.on('render-process-gone', (event, details) => {
+    console.error(`[RENDERER CRASHED] reason=${details.reason} exitCode=${details.exitCode}`);
+    // Show a dialog so the user knows what happened
+    dialog.showErrorBox(
+      'OpenMarkdownReader crashed',
+      `The renderer process ${details.reason === 'killed' ? 'was killed' : 'crashed'} (exit code ${details.exitCode}).\n\nPlease restart the app. If this keeps happening, check Help → Report Issue.`
+    );
+  });
+
+  win.webContents.on('unresponsive', () => {
+    console.error('[UNRESPONSIVE] Window became unresponsive');
+  });
+
+  win.webContents.on('responsive', () => {
+    console.log('[RESPONSIVE] Window recovered');
+  });
+
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) { // errors only
+      console.error(`[Renderer ERROR] ${message} (${sourceId}:${line})`);
+    }
+  });
+
   // Native text/edit context menu parity (Copy/Paste/Look Up/Speech, etc.).
   win.webContents.on('context-menu', (event, params) => {
     const template = [];
@@ -1518,6 +1567,34 @@ function setupMenu() {
             });
           }
         },
+        { type: 'separator' },
+        {
+          label: 'Copy Diagnostic Info',
+          click: () => {
+            const diagInfo = [
+              `OpenMarkdownReader v${buildInfo.version} (build ${buildInfo.buildNumber}, ${buildInfo.gitHash})`,
+              `Build date: ${buildInfo.buildDate}`,
+              `Platform: ${process.platform} ${os.release()}`,
+              `Arch: ${process.arch}`,
+              `Electron: ${process.versions.electron}`,
+              `Node: ${process.versions.node}`,
+              `Chrome: ${process.versions.chrome}`,
+              `MAS build: ${isMASBuild()}`,
+              `Log path: ${log.transports.file.getFile().path}`,
+            ].join('\n');
+            clipboard.writeText(diagInfo);
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-toast', 'Diagnostic info copied to clipboard', 'success');
+          }
+        },
+        {
+          label: 'Open Log File…',
+          click: () => {
+            const logPath = log.transports.file.getFile().path;
+            shell.showItemInFolder(logPath);
+          }
+        },
+        { type: 'separator' },
         {
           label: `Install '${CLI_COMMAND_NAMES.join("' and '")}' Commands in PATH…`,
           visible: process.platform === 'darwin' && !isMASBuild(),
