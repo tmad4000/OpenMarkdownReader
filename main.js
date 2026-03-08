@@ -1736,6 +1736,17 @@ async function promptSetAsDefaultApp() {
 // Check GitHub for updates
 let latestRelease = null;
 let updateCheckStatus = 'idle'; // idle | checking | available | up_to_date | error
+
+// Compare semver strings: returns true if remote is newer than local
+function isNewerVersion(remote, local) {
+  const r = remote.split('.').map(Number);
+  const l = local.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((r[i] || 0) > (l[i] || 0)) return true;
+    if ((r[i] || 0) < (l[i] || 0)) return false;
+  }
+  return false;
+}
 let updateCheckError = '';
 let updateLastCheckedAt = null;
 
@@ -1775,7 +1786,7 @@ function checkForUpdates(options = {}) {
         const release = JSON.parse(data);
         if (release.tag_name) {
           const remoteVersion = release.tag_name.replace(/^v/, '');
-          if (remoteVersion !== buildInfo.version) {
+          if (isNewerVersion(remoteVersion, buildInfo.version)) {
             latestRelease = {
               version: remoteVersion,
               url: release.html_url,
