@@ -3720,7 +3720,7 @@ markedRenderer.heading = function(text, level, raw, slugger) {
 marked.setOptions({
   renderer: markedRenderer,
   gfm: true,
-  breaks: false
+  breaks: true
 });
 
 function buildCollapsibleSections() {
