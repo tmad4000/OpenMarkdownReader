@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -1845,6 +1845,16 @@ app.whenReady().then(() => {
     copyright: 'Jacob Cole'
   });
 
+  // Set orange dev dock icon when running unpackaged
+  if (!app.isPackaged && process.platform === 'darwin') {
+    try {
+      const iconPath = path.join(__dirname, 'build', 'icon-dev.png');
+      if (fs.existsSync(iconPath)) {
+        app.dock.setIcon(iconPath);
+      }
+    } catch {}
+  }
+
   // Check for updates (non-blocking, after short delay)
   if (!isMASBuild()) {
     setTimeout(checkForUpdates, 3000);
@@ -1911,7 +1921,7 @@ app.on('activate', () => {
 });
 
 // IPC handlers
-ipcMain.handle('get-build-info', () => buildInfo);
+ipcMain.handle('get-build-info', () => ({ ...buildInfo, isPackaged: app.isPackaged }));
 ipcMain.handle('get-update-info', () => latestRelease);
 ipcMain.handle('open-file-dialog', () => openFileOrFolder());
 ipcMain.handle('open-file-or-folder', () => openFileOrFolder());

@@ -633,6 +633,26 @@ mark.find-match.active {
   color: var(--text-color);
 }
 
+/* Dev Badge */
+.dev-badge {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  background: #e67e22;
+  border-radius: 4px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.dev-badge.hidden {
+  display: none;
+}
+
 /* Dev Restart Button */
 .dev-restart-btn {
   -webkit-app-region: no-drag;

@@ -4001,10 +4001,27 @@ function renderChatView(messages) {
     if (msg.content) {
       // Simple markdown-like rendering for code blocks
       let content = escapeHtml(msg.content);
-      // Convert code blocks
-      content = content.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-      // Convert inline code
-      content = content.replace(/`([^`]+)`/g, '<code>$1</code>');
+      // Protect fenced blocks first so inline/newline formatting can't mutate their contents.
+      const codeBlockPlaceholders = [];
+      content = content.replace(/```([^\r\n`]*)\r?\n([\s\S]*?)```/g, (_match, rawLanguage, code) => {
+        const language = String(rawLanguage || '').trim().replace(/[^\w-]/g, '');
+        const renderedBlock = language
+          ? `<pre><code class="language-${language}">${code}</code></pre>`
+          : `<pre><code>${code}</code></pre>`;
+        const placeholder = `@@CHAT_CODE_BLOCK_${codeBlockPlaceholders.length}@@`;
+        codeBlockPlaceholders.push(renderedBlock);
+        return placeholder;
+      });
+
+      // Convert inline code outside fenced blocks.
+      content = content.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      // Convert remaining newlines to <br>.
+      content = content.replace(/\n/g, '<br>');
+      // Restore fenced blocks after inline/newline transforms.
+      content = content.replace(/@@CHAT_CODE_BLOCK_(\d+)@@/g, (_match, indexStr) => {
+        const index = Number(indexStr);
+        return Number.isInteger(index) ? (codeBlockPlaceholders[index] || '') : '';
+      });
       html += `<div class="chat-message-content">${content}</div>`;
     }
 
@@ -5066,24 +5083,24 @@ function clearFindHighlights() {
 function updateFindResults(options = {}) {
   if (!findState.isOpen) return;
   const { preserveInputFocus = false } = options;
-  
+
   const query = findInput.value;
   if (!query) {
     clearFindHighlights();
     findCount.classList.add('hidden');
     return;
   }
-  
+
   clearFindHighlights();
   findState.query = query;
-  
+
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab) return;
-  
+
   if (tab.isEditing) {
     searchInEditor(query, { preserveInputFocus });
   } else {
-    searchInPreview(query);
+    searchInPreview(query, { preserveScroll: preserveInputFocus });
   }
   
   updateFindCountUI();
@@ -5111,9 +5128,13 @@ function searchInEditor(query, options = {}) {
   }
 }
 
-function searchInPreview(query) {
+function searchInPreview(query, options = {}) {
   if (!markdownBody) return;
-  
+  const { preserveScroll = false } = options;
+
+  // Remember scroll position before modifying DOM
+  const scrollY = window.scrollY;
+
   // TreeWalker to find text nodes
   const walker = document.createTreeWalker(
     markdownBody,
@@ -5121,21 +5142,21 @@ function searchInPreview(query) {
     null,
     false
   );
-  
+
   const textNodes = [];
   let node;
   while (node = walker.nextNode()) {
     textNodes.push(node);
   }
-  
+
   const regex = new RegExp(escapeRegExp(query), 'gi');
   let allMatches = [];
-  
+
   textNodes.forEach(textNode => {
     const text = textNode.nodeValue;
     let match;
     regex.lastIndex = 0;
-    
+
     while ((match = regex.exec(text)) !== null) {
       allMatches.push({
         node: textNode,
@@ -5145,41 +5166,59 @@ function searchInPreview(query) {
       });
     }
   });
-  
+
   // Group matches by node
   const matchesByNode = new Map();
   allMatches.forEach(m => {
     if (!matchesByNode.has(m.node)) matchesByNode.set(m.node, []);
     matchesByNode.get(m.node).push(m);
   });
-  
-  findState.matches = []; 
-  
+
+  findState.matches = [];
+
   // Process each node
   matchesByNode.forEach((matches, node) => {
     // Sort reverse order
     matches.sort((a, b) => b.index - a.index);
-    
+
     matches.forEach(m => {
       const range = document.createRange();
       range.setStart(node, m.index);
       range.setEnd(node, m.index + m.length);
-      
+
       const mark = document.createElement('mark');
       mark.className = 'find-match';
       mark.textContent = m.text;
-      
+
       range.deleteContents();
       range.insertNode(mark);
     });
   });
-  
+
   // Re-query to get marks in order
   findState.matches = Array.from(document.querySelectorAll('mark.find-match'));
-  
+
   if (findState.matches.length > 0) {
-    findState.currentIndex = 0;
-    jumpToMatch(0);
+    if (preserveScroll) {
+      // Find the match closest to the current scroll position
+      let closestIndex = 0;
+      let closestDist = Infinity;
+      findState.matches.forEach((mark, i) => {
+        const dist = Math.abs(mark.getBoundingClientRect().top);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestIndex = i;
+        }
+      });
+      findState.currentIndex = closestIndex;
+      findState.matches.forEach(m => m.classList.remove('active'));
+      findState.matches[closestIndex].classList.add('active');
+      // Restore scroll position (DOM changes may have shifted it)
+      window.scrollTo(0, scrollY);
+    } else {
+      findState.currentIndex = 0;
+      jumpToMatch(0);
+    }
   }
 }
 
@@ -6271,6 +6310,15 @@ window.electronAPI.onNavForward?.(() => navGoForward());
   window.electronAPI.getUpdateInfo?.().then((release) => {
     if (release) showUpdate(release);
   });
+})();
+
+// Dev badge
+(async () => {
+  const info = await window.electronAPI.getBuildInfo?.();
+  if (info && !info.isPackaged) {
+    const badge = document.getElementById('dev-badge');
+    if (badge) badge.classList.remove('hidden');
+  }
 })();
 
 // Noos widget toggle
