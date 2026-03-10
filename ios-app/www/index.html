@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>OpenMarkdownReader</title>
+  <link rel="stylesheet" href="styles-mobile.css">
+  <link rel="stylesheet" href="vendor/fontawesome-css/all.min.css">
+  <link rel="stylesheet" href="vendor/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="vendor/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="vendor/easymde.min.css">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+</head>
+<body>
+  <!-- Top Toolbar -->
+  <header id="toolbar" class="toolbar">
+    <div class="toolbar-left">
+      <button id="back-btn" class="toolbar-btn hidden" title="Back">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18">
+          <path fill-rule="evenodd" d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z"/>
+        </svg>
+      </button>
+      <span id="file-title" class="file-title">OpenMarkdownReader</span>
+    </div>
+    <div class="toolbar-right">
+      <button id="toc-btn" class="toolbar-btn hidden" title="Table of Contents">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18">
+          <path d="M2 4a1 1 0 100-2 1 1 0 000 2zm3.75-1.5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 5a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zM3 8a1 1 0 11-2 0 1 1 0 012 0zm-1 6a1 1 0 100-2 1 1 0 000 2z"/>
+        </svg>
+      </button>
+      <button id="edit-btn" class="toolbar-btn hidden" title="Toggle Edit Mode">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18">
+          <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064l6.286-6.286z"/>
+        </svg>
+      </button>
+      <button id="share-action-btn" class="toolbar-btn hidden" title="Share">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18">
+          <path d="M7.47 2.22a.75.75 0 011.06 0l3.75 3.75a.75.75 0 01-1.06 1.06L8.75 4.56v6.19a.75.75 0 01-1.5 0V4.56L4.78 7.03a.75.75 0 01-1.06-1.06l3.75-3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/>
+        </svg>
+      </button>
+      <button id="settings-btn" class="toolbar-btn" title="Settings">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18">
+          <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.004 3.25a.75.75 0 01.75.75v.01a.75.75 0 01-1.5 0V4a.75.75 0 01.75-.75zM7 6.75c0-.41.336-.75.75-.75h.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75h-.5a.75.75 0 01-.75-.75v-4.5z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Table of Contents Panel (slides in from right) -->
+  <div id="toc-panel" class="toc-panel hidden">
+    <div class="toc-header">
+      <span class="toc-title">Contents</span>
+      <button id="toc-close" class="toc-close-btn" title="Close">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+          <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+        </svg>
+      </button>
+    </div>
+    <nav id="toc-content" class="toc-content"></nav>
+  </div>
+  <div id="toc-backdrop" class="toc-backdrop hidden"></div>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel" class="settings-panel hidden">
+    <div class="settings-header">
+      <span class="settings-title">Settings</span>
+      <button id="settings-close" class="settings-close-btn" title="Close">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+          <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-group">
+        <label class="settings-label">Theme</label>
+        <div class="settings-segmented">
+          <button class="settings-seg-btn active" data-theme="auto">Auto</button>
+          <button class="settings-seg-btn" data-theme="light">Light</button>
+          <button class="settings-seg-btn" data-theme="dark">Dark</button>
+        </div>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Font Size</label>
+        <div class="settings-row">
+          <button id="font-decrease" class="settings-round-btn">A-</button>
+          <span id="font-size-display" class="settings-value">17px</span>
+          <button id="font-increase" class="settings-round-btn">A+</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="settings-backdrop" class="settings-backdrop hidden"></div>
+
+  <!-- Main Content Area -->
+  <main class="content-area">
+    <!-- Welcome / Drop Zone -->
+    <div id="welcome" class="welcome">
+      <svg class="welcome-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <h1>OpenMarkdownReader</h1>
+      <p class="welcome-subtitle">Beautiful markdown rendering on iOS</p>
+      <button id="open-file-btn" class="welcome-btn">
+        <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+          <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.414a.25.25 0 01-.177-.073l-.896-.897A.75.75 0 005.586 3H1.75z"/>
+        </svg>
+        Open Markdown File
+      </button>
+      <p class="welcome-hint">Or paste markdown text below</p>
+      <textarea id="paste-area" class="paste-area" placeholder="Paste or type markdown here..."></textarea>
+      <button id="render-paste-btn" class="render-paste-btn hidden">Render</button>
+    </div>
+
+    <!-- Markdown Content -->
+    <div id="content" class="content hidden">
+      <article id="markdown-body" class="markdown-body"></article>
+    </div>
+
+    <!-- Editor (shown when editing) -->
+    <div id="editor-container" class="editor-container hidden">
+      <textarea id="editor" class="editor" spellcheck="false"></textarea>
+    </div>
+  </main>
+
+  <!-- Bottom Bar -->
+  <footer id="bottom-bar" class="bottom-bar hidden">
+    <button id="bottom-open-btn" class="bottom-btn" title="Open File">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+        <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.414a.25.25 0 01-.177-.073l-.896-.897A.75.75 0 005.586 3H1.75z"/>
+      </svg>
+      <span>Open</span>
+    </button>
+    <button id="bottom-copy-btn" class="bottom-btn" title="Copy Markdown">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+        <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+      </svg>
+      <span>Copy</span>
+    </button>
+    <button id="bottom-share-btn" class="bottom-btn" title="Share">
+      <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+        <path d="M7.47 2.22a.75.75 0 011.06 0l3.75 3.75a.75.75 0 01-1.06 1.06L8.75 4.56v6.19a.75.75 0 01-1.5 0V4.56L4.78 7.03a.75.75 0 01-1.06-1.06l3.75-3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/>
+      </svg>
+      <span>Share</span>
+    </button>
+    <span id="word-count" class="word-count">0 words</span>
+  </footer>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="vendor/easymde.min.js"></script>
+  <script src="renderer-mobile.js"></script>
+</body>
+</html>

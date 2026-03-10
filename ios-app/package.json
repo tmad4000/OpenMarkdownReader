@@ -1,0 +1,30 @@
+{
+  "name": "openmarkdownreader-mobile",
+  "version": "1.0.0",
+  "description": "OpenMarkdownReader for iOS - Beautiful markdown rendering",
+  "main": "renderer-mobile.js",
+  "scripts": {
+    "build": "npx cap sync ios",
+    "open": "npx cap open ios",
+    "run": "npx cap run ios",
+    "sync": "npx cap sync ios"
+  },
+  "keywords": [
+    "markdown",
+    "reader",
+    "ios"
+  ],
+  "author": "Jacob Cole",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/browser": "^8.0.2",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/clipboard": "^8.0.1",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.2.0",
+    "@capacitor/share": "^8.0.1",
+    "@capawesome/capacitor-file-picker": "^8.0.2"
+  }
+}
