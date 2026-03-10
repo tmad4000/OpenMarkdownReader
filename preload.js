@@ -124,6 +124,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (event, data) => callback(data)),
 
+  // Diagnostics
+  onShowToast: (callback) => ipcRenderer.on('show-toast', (event, message, type) => callback(message, type)),
+
   // Dev tools
   onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
   restartApp: () => ipcRenderer.send('restart-app'),

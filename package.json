@@ -1,7 +1,7 @@
 {
   "name": "open-markdown-reader",
   "productName": "OpenMarkdownReader",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {
@@ -28,6 +28,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
     "easymde": "^2.20.0",
+    "electron-log": "^5.4.3",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1"
   },
@@ -87,7 +88,10 @@
       "identity": "Apple Distribution: IdeaFlow, Inc. (JESMXK96LG)",
       "entitlements": "build/entitlements.mas.plist",
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
-      "provisioningProfile": "build/embedded.provisionprofile"
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "extendInfo": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "pkg": {
       "identity": "B2D608D3556482EE684046BF24F561FB62FA81B4"
