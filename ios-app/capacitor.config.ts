@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.jacobcole.openmarkdownreader.mobile',
+  appId: 'com.jacobcole.openmarkdownreader',
   appName: 'OpenMarkdownReader',
   webDir: 'www',
   ios: {
