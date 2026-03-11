@@ -9,8 +9,9 @@
 #   4. Upload to App Store Connect
 #   5. Auto-clear export compliance via API
 #
-# IMPORTANT: Do NOT manually re-sign the app or helpers after electron-builder.
-# electron-builder's signing is correct for TestFlight. Manual codesign breaks it.
+# IMPORTANT: Do NOT use --deep or re-sign helpers after electron-builder.
+# electron-builder's helper signing is correct. But we DO re-sign the main app
+# after patching Info.plist, since modifying plist invalidates the code signature.
 set -euo pipefail
 
 UPLOAD=false
@@ -42,6 +43,24 @@ echo "=== Step 2: Patch Info.plist ==="
 NEW_BUILD=$(date +%s)
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$APP_DIR/Contents/Info.plist"
 echo "  Build number: $NEW_BUILD"
+
+echo ""
+echo "=== Step 2b: Strip quarantine attributes ==="
+# Downloaded files (e.g. provisioning profiles) get com.apple.quarantine which
+# Apple rejects with ITMS-91109. Only strip quarantine (not all xattrs, which
+# can invalidate code signatures).
+xattr -dr com.apple.quarantine "$APP_DIR"
+echo "  Quarantine attributes removed"
+
+echo ""
+echo "=== Step 2c: Re-sign main app (plist changes invalidated signature) ==="
+# Only re-sign the top-level app bundle — NOT --deep (which would break helper signatures).
+# Helpers keep their original electron-builder signatures.
+DIST_CERT="Apple Distribution: IdeaFlow, Inc. (JESMXK96LG)"
+codesign --force --sign "$DIST_CERT" \
+    --entitlements build/entitlements.mas.plist \
+    "$APP_DIR" 2>&1
+echo "  Re-signed with $DIST_CERT"
 
 echo ""
 echo "=== Step 3: Build installer pkg ==="
