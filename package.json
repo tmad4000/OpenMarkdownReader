@@ -27,6 +27,10 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
+    "@milkdown/core": "^7.19.0",
+    "@milkdown/plugin-history": "^7.19.0",
+    "@milkdown/plugin-listener": "^7.19.0",
+    "@milkdown/preset-commonmark": "^7.19.0",
     "easymde": "^2.20.0",
     "electron-log": "^5.4.3",
     "highlight.js": "^11.11.1",

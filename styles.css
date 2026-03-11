@@ -3001,6 +3001,189 @@ mark.find-match.active {
   margin: 4px 0 !important;
 }
 
+/* ==========================================
+   Milkdown Editor Styles
+   ========================================== */
+
+.milkdown-editor {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-color);
+}
+
+.milkdown-editor.hidden {
+  display: none;
+}
+
+.milkdown-editor .milkdown {
+  height: 100%;
+  background: var(--bg-color);
+  color: var(--text-color);
+}
+
+.milkdown-editor .ProseMirror {
+  padding: 16px 20px;
+  min-height: 100%;
+  outline: none;
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.milkdown-editor .ProseMirror:focus {
+  outline: none;
+}
+
+.milkdown-editor .ProseMirror > *:first-child {
+  margin-top: 0 !important;
+}
+
+.milkdown-editor .ProseMirror p {
+  margin-bottom: 16px;
+}
+
+.milkdown-editor .ProseMirror h1,
+.milkdown-editor .ProseMirror h2,
+.milkdown-editor .ProseMirror h3,
+.milkdown-editor .ProseMirror h4,
+.milkdown-editor .ProseMirror h5,
+.milkdown-editor .ProseMirror h6 {
+  color: var(--text-color);
+  font-weight: 600;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  line-height: 1.25;
+}
+
+.milkdown-editor .ProseMirror h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
+}
+
+.milkdown-editor .ProseMirror h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
+}
+
+.milkdown-editor .ProseMirror h3 {
+  font-size: 1.25em;
+}
+
+.milkdown-editor .ProseMirror h4 {
+  font-size: 1em;
+}
+
+.milkdown-editor .ProseMirror a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.milkdown-editor .ProseMirror a:hover {
+  text-decoration: underline;
+}
+
+.milkdown-editor .ProseMirror code {
+  background: var(--code-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: var(--mono-font);
+  font-size: 85%;
+}
+
+.milkdown-editor .ProseMirror pre {
+  background: var(--code-bg);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.milkdown-editor .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  font-size: 14px;
+}
+
+.milkdown-editor .ProseMirror blockquote {
+  border-left: 4px solid var(--blockquote-border);
+  padding-left: 16px;
+  margin-left: 0;
+  color: var(--blockquote-text);
+}
+
+.milkdown-editor .ProseMirror ul,
+.milkdown-editor .ProseMirror ol {
+  padding-left: 2em;
+  margin-bottom: 16px;
+}
+
+.milkdown-editor .ProseMirror li {
+  margin-bottom: 4px;
+}
+
+.milkdown-editor .ProseMirror li > p {
+  margin-bottom: 4px;
+}
+
+.milkdown-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 24px 0;
+}
+
+.milkdown-editor .ProseMirror strong {
+  font-weight: 600;
+}
+
+.milkdown-editor .ProseMirror em {
+  font-style: italic;
+}
+
+.milkdown-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.milkdown-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.milkdown-editor .ProseMirror th,
+.milkdown-editor .ProseMirror td {
+  border: 1px solid var(--table-border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.milkdown-editor .ProseMirror th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
+.milkdown-editor .ProseMirror tr:nth-child(even) td {
+  background: var(--table-row-alt);
+}
+
+/* Milkdown placeholder */
+.milkdown-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--text-secondary);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Selection styling */
+.milkdown-editor .ProseMirror ::selection {
+  background: var(--selection-bg);
+}
+
 /* Broken wiki links */
 .wiki-link-broken {
   color: var(--danger-color, #f85149);
