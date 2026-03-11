@@ -4705,7 +4705,7 @@ function updateCommandPaletteResults() {
   updateCommandPaletteSelection();
 }
 
-function updateSelectedItem() {
+function updateCommandPaletteSelection() {
   commandPaletteResults.querySelectorAll('.command-palette-item').forEach((el, index) => {
     el.classList.toggle('selected', index === commandPaletteSelectedIndex);
   });
@@ -4715,6 +4715,10 @@ function updateSelectedItem() {
   if (selectedEl) {
     selectedEl.scrollIntoView({ block: 'nearest' });
   }
+}
+
+function updateSelectedItem() {
+  updateCommandPaletteSelection();
 }
 
 function selectCommandPaletteItem(index, event = null) {
