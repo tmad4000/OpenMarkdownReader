@@ -7,6 +7,11 @@ console.log(`[RENDERER] Starting at ${new Date().toISOString()}`);
   if (typeof hljs === 'undefined') missing.push('highlight.js (syntax highlighter)');
   if (typeof EasyMDE === 'undefined') missing.push('EasyMDE (editor)');
 
+  // Milkdown is optional - warn but don't fail
+  if (typeof Milkdown === 'undefined' || !Milkdown.createMilkdownEditor) {
+    console.warn('Milkdown editor not loaded, falling back to EasyMDE');
+  }
+
   if (missing.length > 0) {
     const msg = `Startup Error: Missing dependencies — ${missing.join(', ')}. ` +
       `The app may show a blank screen. Check Help > Open Log File for details.`;
@@ -108,10 +113,13 @@ let settings = {
   terminalView: false, // Terminal display mode
   sidebarViewMode: 'tree', // 'tree' or 'recent'
   sidebarSortMode: 'name', // 'name' or 'date'
-  sidebarWidth: 240
+  sidebarWidth: 240,
+  editorEngine: 'milkdown' // 'milkdown' or 'easymde' - Milkdown is default WYSIWYG
 };
 
 let easyMDE = null;
+let milkdownEditor = null;
+const milkdownContainer = document.getElementById('milkdown-editor');
 
 // Toast notification system
 const toastContainer = document.getElementById('toast-container');
@@ -3456,6 +3464,25 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   } else if (setting === 'compact-tables') {
     settings.compactTables = !!value;
     document.body.classList.toggle('compact-tables', !!value);
+  } else if (setting === 'editor-engine') {
+    const newEngine = value === 'easymde' ? 'easymde' : 'milkdown';
+    if (settings.editorEngine !== newEngine) {
+      settings.editorEngine = newEngine;
+      // If currently in rich editor mode, switch the editor
+      if (settings.richEditorMode) {
+        const currentContent = editor.value;
+        destroyRichEditor();
+        initRichEditor();
+        // For EasyMDE, set the content after initialization
+        if (newEngine === 'easymde' && easyMDE) {
+          easyMDE.value(currentContent);
+          setTimeout(() => {
+            if (easyMDE) easyMDE.codemirror.refresh();
+          }, 10);
+        }
+        // For Milkdown, content is passed during init
+      }
+    }
   }
 });
 
@@ -5565,22 +5592,98 @@ function openLinkFromEditor(href, e) {
   }
 }
 
-function initRichEditor() {
+// Initialize Milkdown WYSIWYG editor
+async function initMilkdownEditor(content) {
+  if (milkdownEditor) return;
+  if (!milkdownContainer) {
+    console.warn('Milkdown container not found, falling back to EasyMDE');
+    settings.editorEngine = 'easymde';
+    initEasyMDE();
+    return;
+  }
+
+  try {
+    milkdownContainer.classList.remove('hidden');
+    editor.style.display = 'none';
+
+    milkdownEditor = await Milkdown.createMilkdownEditor(
+      milkdownContainer,
+      content || editor.value || '',
+      (markdown) => {
+        // Sync content to hidden textarea
+        editor.value = markdown;
+
+        // Update tab status
+        const tab = tabs.find(t => t.id === activeTabId);
+        if (tab && tab.isEditing) {
+          if (!tab.isModified) {
+            tab.isModified = true;
+            updateTabUI(activeTabId);
+            document.title = `${tab.fileName} * - OpenMarkdownReader`;
+          }
+          updateDocumentWordCount(tab);
+          triggerAutoSave();
+        }
+      }
+    );
+    console.log('Milkdown editor initialized');
+  } catch (err) {
+    console.error('Failed to initialize Milkdown, falling back to EasyMDE:', err);
+    settings.editorEngine = 'easymde';
+    milkdownContainer.classList.add('hidden');
+    editor.style.display = '';
+    initEasyMDE();
+  }
+}
+
+// Destroy Milkdown editor
+function destroyMilkdownEditor() {
+  if (milkdownEditor) {
+    try {
+      milkdownEditor.destroy();
+    } catch (e) {
+      console.warn('Error destroying Milkdown editor:', e);
+    }
+    milkdownEditor = null;
+  }
+  if (milkdownContainer) {
+    milkdownContainer.innerHTML = '';
+    milkdownContainer.classList.add('hidden');
+  }
+  editor.style.display = '';
+}
+
+// Initialize EasyMDE editor
+function initEasyMDE() {
   if (easyMDE) return;
-  
+
   easyMDE = new EasyMDE({
     element: editor,
-	    autoDownloadFontAwesome: false,
+    autoDownloadFontAwesome: false,
     spellChecker: false,
-    status: false, // Hide status bar
+    status: false,
     toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
     styleSelectedText: true,
     minHeight: "100%",
-    maxHeight: "100%"
+    maxHeight: "100%",
+    previewRender: (plainText) => marked.parse(plainText)
   });
-  
+
+  // Cmd/Ctrl+click links inside editor (Obsidian-style)
+  const cm = easyMDE.codemirror;
+  cm.on('mousedown', (cmInstance, e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+    const pos = cmInstance.coordsChar({ left: e.clientX, top: e.clientY }, 'window');
+    const lineText = cmInstance.getLine(pos.line);
+    const href = extractMarkdownLinkAt(lineText, pos.ch);
+    if (!href) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openLinkFromEditor(href, e);
+  });
+
   // Change handler to update tab status
-  easyMDE.codemirror.on('change', (cm, change) => {
+  easyMDE.codemirror.on('change', (cmInstance, change) => {
     if (change && change.origin === 'setValue') return;
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab && tab.isEditing) {
@@ -5590,15 +5693,33 @@ function initRichEditor() {
         document.title = `${tab.fileName} * - OpenMarkdownReader`;
       }
       updateDocumentWordCount(tab);
+      triggerAutoSave();
     }
   });
+
+  updateRichToolbarUI();
 }
 
-function destroyRichEditor() {
+// Destroy EasyMDE editor
+function destroyEasyMDE() {
   if (easyMDE) {
     easyMDE.toTextArea();
     easyMDE = null;
   }
+}
+
+// Main entry point for rich editor initialization
+function initRichEditor() {
+  if (settings.editorEngine === 'milkdown') {
+    initMilkdownEditor();
+  } else {
+    initEasyMDE();
+  }
+}
+
+function destroyRichEditor() {
+  destroyMilkdownEditor();
+  destroyEasyMDE();
 }
 
 // Toggle Rich/Plain Mode
@@ -5607,7 +5728,7 @@ richModeBtn.addEventListener('click', () => {
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
     initRichEditor();
-    if (easyMDE) {
+    if (settings.editorEngine === 'easymde' && easyMDE) {
       easyMDE.value(editor.value);
       setTimeout(() => {
         if (easyMDE) {
@@ -5616,13 +5737,17 @@ richModeBtn.addEventListener('click', () => {
         }
       }, 10);
     }
-    if (richToolbarBtn) {
+    // For Milkdown, the content is set during initialization
+    if (richToolbarBtn && settings.editorEngine === 'easymde') {
       richToolbarBtn.classList.remove('hidden');
       updateRichToolbarUI();
+    } else if (richToolbarBtn) {
+      // Hide toolbar button for Milkdown (doesn't use EasyMDE toolbar)
+      richToolbarBtn.classList.add('hidden');
     }
   } else {
     richModeBtn.classList.remove('active');
-    if (easyMDE) editor.value = easyMDE.value();
+    // Content is already synced to textarea for both editors
     destroyRichEditor();
     if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
     editor.focus();
@@ -5652,7 +5777,7 @@ if (richToolbarBtn) {
 }
 
 // ------------------------------------------
-// Overridden Functions to support EasyMDE
+// Overridden Functions to support Rich Editors (Milkdown/EasyMDE)
 // ------------------------------------------
 
 showEditor = function(content) {
@@ -5665,21 +5790,29 @@ showEditor = function(content) {
 
   // Rich Mode Logic
   richModeBtn.classList.remove('hidden');
-  
+
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
-    initRichEditor();
-    if (richToolbarBtn) richToolbarBtn.classList.remove('hidden');
-    updateRichToolbarUI();
-    if (easyMDE) {
-      easyMDE.value(content);
-      // Refresh to fix layout issues and focus editor
-      setTimeout(() => {
-        if (easyMDE) {
-          easyMDE.codemirror.refresh();
-          easyMDE.codemirror.focus();
-        }
-      }, 10);
+
+    if (settings.editorEngine === 'milkdown') {
+      // Milkdown initialization
+      initMilkdownEditor(content);
+      if (richToolbarBtn) richToolbarBtn.classList.add('hidden'); // No toolbar for Milkdown
+    } else {
+      // EasyMDE initialization
+      initEasyMDE();
+      if (richToolbarBtn) richToolbarBtn.classList.remove('hidden');
+      updateRichToolbarUI();
+      if (easyMDE) {
+        easyMDE.value(content);
+        // Refresh to fix layout issues and focus editor
+        setTimeout(() => {
+          if (easyMDE) {
+            easyMDE.codemirror.refresh();
+            easyMDE.codemirror.focus();
+          }
+        }, 10);
+      }
     }
   } else {
     richModeBtn.classList.remove('active');
@@ -5690,10 +5823,7 @@ showEditor = function(content) {
 };
 
 hideEditor = function() {
-  if (easyMDE) {
-    // Sync content back to textarea just in case
-    editor.value = easyMDE.value();
-  }
+  // Content is already synced to textarea for both editors via callbacks
   editorContainer.classList.add('hidden');
   markdownBody.classList.remove('hidden');
   richModeBtn.classList.add('hidden');
@@ -5968,53 +6098,6 @@ function triggerAutoSave() {
 
 // Hook Auto-Save into Editor
 editor.addEventListener('input', triggerAutoSave);
-
-// Redefine initRichEditor to add auto-save hook
-	initRichEditor = function() {
-	  if (easyMDE) return;
-	  
-	  easyMDE = new EasyMDE({
-	    element: editor,
-		    autoDownloadFontAwesome: false,
-	    spellChecker: false,
-	    status: false,
-	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-	    styleSelectedText: true,
-	    minHeight: "100%",
-	    maxHeight: "100%",
-	    previewRender: (plainText) => marked.parse(plainText)
-	  });
-	  
-	  // Cmd/Ctrl+click links inside editor (Obsidian-style)
-	  const cm = easyMDE.codemirror;
-	  cm.on('mousedown', (cmInstance, e) => {
-	    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
-	    const pos = cmInstance.coordsChar({ left: e.clientX, top: e.clientY }, 'window');
-	    const lineText = cmInstance.getLine(pos.line);
-	    const href = extractMarkdownLinkAt(lineText, pos.ch);
-	    if (!href) return;
-
-	    e.preventDefault();
-	    e.stopPropagation();
-	    openLinkFromEditor(href, e);
-	  });
-	  
-		  easyMDE.codemirror.on('change', (cmInstance, change) => {
-		    if (change && change.origin === 'setValue') return;
-		    const tab = tabs.find(t => t.id === activeTabId);
-		    if (tab && tab.isEditing) {
-		      if (!tab.isModified) {
-	        tab.isModified = true;
-	        updateTabUI(activeTabId);
-	        document.title = `${tab.fileName} * - OpenMarkdownReader`;
-	      }
-	      updateDocumentWordCount(tab);
-	      triggerAutoSave();
-	    }
-	  });
-
-		  updateRichToolbarUI();
-	};
 
 window.electronAPI.onSetAutoSave((enabled) => {
   settings.autoSave = enabled;

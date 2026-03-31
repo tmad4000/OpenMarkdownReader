@@ -191,6 +191,7 @@ let config = {
   contentWidth: 900,
   contentPadding: 20,
   editorMonospace: false, // Use monospace font in editor
+  editorEngine: 'milkdown', // 'milkdown' or 'easymde' - WYSIWYG editor engine
   compactTables: false, // Compact table cells (nowrap + horizontal scroll)
   restoreSession: true, // Whether to restore previous session on launch
   session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
@@ -896,6 +897,7 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
     win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
+    win.webContents.send('setting-changed', { setting: 'editor-engine', value: config.editorEngine || 'milkdown' });
     win.webContents.send('setting-changed', { setting: 'compact-tables', value: config.compactTables || false });
     win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget === true });
 
@@ -1464,6 +1466,33 @@ function setupMenu() {
             saveConfig();
             broadcastSetting('editor-monospace', menuItem.checked);
           }
+        },
+        {
+          label: 'Rich Editor Engine',
+          submenu: [
+            {
+              label: 'Milkdown (WYSIWYG)',
+              type: 'radio',
+              id: 'editor-milkdown',
+              checked: (config.editorEngine || 'milkdown') === 'milkdown',
+              click: () => {
+                config.editorEngine = 'milkdown';
+                saveConfig();
+                broadcastSetting('editor-engine', 'milkdown');
+              }
+            },
+            {
+              label: 'EasyMDE (Markdown Preview)',
+              type: 'radio',
+              id: 'editor-easymde',
+              checked: config.editorEngine === 'easymde',
+              click: () => {
+                config.editorEngine = 'easymde';
+                saveConfig();
+                broadcastSetting('editor-engine', 'easymde');
+              }
+            }
+          ]
         },
         {
           label: 'Compact Tables',
