@@ -5,6 +5,7 @@ const fs = require('fs');
 const https = require('https');
 const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
+const agentServer = require('./agent-server');
 
 // Configure electron-log: writes to ~/Library/Logs/OpenMarkdownReader/
 log.initialize();
@@ -639,9 +640,11 @@ function createWindow(filePath = null) {
 
   const winId = win.id;
   windows.add(win);
+  agentServer.emitEvent('window-created', { windowId: winId });
   win.on('closed', () => {
     cleanupFileWatchersForWindow(winId);
     windows.delete(win);
+    agentServer.emitEvent('window-closed', { windowId: winId });
   });
 
   // Handle close with unsaved changes check
@@ -914,6 +917,7 @@ function setTheme(theme) {
     win.webContents.send('set-theme', theme);
   });
   setupMenu(); // Rebuild menu to update checkmarks
+  agentServer.emitEvent('setting-changed', { key: 'theme', value: theme });
 }
 
 // Build the recent files submenu
@@ -1679,6 +1683,7 @@ function loadMarkdownFile(win, filePath, options = {}) {
       win.setTitle(`${fileName} - OpenMarkdownReader`);
     }
     addToRecent(filePath, 'file');
+    agentServer.emitEvent('file-opened', { filePath, fileName });
   } catch (err) {
     dialog.showErrorBox('Error', `Could not read file: ${err.message}`);
   }
@@ -1984,10 +1989,15 @@ app.whenReady().then(() => {
       saveSession();
     }
   }, 5000); // Every 5 seconds
+
+  // Start agent control server (Unix socket for CLI/agent access)
+  agentServer.startServer();
+  registerAgentCommands();
 });
 
 // Save session before quitting
 app.on('before-quit', async (e) => {
+  agentServer.stopServer();
   // Only save on normal quit (not file-triggered launch)
   if (windows.size > 0) {
     e.preventDefault();
@@ -2007,6 +2017,419 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+// ─── Agent Command Registration ───────────────────────────────────────
+// Register all commands available via the Unix socket (omr --cmd ...)
+
+function queryRendererState(win, channel) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), 2000);
+    const handler = (event, data) => {
+      if (event.sender === win.webContents) {
+        clearTimeout(timeout);
+        ipcMain.removeListener(channel, handler);
+        resolve(data);
+      }
+    };
+    ipcMain.on(channel, handler);
+    win.webContents.send(channel.replace('-result', '').replace('app-state', 'get-app-state').replace('tab-content', 'get-tab-content'));
+  });
+}
+
+function getRendererAppState(win) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), 2000);
+    const handler = (event, data) => {
+      if (event.sender === win.webContents) {
+        clearTimeout(timeout);
+        ipcMain.removeListener('app-state', handler);
+        resolve(data);
+      }
+    };
+    ipcMain.on('app-state', handler);
+    win.webContents.send('get-app-state');
+  });
+}
+
+function getRendererTabContent(win, tabId) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), 2000);
+    const handler = (event, data) => {
+      if (event.sender === win.webContents) {
+        clearTimeout(timeout);
+        ipcMain.removeListener('tab-content', handler);
+        resolve(data);
+      }
+    };
+    ipcMain.on('tab-content', handler);
+    win.webContents.send('get-tab-content', tabId);
+  });
+}
+
+function sendRendererCommand(win, cmd) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ error: 'Renderer timeout' }), 2000);
+    const handler = (event, data) => {
+      if (event.sender === win.webContents) {
+        clearTimeout(timeout);
+        ipcMain.removeListener('agent-command-result', handler);
+        resolve(data);
+      }
+    };
+    ipcMain.on('agent-command-result', handler);
+    win.webContents.send('agent-command', cmd);
+  });
+}
+
+function registerAgentCommands() {
+  // ── State Queries ──
+
+  agentServer.registerCommand('get-state', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    const state = await getRendererAppState(win);
+    if (!state) return { error: 'Renderer did not respond' };
+    // Add main-process info
+    state.window = {
+      id: win.id,
+      bounds: win.getBounds(),
+      isMaximized: win.isMaximized(),
+      isFullScreen: win.isFullScreen(),
+      isFocused: win.isFocused()
+    };
+    state.config = {
+      theme: config.theme,
+      contentWidth: config.contentWidth,
+      contentPadding: config.contentPadding,
+      editorMonospace: config.editorMonospace,
+      compactTables: config.compactTables,
+      restoreSession: config.restoreSession,
+      watchMode: config.watchMode,
+      autoSave: config.autoSave,
+      dailyNotesFolder: config.dailyNotesFolder
+    };
+    state.app = {
+      version: buildInfo.version,
+      buildNumber: buildInfo.buildNumber,
+      pid: process.pid,
+      isPackaged: app.isPackaged
+    };
+    state.windowCount = windows.size;
+    return state;
+  });
+
+  agentServer.registerCommand('list-tabs', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    const state = await getRendererAppState(win);
+    if (!state) return { error: 'Renderer did not respond' };
+    return { tabs: state.tabs };
+  });
+
+  agentServer.registerCommand('get-content', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    const tabId = args.tab || args.path || args.filePath;
+    if (!tabId && tabId !== 0) return { error: 'Specify tab (index, id, or path)' };
+    const content = await getRendererTabContent(win, tabId);
+    if (!content) return { error: 'Renderer did not respond' };
+    return content;
+  });
+
+  agentServer.registerCommand('list-windows', async () => {
+    const result = [];
+    for (const win of windows) {
+      result.push({
+        id: win.id,
+        bounds: win.getBounds(),
+        isMaximized: win.isMaximized(),
+        isFullScreen: win.isFullScreen(),
+        isFocused: win.isFocused(),
+        title: win.getTitle()
+      });
+    }
+    return { windows: result };
+  });
+
+  // ── Tab Operations ──
+
+  agentServer.registerCommand('switch-tab', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'switch-tab', tab: args.tab ?? args.index ?? args.path });
+  });
+
+  agentServer.registerCommand('close-tab', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'close-tab', tab: args.tab ?? args.index ?? args.path });
+  });
+
+  agentServer.registerCommand('new-tab', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    win.webContents.send('new-file');
+    return {};
+  });
+
+  // ── File Operations ──
+
+  agentServer.registerCommand('open', async (args) => {
+    const filePath = args.path || args.file;
+    if (!filePath) return { error: 'Specify path' };
+    const win = getFocusedWindow() || createWindow();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+    openPathInWindow(win, fullPath, { forceEdit: args.edit || false, background: args.background || false });
+    return { opened: fullPath };
+  });
+
+  agentServer.registerCommand('save', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'save' });
+  });
+
+  agentServer.registerCommand('save-all', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'save-all' });
+  });
+
+  // ── Edit Operations ──
+
+  agentServer.registerCommand('toggle-edit', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'toggle-edit' });
+  });
+
+  agentServer.registerCommand('set-content', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    if (args.content === undefined) return { error: 'Specify content' };
+    return sendRendererCommand(win, { action: 'set-content', content: args.content });
+  });
+
+  agentServer.registerCommand('insert', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    if (!args.text) return { error: 'Specify text' };
+    return sendRendererCommand(win, { action: 'insert', text: args.text, position: args.position || 'cursor' });
+  });
+
+  // ── View Operations ──
+
+  agentServer.registerCommand('toggle-sidebar', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'toggle-sidebar' });
+  });
+
+  agentServer.registerCommand('set-sidebar', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'set-sidebar', visible: args.visible !== false });
+  });
+
+  agentServer.registerCommand('scroll-to', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'scroll-to', line: args.line, top: args.top });
+  });
+
+  agentServer.registerCommand('find', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'find', query: args.query });
+  });
+
+  // ── Navigation ──
+
+  agentServer.registerCommand('nav-back', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'nav-back' });
+  });
+
+  agentServer.registerCommand('nav-forward', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: 'nav-forward' });
+  });
+
+  // ── Settings ──
+
+  agentServer.registerCommand('set', async (args) => {
+    const key = args.key || args.setting;
+    const value = args.value;
+    if (!key) return { error: 'Specify key' };
+
+    switch (key) {
+      case 'theme':
+        if (['light', 'dark', 'system'].includes(value)) {
+          setTheme(value);
+          return { theme: value };
+        }
+        return { error: 'Theme must be light, dark, or system' };
+      case 'content-width':
+      case 'contentWidth':
+        config.contentWidth = parseInt(value) || 900;
+        saveConfig();
+        broadcastSetting('content-width', config.contentWidth);
+        return { contentWidth: config.contentWidth };
+      case 'monospace':
+      case 'editorMonospace':
+        config.editorMonospace = !!value;
+        saveConfig();
+        broadcastSetting('editor-monospace', config.editorMonospace);
+        return { editorMonospace: config.editorMonospace };
+      case 'read-only':
+      case 'readOnly': {
+        const win = getFocusedWindow();
+        if (win) {
+          isReadOnlyMode = !!value;
+          win.webContents.send('set-read-only', isReadOnlyMode);
+          setupMenu();
+        }
+        return { readOnly: isReadOnlyMode };
+      }
+      case 'watch-mode':
+      case 'watchMode':
+        watchFileMode = !!value;
+        config.watchMode = watchFileMode;
+        saveConfig();
+        windows.forEach(w => w.webContents.send('set-watch-mode', watchFileMode));
+        setupMenu();
+        return { watchMode: watchFileMode };
+      default:
+        return { error: `Unknown setting: ${key}` };
+    }
+  });
+
+  agentServer.registerCommand('get-config', async () => {
+    return {
+      theme: config.theme,
+      contentWidth: config.contentWidth,
+      contentPadding: config.contentPadding,
+      editorMonospace: config.editorMonospace,
+      compactTables: config.compactTables,
+      restoreSession: config.restoreSession,
+      watchMode: config.watchMode,
+      autoSave: config.autoSave,
+      dailyNotesFolder: config.dailyNotesFolder,
+      readOnly: isReadOnlyMode
+    };
+  });
+
+  // ── Daily Notes ──
+
+  agentServer.registerCommand('daily-note', async (args) => {
+    const win = getFocusedWindow() || createWindow();
+    const type = args.type || 'scratch';
+    const result = await createDailyNote(win, type);
+    return result || {};
+  });
+
+  // ── Window Operations ──
+
+  agentServer.registerCommand('new-window', async () => {
+    createWindow();
+    return {};
+  });
+
+  agentServer.registerCommand('focus', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    win.show();
+    win.focus();
+    return {};
+  });
+
+  // ── Search ──
+
+  agentServer.registerCommand('search', async (args) => {
+    if (!args.query) return { error: 'Specify query' };
+    const win = getFocusedWindow();
+    const dir = args.dir || args.directory;
+    let searchDir = dir;
+    if (!searchDir && win) {
+      const state = await getRendererAppState(win);
+      searchDir = state && state.sidebar && state.sidebar.directory;
+    }
+    if (!searchDir) return { error: 'No directory open. Specify --dir' };
+    const results = searchInDirectorySync(searchDir, args.query, {
+      maxResults: args.maxResults || 100,
+      caseSensitive: args.caseSensitive || false
+    });
+    return { results, totalFiles: results.length };
+  });
+
+  // ── Export ──
+
+  agentServer.registerCommand('export-pdf', async (args) => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    const outPath = args.output || args.path;
+    if (outPath) {
+      // Non-interactive PDF export
+      try {
+        const pdfData = await win.webContents.printToPDF({
+          printBackground: true,
+          pageSize: 'A4'
+        });
+        fs.writeFileSync(outPath, pdfData);
+        return { exported: outPath };
+      } catch (err) {
+        return { error: err.message };
+      }
+    } else {
+      // Interactive (dialog)
+      win.webContents.send('export-pdf');
+      return { prompted: true };
+    }
+  });
+}
+
+// Synchronous (blocking) search for agent use
+function searchInDirectorySync(dirPath, query, options = {}) {
+  const results = [];
+  const maxResults = options.maxResults || 100;
+  const caseSensitive = options.caseSensitive || false;
+  const searchQuery = caseSensitive ? query : query.toLowerCase();
+
+  function searchDir(dir) {
+    if (results.length >= maxResults) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (results.length >= maxResults) return;
+      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build' || entry.name === 'vendor') continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        searchDir(fullPath);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).slice(1).toLowerCase();
+        if (!textFileExtensions.includes(ext) && ext !== '') continue;
+        try {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          const lines = content.split('\n');
+          const matches = [];
+          for (let i = 0; i < lines.length; i++) {
+            const line = caseSensitive ? lines[i] : lines[i].toLowerCase();
+            if (line.includes(searchQuery)) {
+              matches.push({ line: i + 1, text: lines[i].trim().slice(0, 200) });
+            }
+          }
+          if (matches.length > 0) {
+            results.push({ file: fullPath, matches });
+          }
+        } catch {}
+      }
+    }
+  }
+  searchDir(dirPath);
+  return results;
+}
 
 // IPC handlers
 ipcMain.handle('get-build-info', () => ({ ...buildInfo, isPackaged: app.isPackaged }));
@@ -2049,6 +2472,7 @@ ipcMain.handle('save-file', async (event, filePath, content) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8');
     const stats = fs.statSync(filePath);
+    agentServer.emitEvent('file-saved', { filePath, fileName: path.basename(filePath) });
     return { success: true, mtime: stats.mtimeMs };
   } catch (err) {
     dialog.showErrorBox('Save Error', `Could not save file: ${err.message}`);

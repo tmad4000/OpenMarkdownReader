@@ -6416,3 +6416,193 @@ window.electronAPI.onSettingChanged?.((data) => {
     setNoosWidgetVisible(data.value);
   }
 });
+
+// ─── Agent Control Handlers ───────────────────────────────────────────
+// Respond to state queries and commands from the agent server (Unix socket)
+
+window.electronAPI.onGetAppState?.(() => {
+  const editor = document.getElementById('editor');
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const state = {
+    tabs: tabs.map((t, i) => ({
+      id: t.id,
+      index: i,
+      filePath: t.filePath || null,
+      fileName: t.fileName || 'Untitled',
+      isActive: t.id === activeTabId,
+      isModified: !!t.isModified,
+      isEditing: !!t.isEditing,
+      scrollPos: t.scrollPos || 0
+    })),
+    activeTabId,
+    activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
+    mode: activeTab ? (activeTab.isEditing ? 'edit' : 'read') : null,
+    settings: { ...settings },
+    sidebar: {
+      visible: settings.sidebarVisible,
+      directory: currentDirectory,
+      width: settings.sidebarWidth,
+      viewMode: settings.sidebarViewMode,
+      sortMode: settings.sidebarSortMode
+    },
+    navigation: {
+      historyLength: navHistory.length,
+      historyIndex: navHistoryIndex,
+      canGoBack: navHistoryIndex > 0,
+      canGoForward: navHistoryIndex < navHistory.length - 1
+    },
+    tabCount: tabs.length,
+    unsavedCount: tabs.filter(t => t.isModified).length
+  };
+  window.electronAPI.reportAppState(state);
+});
+
+window.electronAPI.onGetTabContent?.((tabId) => {
+  // If tabId is a string path, find by path; if number, find by id
+  let tab;
+  if (typeof tabId === 'string') {
+    tab = tabs.find(t => t.filePath === tabId);
+  } else {
+    tab = tabs.find(t => t.id === tabId);
+  }
+  if (!tab) {
+    window.electronAPI.reportTabContent({ error: 'Tab not found', tabId });
+    return;
+  }
+  // For an active editing tab, use editor value
+  const editor = document.getElementById('editor');
+  let content = tab.content || '';
+  if (tab.id === activeTabId && tab.isEditing && editor) {
+    content = editor.value;
+  }
+  window.electronAPI.reportTabContent({
+    tabId: tab.id,
+    filePath: tab.filePath,
+    fileName: tab.fileName,
+    content,
+    isModified: !!tab.isModified,
+    isEditing: !!tab.isEditing
+  });
+});
+
+window.electronAPI.onAgentCommand?.((cmd) => {
+  try {
+    let result = { ok: true };
+    switch (cmd.action) {
+      case 'switch-tab': {
+        const target = cmd.tab;
+        let tab;
+        if (typeof target === 'number') {
+          tab = tabs[target];
+        } else if (typeof target === 'string') {
+          tab = tabs.find(t => t.filePath === target) || tabs.find(t => t.fileName === target);
+        }
+        if (tab) {
+          switchToTab(tab.id);
+        } else {
+          result = { error: `Tab not found: ${target}` };
+        }
+        break;
+      }
+      case 'close-tab': {
+        const target = cmd.tab;
+        let tab;
+        if (target === undefined || target === null) {
+          tab = tabs.find(t => t.id === activeTabId);
+        } else if (typeof target === 'number') {
+          tab = tabs[target];
+        } else {
+          tab = tabs.find(t => t.filePath === target);
+        }
+        if (tab) {
+          closeTab(tab.id);
+        } else {
+          result = { error: `Tab not found: ${target}` };
+        }
+        break;
+      }
+      case 'save':
+        saveFile();
+        break;
+      case 'save-all':
+        saveAllFiles();
+        break;
+      case 'toggle-edit':
+        toggleEditMode();
+        break;
+      case 'toggle-sidebar':
+        setSidebarVisibility(!settings.sidebarVisible);
+        break;
+      case 'set-sidebar': {
+        setSidebarVisibility(!!cmd.visible);
+        break;
+      }
+      case 'nav-back':
+        if (typeof navigateBack === 'function') navigateBack();
+        break;
+      case 'nav-forward':
+        if (typeof navigateForward === 'function') navigateForward();
+        break;
+      case 'scroll-to': {
+        if (cmd.line) {
+          // Scroll to approximate line position
+          const lineHeight = 24;
+          window.scrollTo({ top: (cmd.line - 1) * lineHeight, behavior: 'smooth' });
+        } else if (cmd.top !== undefined) {
+          window.scrollTo({ top: cmd.top, behavior: 'smooth' });
+        }
+        break;
+      }
+      case 'set-content': {
+        const editorEl = document.getElementById('editor');
+        const activeT = tabs.find(t => t.id === activeTabId);
+        if (activeT && activeT.isEditing && editorEl) {
+          editorEl.value = cmd.content;
+          editorEl.dispatchEvent(new Event('input'));
+          result.set = true;
+        } else {
+          result = { error: 'No active editing tab' };
+        }
+        break;
+      }
+      case 'insert': {
+        const editorEl = document.getElementById('editor');
+        const activeT = tabs.find(t => t.id === activeTabId);
+        if (activeT && activeT.isEditing && editorEl) {
+          const pos = cmd.position === 'end' ? editorEl.value.length :
+                      cmd.position === 'start' ? 0 :
+                      typeof cmd.position === 'number' ? cmd.position :
+                      editorEl.selectionStart;
+          const before = editorEl.value.slice(0, pos);
+          const after = editorEl.value.slice(pos);
+          editorEl.value = before + cmd.text + after;
+          editorEl.selectionStart = editorEl.selectionEnd = pos + cmd.text.length;
+          editorEl.dispatchEvent(new Event('input'));
+          result.insertedAt = pos;
+        } else {
+          result = { error: 'No active editing tab' };
+        }
+        break;
+      }
+      case 'find': {
+        // Open find bar and optionally set the query
+        if (typeof openFindBar === 'function') {
+          openFindBar();
+        }
+        if (cmd.query) {
+          const findInput = document.getElementById('find-input');
+          if (findInput) {
+            findInput.value = cmd.query;
+            findInput.dispatchEvent(new Event('input'));
+          }
+        }
+        break;
+      }
+      default:
+        result = { error: `Unknown renderer action: ${cmd.action}` };
+    }
+    window.electronAPI.reportAgentCommandResult(result);
+  } catch (err) {
+    window.electronAPI.reportAgentCommandResult({ error: err.message });
+  }
+});

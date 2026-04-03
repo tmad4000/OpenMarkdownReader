@@ -127,6 +127,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Diagnostics
   onShowToast: (callback) => ipcRenderer.on('show-toast', (event, message, type) => callback(message, type)),
 
+  // Agent control - state queries from main process
+  onGetAppState: (callback) => ipcRenderer.on('get-app-state', () => callback()),
+  reportAppState: (state) => ipcRenderer.send('app-state', state),
+  onGetTabContent: (callback) => ipcRenderer.on('get-tab-content', (event, tabId) => callback(tabId)),
+  reportTabContent: (data) => ipcRenderer.send('tab-content', data),
+  onAgentCommand: (callback) => ipcRenderer.on('agent-command', (event, cmd) => callback(cmd)),
+  reportAgentCommandResult: (result) => ipcRenderer.send('agent-command-result', result),
+
   // Dev tools
   onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
   restartApp: () => ipcRenderer.send('restart-app'),

@@ -1,5 +1,40 @@
 # OpenMarkdownReader - Product Requirements
 
+## Core Principle: Agent-Native Design
+
+**Added:** 2026-04-02
+**Status:** Active — applies to all current and future features
+
+Every feature in OpenMarkdownReader must be fully controllable via CLI and programmatic interfaces, not just the GUI. This is a first-class design constraint, not an afterthought.
+
+### Rules
+
+1. **CLI parity**: Every action available in the UI must also be triggerable via `omr --cmd <command>`. No GUI-only features.
+2. **State is queryable**: Agents must be able to read the full app state — open tabs, active tab, edit mode, sidebar state, scroll position, dirty flags, window geometry — via `omr --cmd get-state`.
+3. **Events are observable**: Agents can subscribe to a real-time event stream (`omr --cmd watch`) covering file saves, tab switches, mode changes, content edits, and app lifecycle events.
+4. **Headless operation**: The app should support a headless/no-window mode for CI pipelines, batch processing, and server-side rendering of markdown.
+5. **Structured output**: All CLI query commands return JSON to stdout. Errors go to stderr with non-zero exit codes.
+6. **New features ship with CLI commands**: When adding a new feature (e.g., comments, history, publish), the PR must include the corresponding `omr --cmd` subcommands and document them.
+7. **Local-first**: Core functionality must work fully offline with no network calls. Network features (publish, update checks, feedback widgets) are opt-in and clearly separated.
+
+### Transport
+
+- Unix domain socket at `~/Library/Application Support/OpenMarkdownReader/omr.sock`
+- The running Electron app listens on this socket
+- The `omr` CLI connects to the socket for `--cmd` operations
+- Falls back to launching the app if no socket is found
+
+### Implications for Planned Features
+
+| Feature | CLI Commands Required |
+|---------|----------------------|
+| **Comments** (`markdown-reader-4yq`) | `omr --cmd add-comment`, `list-comments`, `delete-comment`, `export-comments` |
+| **History** (`markdown-reader-st8`) | `omr --cmd list-history`, `go-back`, `go-forward`, `get-history-entry` |
+| **Publish** | `omr --cmd publish`, `get-publish-url`, `unpublish` |
+| **Local-only mode** (`markdown-reader-xwc`) | `omr --cmd set network-mode offline`, `get network-mode` |
+
+---
+
 ## Feature: One-Click Publish
 
 **Added:** 2026-01-14
