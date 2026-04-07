@@ -136,8 +136,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reportAgentCommandResult: (result) => ipcRenderer.send('agent-command-result', result),
 
   // Dev tools
-  onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', () => callback()),
+  onSourceCodeChanged: (callback) => ipcRenderer.on('source-code-changed', (event, payload) => callback(payload)),
+  onRendererChanged: (callback) => ipcRenderer.on('renderer-changed', (event, payload) => callback(payload)),
   restartApp: () => ipcRenderer.send('restart-app'),
+  reloadRenderer: () => ipcRenderer.send('reload-renderer'),
   logToMain: (level, ...args) => ipcRenderer.send('log-to-main', level, ...args),
   pathJoin: (...args) => path.join(...args),
   pathSep: path.sep,

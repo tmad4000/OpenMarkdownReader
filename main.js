@@ -1004,6 +1004,7 @@ function setupMenu() {
         { type: 'separator' },
         {
           label: 'Restart',
+          accelerator: 'CmdOrCtrl+Alt+R',
           click: () => {
             app.relaunch();
             app.exit(0);
@@ -3330,22 +3331,43 @@ function getDirectoryContents(dirPath) {
 }
 
 // Dev Helper: Watch for source file changes
+// Distinguishes between main-process files (need full restart) and
+// renderer-only files (can be soft-reloaded via webContents.reload(),
+// which is much faster and preserves the BrowserWindow + main state).
 if (!app.isPackaged) {
-  const sourceFiles = ['main.js', 'renderer.js', 'preload.js', 'index.html', 'styles.css'];
+  // Files that require a full app restart — main process is stale otherwise.
+  const mainProcessFiles = new Set(['main.js', 'preload.js', 'build-info.json']);
+  // Files that only need a renderer reload.
+  const rendererFiles = new Set(['renderer.js', 'index.html', 'styles.css']);
   let debounceTimer = null;
+  let pendingChangeKind = null; // 'restart' wins over 'reload' if both fired in the debounce window
 
   try {
     fs.watch(__dirname, (eventType, filename) => {
-      if (filename && sourceFiles.includes(filename)) {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          windows.forEach(win => {
-            if (!win.isDestroyed()) {
-              win.webContents.send('source-code-changed');
-            }
-          });
-        }, 500); // Debounce for 500ms
+      if (!filename) return;
+      let kind = null;
+      if (mainProcessFiles.has(filename)) {
+        kind = 'restart';
+      } else if (rendererFiles.has(filename)) {
+        kind = 'reload';
       }
+      if (!kind) return;
+
+      // Restart trumps reload if multiple files change inside the debounce window.
+      if (kind === 'restart' || pendingChangeKind === null) {
+        pendingChangeKind = kind;
+      }
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const eventName = pendingChangeKind === 'restart' ? 'source-code-changed' : 'renderer-changed';
+        windows.forEach(win => {
+          if (!win.isDestroyed()) {
+            win.webContents.send(eventName, { filename });
+          }
+        });
+        pendingChangeKind = null;
+      }, 500); // Debounce for 500ms
     });
   } catch (err) {
     console.error('Failed to setup dev file watcher:', err);
@@ -3356,6 +3378,16 @@ if (!app.isPackaged) {
 ipcMain.on('restart-app', () => {
   app.relaunch();
   app.exit(0);
+});
+
+// Soft-reload the focused window's renderer process (dev mode quick iteration).
+// Preserves main process state and the BrowserWindow itself; only re-runs
+// the renderer JS/HTML/CSS. Much faster than a full restart.
+ipcMain.on('reload-renderer', () => {
+  const win = getFocusedWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.reloadIgnoringCache();
+  }
 });
 
 // Log to main process (for terminal visibility)

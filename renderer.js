@@ -258,6 +258,33 @@ function buildWikiLinkIndex() {
   }
 }
 
+// Centralized setter for allFilesCache that also (re)builds the wiki link index
+// and re-renders the active preview tab if it was rendered before the index was ready.
+// Use this instead of assigning to allFilesCache directly for any "happy path"
+// population — reset/error paths that set null or [] should still assign directly.
+function setAllFilesCache(files) {
+  allFilesCache = files;
+  buildWikiLinkIndex();
+
+  // If the active tab is currently showing a rendered markdown preview, re-render
+  // it so any [[wikilinks]] that rendered as raw text (because the index was empty
+  // at first-paint) get resolved now that the index is populated.
+  try {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (
+      tab &&
+      !tab.isEditing &&
+      tab.content != null &&
+      markdownBody &&
+      !markdownBody.classList.contains('hidden')
+    ) {
+      renderContent(tab.content, tab.fileName);
+    }
+  } catch (err) {
+    console.error('Error re-rendering active tab after wiki link index build:', err);
+  }
+}
+
 // Process wiki links in markdown content: [[page]] or [[folder/page|display text]]
 // Supports: [[filename]], [[folder/filename]], [[folder/filename|Display Text]]
 function processWikiLinks(markdown) {
@@ -1396,16 +1423,50 @@ sidebarRecentBtn.addEventListener('click', () => {
   renderFileTree();
 });
 
-// Dev restart button
+// Dev restart button — handles two modes:
+//   - 'restart' (main.js / preload.js changed) → full app.relaunch()
+//   - 'reload'  (renderer.js / index.html / styles.css changed) → soft reload, much faster
+// Restart wins over reload if both kinds of files are pending — main process must
+// be the freshest copy.
+let devRestartMode = 'restart'; // 'restart' | 'reload'
+const devRestartLabel = devRestartBtn ? devRestartBtn.querySelector('.dev-restart-btn-label') : null;
+
+function setDevRestartMode(mode, filename) {
+  if (!devRestartBtn) return;
+  // Don't downgrade restart→reload if a restart is already pending
+  if (devRestartMode === 'restart' && mode === 'reload' && !devRestartBtn.classList.contains('hidden')) {
+    return;
+  }
+  devRestartMode = mode;
+  devRestartBtn.classList.remove('hidden');
+  if (devRestartLabel) {
+    devRestartLabel.textContent = mode === 'reload' ? 'Reload' : 'Restart';
+  }
+  const action = mode === 'reload' ? 'Reload' : 'Restart';
+  const fname = filename ? ` (${filename})` : '';
+  devRestartBtn.title = `Source code changed${fname}. Click to ${action.toLowerCase()}.`;
+  const verb = mode === 'reload' ? 'Reload' : 'Restart';
+  showToast(`Source code changed${fname}. ${verb} required.`, 'warning', 4000);
+}
+
 if (devRestartBtn) {
   devRestartBtn.addEventListener('click', () => {
-    window.electronAPI.restartApp();
+    if (devRestartMode === 'reload') {
+      window.electronAPI.reloadRenderer();
+    } else {
+      window.electronAPI.restartApp();
+    }
   });
 
-  window.electronAPI.onSourceCodeChanged(() => {
-    devRestartBtn.classList.remove('hidden');
-    showToast('Source code changed. Restart required.', 'warning', 5000);
+  window.electronAPI.onSourceCodeChanged((payload) => {
+    setDevRestartMode('restart', payload && payload.filename);
   });
+
+  if (window.electronAPI.onRendererChanged) {
+    window.electronAPI.onRendererChanged((payload) => {
+      setDevRestartMode('reload', payload && payload.filename);
+    });
+  }
 }
 
 // Listen for toast messages from main process (e.g. diagnostic info copied)
@@ -1748,9 +1809,10 @@ window.electronAPI.onDirectoryLoaded((data) => {
   wikiLinkByName.clear();
   allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
     .then(files => {
-      allFilesCache = files;
-      // Build wiki link index for [[page]] links
-      buildWikiLinkIndex();
+      // setAllFilesCache builds the wiki link index AND re-renders the active
+      // preview tab so any [[wikilinks]] that rendered before the index was
+      // ready get resolved.
+      setAllFilesCache(files);
       // If palette is open, update results immediately
       if (!commandPalette.classList.contains('hidden')) {
         updateCommandPaletteResults();
@@ -1841,7 +1903,7 @@ async function renderRecentFilesTree() {
       console.log('Fetching all files recursively...');
       files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
       console.log('Fetched files:', files.length);
-      allFilesCache = files;
+      setAllFilesCache(files);
     } catch (e) {
       console.error('Error loading recursive files:', e);
       fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
@@ -1972,7 +2034,7 @@ async function renderRecentFilesTimeline() {
     fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
     try {
       files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
-      allFilesCache = files;
+      setAllFilesCache(files);
     } catch (e) {
       fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
       return;
@@ -3301,8 +3363,7 @@ async function refreshSidebarForExternalMove() {
     sortDirectoryFiles(directoryFiles);
     renderFileTree();
 
-    allFilesCache = await window.electronAPI.getAllFilesRecursive(currentDirectory);
-    buildWikiLinkIndex();
+    setAllFilesCache(await window.electronAPI.getAllFilesRecursive(currentDirectory));
     if (!commandPalette.classList.contains('hidden')) {
       updateCommandPaletteResults();
     }
@@ -4487,7 +4548,7 @@ async function showCommandPalette() {
     if (!allFilesCachePromise) {
       allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
         .then(files => {
-          allFilesCache = files;
+          setAllFilesCache(files);
           return files;
         })
         .catch(err => {
@@ -6391,12 +6452,28 @@ window.electronAPI.onNavForward?.(() => navGoForward());
   });
 })();
 
-// Dev badge
+// Dev badge — visible only in unpackaged dev builds. Tooltip surfaces the
+// exact build identity (version, build number, git hash, build date) so
+// "what's running right now?" is always one hover away.
 (async () => {
   const info = await window.electronAPI.getBuildInfo?.();
   if (info && !info.isPackaged) {
     const badge = document.getElementById('dev-badge');
-    if (badge) badge.classList.remove('hidden');
+    if (badge) {
+      const parts = [`DEV build`];
+      if (info.version) {
+        const buildSuffix = info.buildNumber ? ` (build ${info.buildNumber})` : '';
+        parts.push(`v${info.version}${buildSuffix}`);
+      }
+      if (info.gitHash && info.gitHash !== 'dev') {
+        parts.push(info.gitHash);
+      }
+      if (info.buildDate) {
+        parts.push(info.buildDate);
+      }
+      badge.title = parts.join(' • ');
+      badge.classList.remove('hidden');
+    }
   }
 })();
 
