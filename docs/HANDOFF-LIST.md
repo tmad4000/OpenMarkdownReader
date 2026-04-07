@@ -29,17 +29,25 @@ These have real architectural or product decisions that aren't safe to guess at.
 
 | ID | What | What Jacob needs to decide |
 |---|---|---|
-| **markdown-reader-a4h** | P1 bug — Undo history lost on mode/tab switch | Three fix directions in the ticket (cheap / medium / right). The "right answer" is a bigger refactor (one editor instance per tab kept alive across mode switches). Jacob: pick the scope. |
-| **markdown-reader-r1r** | P2 — WYSIWYG via Milkdown | Blocked by a4h. Also needs a build-system call (Milkdown isn't a CDN drop-in like EasyMDE). Jacob: greenlight + pick build pipeline. |
+| **markdown-reader-r1r** | P2 — WYSIWYG via Milkdown | Now unblocked (a4h is fixed). Needs a build-system call (Milkdown isn't a CDN drop-in like EasyMDE). Jacob: greenlight + pick build pipeline (esbuild? vite?). |
 | **markdown-reader-mwv** | P2 — VS Code-style split editor | Major UI architecture change. Affects tabs, sidebar, command palette, persistence. Jacob: confirm priority + scope (split current tab? split between tabs? both?). |
 | **markdown-reader-msv** | P2 — Web-based markdown viewer | Whole new project. Hosting? Domain? Integrate with noos? Jacob: define the strategy. |
-| **markdown-reader-7qf** | P2 — Open folder as project | Recommendation in ticket: ship "Open in New Window" first. Just needs Jacob's "yes go". |
-| **markdown-reader-kq3** | P2 — Escape to exit edit mode | 3 behavior options in the ticket. Blocked by a4h (Escape would lose undo too easily). Jacob: pick option 1/2/3. |
+| **markdown-reader-kq3** | P2 — Escape to exit edit mode | Now unblocked (a4h is fixed). 3 behavior options in the ticket. Jacob: pick option 1/2/3. |
 | **markdown-reader-st8** | P2 — Browsing/navigation history | Needs UX design — sidebar panel? menu? popover? Visible per-tab or global? |
 | **markdown-reader-xwc** | P2 — Local-only / offline-first mode | Needs scope: which features get gated? Define what "local-only" means precisely (no telemetry? no auto-updates? no font CDN? all of the above?). |
 | **markdown-reader-o3m** | P2 — Auto-parse AI chat transcripts | Many sub-features in the ticket (visual styling, collapse, ANSI preservation, layout). Needs Jacob to pick the v1 slice. |
 | **markdown-reader-4yq** | P2 — Document comments | Has `defer` label. Big feature, lots of UX questions. Jacob revisits when ready. |
 | **markdown-reader-b79** | P3 — Diff / track-changes mode | Big feature. Needs design — VS Code-style inline? Side-by-side compare? Word-level vs line-level? |
+
+### Recently closed (don't re-open)
+
+- ✅ **a4h** — Editor-per-tab refactor done. Tab switches and preview toggles now preserve undo. Within-tab rich/plain toggle still loses undo on the OLD mode (tracked separately as **iqz**, P3).
+- ✅ **7qf** — Open folder as project shipped: sidebar right-click "Open in New Window" + Cmd+P folder selection. Bonus: `omr --cmd open /path --new-window` for headless testing.
+- ✅ **ie3** — Wikilink resolver fixed.
+- ✅ **av2** — Chat code fence corruption fixed.
+- ✅ **d12** — Cmd+P tilde expansion fixed (single fix in `open-file-by-path` IPC).
+- ✅ **r12** — Sidebar collapse-all button shipped.
+- ✅ **hjc** — Per-build incrementing build numbers + visible build pill on packaged builds.
 
 ## ❌ Don't Touch
 
