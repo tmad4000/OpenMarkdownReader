@@ -2738,6 +2738,12 @@ ipcMain.handle('open-folder', async (event) => {
 // Open file by path (from sidebar or recent palette)
 ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
+  // Expand ~ and ~/... to the user's home directory (mainly for Cmd+P input)
+  if (filePath === '~' || filePath === '~/') {
+    filePath = os.homedir();
+  } else if (typeof filePath === 'string' && filePath.startsWith('~/')) {
+    filePath = path.join(os.homedir(), filePath.slice(2));
+  }
   openPathInWindow(win, filePath, options);
 });
 

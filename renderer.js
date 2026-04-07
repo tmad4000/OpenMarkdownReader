@@ -321,8 +321,14 @@ function processWikiLinks(markdown) {
     }
 
     if (targetPath) {
-      // Convert to a regular markdown link with the full path
-      return `[${display}](${targetPath})`;
+      // Emit raw HTML <a> directly instead of markdown [text](url) syntax.
+      // marked v12 always percent-encodes link destinations, but the click
+      // handler at markdownBody passes the literal href to fs APIs that
+      // expect a real filesystem path (with spaces, emojis, &, etc. intact).
+      // Going through HTML keeps the path literal end-to-end.
+      const safeHref = escapeHtml(targetPath);
+      const safeText = escapeHtml(display);
+      return `<a class="wiki-link" href="${safeHref}">${safeText}</a>`;
     }
 
     // Page not found - return as a broken link with special styling
@@ -376,6 +382,7 @@ const sidebarSortStatus = document.getElementById('sidebar-sort-status');
 const sidebarSortStatusLabel = document.getElementById('sidebar-sort-status-label');
 const sidebarSortStatusIndicator = document.getElementById('sidebar-sort-status-indicator');
 const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
+const sidebarCollapseAllBtn = document.getElementById('sidebar-collapse-all-btn');
 const sidebarPath = document.getElementById('sidebar-path');
 const devRestartBtn = document.getElementById('dev-restart-btn');
 const sidebarPathText = document.getElementById('sidebar-path-text');
@@ -1401,6 +1408,22 @@ updateSidebarSortUI();
 applySidebarWidth(settings.sidebarWidth);
 initSidebarResizer();
 setSidebarVisibility(settings.sidebarVisible);
+
+// Collapse all expanded folders in the sidebar tree
+function collapseAllFolders() {
+  if (expandedFolders.size === 0) return;
+  expandedFolders.clear();
+  // Re-render the file tree from scratch (cheaper and simpler than walking the DOM)
+  if (settings.sidebarViewMode === 'tree') {
+    renderFileTree();
+  }
+}
+
+if (sidebarCollapseAllBtn) {
+  sidebarCollapseAllBtn.addEventListener('click', () => {
+    collapseAllFolders();
+  });
+}
 
 // Toggle recent files view
 sidebarRecentBtn.addEventListener('click', () => {
@@ -6457,24 +6480,34 @@ window.electronAPI.onNavForward?.(() => navGoForward());
 // "what's running right now?" is always one hover away.
 (async () => {
   const info = await window.electronAPI.getBuildInfo?.();
-  if (info && !info.isPackaged) {
-    const badge = document.getElementById('dev-badge');
-    if (badge) {
-      const parts = [`DEV build`];
-      if (info.version) {
-        const buildSuffix = info.buildNumber ? ` (build ${info.buildNumber})` : '';
-        parts.push(`v${info.version}${buildSuffix}`);
-      }
-      if (info.gitHash && info.gitHash !== 'dev') {
-        parts.push(info.gitHash);
-      }
-      if (info.buildDate) {
-        parts.push(info.buildDate);
-      }
-      badge.title = parts.join(' • ');
-      badge.classList.remove('hidden');
-    }
+  if (!info) return;
+  const badge = document.getElementById('dev-badge');
+  if (!badge) return;
+
+  // Visible label: DEV+build for dev, just b<n> for packaged.
+  // Either way the build number is visible — that's the whole point of this badge.
+  if (info.isPackaged) {
+    badge.textContent = info.buildNumber ? `b${info.buildNumber}` : `v${info.version || ''}`;
+    badge.classList.add('packaged');
+  } else {
+    badge.textContent = info.buildNumber ? `DEV b${info.buildNumber}` : 'DEV';
   }
+
+  // Tooltip: full details
+  const parts = [];
+  if (info.version) {
+    const buildSuffix = info.buildNumber ? ` (build ${info.buildNumber})` : '';
+    parts.push(`v${info.version}${buildSuffix}`);
+  }
+  if (info.gitHash && info.gitHash !== 'dev') {
+    parts.push(info.gitHash);
+  }
+  if (info.buildDate) {
+    parts.push(info.buildDate);
+  }
+  if (!info.isPackaged) parts.unshift('DEV build');
+  badge.title = parts.join(' • ');
+  badge.classList.remove('hidden');
 })();
 
 // Noos widget toggle

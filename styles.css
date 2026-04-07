@@ -653,6 +653,14 @@ mark.find-match.active {
   display: none;
 }
 
+/* Packaged builds: subtle gray pill with build number, no shouting */
+.dev-badge.packaged {
+  background: var(--bg-tertiary, #e1e4e8);
+  color: var(--text-secondary, #586069);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
 /* Dev Restart Button */
 .dev-restart-btn {
   -webkit-app-region: no-drag;
