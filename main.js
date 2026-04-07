@@ -2178,8 +2178,14 @@ function registerAgentCommands() {
   agentServer.registerCommand('open', async (args) => {
     const filePath = args.path || args.file;
     if (!filePath) return { error: 'Specify path' };
-    const win = getFocusedWindow() || createWindow();
     const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+    // --new-window opens the path in a freshly created window (good for folders
+    // when you don't want to disturb the current workspace).
+    if (args.newWindow || args['new-window']) {
+      const newWin = createWindow(fullPath);
+      return { opened: fullPath, window: 'new' };
+    }
+    const win = getFocusedWindow() || createWindow();
     openPathInWindow(win, fullPath, { forceEdit: args.edit || false, background: args.background || false });
     return { opened: fullPath };
   });
@@ -2216,6 +2222,13 @@ function registerAgentCommands() {
     if (!win) return { error: 'No window open' };
     if (!args.text) return { error: 'Specify text' };
     return sendRendererCommand(win, { action: 'insert', text: args.text, position: args.position || 'cursor' });
+  });
+
+  // Internal debug command — exposes per-tab editor DOM state for testing
+  agentServer.registerCommand('_debug-editor-state', async () => {
+    const win = getFocusedWindow();
+    if (!win) return { error: 'No window open' };
+    return sendRendererCommand(win, { action: '_debug-editor-state' });
   });
 
   // ── View Operations ──
@@ -2735,6 +2748,20 @@ ipcMain.handle('open-folder', async (event) => {
   }
 });
 
+// Open a folder as the workspace of a new window (markdown-reader-7qf).
+// This is the safer alternative to replacing the current workspace —
+// matches VS Code's "Open Folder in New Window" behavior.
+ipcMain.handle('open-folder-in-new-window', async (event, folderPath) => {
+  if (!folderPath) return;
+  // Expand ~ if present
+  if (folderPath === '~' || folderPath === '~/') {
+    folderPath = os.homedir();
+  } else if (typeof folderPath === 'string' && folderPath.startsWith('~/')) {
+    folderPath = path.join(os.homedir(), folderPath.slice(2));
+  }
+  createWindow(folderPath);
+});
+
 // Open file by path (from sidebar or recent palette)
 ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -2752,9 +2779,10 @@ ipcMain.handle('get-directory-contents', async (event, dirPath) => {
   return getDirectoryContents(dirPath);
 });
 
-// Get all files recursively (for command palette search)
+// Get all files (and folders) recursively (for command palette search).
+// Cmd+P needs folders so users can pick a folder and "open as project".
 ipcMain.handle('get-all-files-recursive', async (event, dirPath) => {
-  return getAllFilesRecursive(dirPath);
+  return getAllFilesRecursive(dirPath, 5, { includeDirs: true });
 });
 
 // Check if a file is a text file we can open
@@ -2770,7 +2798,8 @@ function isMarkdownFileExt(filename) {
 }
 
 // Recursively get all files in directory
-function getAllFilesRecursive(dirPath, maxDepth = 5) {
+function getAllFilesRecursive(dirPath, maxDepth = 5, options = {}) {
+  const includeDirs = options.includeDirs || false;
   const files = [];
   const ignoredDirs = new Set([
     'node_modules',
@@ -2797,6 +2826,19 @@ function getAllFilesRecursive(dirPath, maxDepth = 5) {
 
         if (entry.isDirectory()) {
           if (ignoredDirs.has(entry.name)) continue;
+          if (includeDirs) {
+            // Add the folder itself as a result so Cmd+P can match it
+            let mtime = 0;
+            try { mtime = fs.statSync(fullPath).mtimeMs; } catch {}
+            files.push({
+              name: entry.name,
+              path: fullPath,
+              type: 'folder',
+              isMarkdown: false,
+              isTextFile: false,
+              mtime
+            });
+          }
           scan(fullPath, depth + 1);
         } else if (entry.isFile()) {
           const isMarkdown = isMarkdownFileExt(entry.name);
@@ -3110,6 +3152,11 @@ ipcMain.handle('show-folder-context-menu', async (event, folderPath) => {
 
   const menuTemplate = [
     {
+      label: 'Open in New Window',
+      click: () => createWindow(folderPath)
+    },
+    { type: 'separator' },
+    {
       label: 'Open in Finder',
       click: () => {
         openInFinder(folderPath, { shell }).catch(() => {});
@@ -3151,6 +3198,11 @@ ipcMain.handle('show-sidebar-folder-item-context-menu', async (event, folderPath
   if (!folderPath) return;
 
   const menuTemplate = [
+      {
+        label: 'Open in New Window',
+        click: () => createWindow(folderPath)
+      },
+      { type: 'separator' },
       {
         label: 'New File Here',
         click: () => win.webContents.send('create-file-in-folder-request', folderPath)

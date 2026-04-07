@@ -111,6 +111,10 @@ let settings = {
   sidebarWidth: 240
 };
 
+// `easyMDE` points to the active tab's EasyMDE instance, or null if the active
+// tab isn't editing in rich mode. Each tab has its own EasyMDE in `tab.easyMDE`
+// (lazy-created on first rich edit) so that tab switches and rich/plain toggles
+// preserve undo history.
 let easyMDE = null;
 
 // Toast notification system
@@ -388,7 +392,15 @@ const devRestartBtn = document.getElementById('dev-restart-btn');
 const sidebarPathText = document.getElementById('sidebar-path-text');
 const fileTree = document.getElementById('file-tree');
 const editorContainer = document.getElementById('editor-container');
-const editor = document.getElementById('editor');
+// `editor` points to the active tab's textarea. It's reassigned on tab switch
+// so that all the existing `editor.value` / `editor.focus()` callsites keep
+// working without needing to know which tab they're operating on.
+//
+// The original textarea in the HTML serves as a fallback when no tab is active
+// (e.g. on first launch before any file is opened) and as a template for the
+// per-tab textareas that get cloned from it on demand.
+let editor = document.getElementById('editor');
+const fallbackEditor = editor; // never removed; used when no tab is active
 const editToggleBtn = document.getElementById('edit-toggle-btn');
 // Share popover elements
 const shareBtn = document.getElementById('share-btn');
@@ -602,7 +614,12 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     isEditing: false,
     isModified: false,
     externalChangePending: false,
-    publishedUrl: null  // URL if published to globalbr.ai
+    publishedUrl: null,  // URL if published to globalbr.ai
+    // Per-tab editor state — created lazily by ensureTabEditor / initRichEditor
+    // when this tab first enters edit mode. Kept alive across tab switches and
+    // preview toggles so undo history survives. See markdown-reader-a4h.
+    editorEl: null,
+    easyMDE: null
   };
   tabs.push(tab);
 
@@ -1144,6 +1161,9 @@ async function closeTab(tabId, silent = false) {
     }
   }
 
+  // Free per-tab editor resources before removing the tab
+  releaseTabEditor(tab);
+
   // Remove tab data
   tabs.splice(tabIndex, 1);
 
@@ -1243,8 +1263,132 @@ function revertChanges() {
   document.title = `${tab.fileName} - OpenMarkdownReader`;
 }
 
+// ─── Per-tab editor lifecycle ─────────────────────────────────────────
+// Each tab keeps its own textarea (and optional EasyMDE wrapper) so that the
+// browser's native undo history survives tab switches and rich/plain toggles.
+//
+// Before this refactor, there was a single global textarea reused across tabs
+// via `editor.value = content`. Reassigning a textarea's .value resets the
+// browser's undo stack — meaning a tab switch or even a preview-toggle wiped
+// every undo step the user had built up. Same for EasyMDE: `easyMDE.toTextArea()`
+// destroyed the entire CodeMirror instance and its history. See bd ticket
+// markdown-reader-a4h.
+
+// Attach the input listeners (modified flag, autosave) to a textarea. Because
+// each tab has its own textarea, listeners get attached when the textarea is
+// created (in ensureTabEditor) rather than once at startup against a single
+// global element.
+function attachEditorListeners(textareaEl) {
+  textareaEl.addEventListener('input', () => {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (tab && tab.isEditing) {
+      tab.isModified = true;
+      updateTabUI(activeTabId);
+      document.title = `${tab.fileName} * - OpenMarkdownReader`;
+      updateDocumentWordCount(tab);
+    }
+  });
+  // The autosave listener is attached later (see "Redefine initRichEditor"
+  // section) once triggerAutoSave is defined. We re-attach there for each new
+  // textarea via attachAutosaveListener if available.
+  if (typeof triggerAutoSave === 'function') {
+    textareaEl.addEventListener('input', triggerAutoSave);
+  }
+}
+
+// Create (lazily) the per-tab textarea for a given tab. The textarea inherits
+// the same id-less class structure as the original #editor template so all
+// existing CSS keeps working. Returns the textarea element.
+function ensureTabEditor(tab) {
+  if (tab.editorEl) return tab.editorEl;
+  const ta = document.createElement('textarea');
+  ta.className = 'editor';
+  ta.spellcheck = false;
+  ta.dataset.tabId = String(tab.id);
+  ta.style.display = 'none'; // hidden until setActiveEditor shows it
+  // Seed with content (no undo history yet — first edits start fresh history)
+  ta.value = tab.content || '';
+  editorContainer.appendChild(ta);
+  attachEditorListeners(ta);
+  tab.editorEl = ta;
+  return ta;
+}
+
+// Get the visible "wrapper" element for a tab's editor. When the tab has an
+// EasyMDE instance, EasyMDE wraps the textarea in a `.EasyMDEContainer` div
+// and the textarea itself becomes hidden — so the wrapper is what we toggle
+// for visibility. When there's no EasyMDE, the wrapper IS the textarea.
+function getTabEditorWrapper(tab) {
+  if (!tab || !tab.editorEl) return null;
+  if (tab.easyMDE) {
+    return tab.editorEl.closest('.EasyMDEContainer') || tab.editorEl;
+  }
+  return tab.editorEl;
+}
+
+// Make `tab`'s editor the visible/active one. Hides whatever was previously
+// visible (without destroying it) and reassigns the global `editor` and
+// `easyMDE` refs so all existing call sites that use `editor.value` etc.
+// transparently target the new active tab's editor.
+function setActiveEditor(tab) {
+  // Hide every per-tab editor wrapper first
+  for (const t of tabs) {
+    const wrapper = getTabEditorWrapper(t);
+    if (wrapper) wrapper.style.display = 'none';
+    // Also hide the bare textarea in case it's not wrapped yet
+    if (t.editorEl) t.editorEl.style.display = 'none';
+  }
+  // Hide the fallback too
+  if (fallbackEditor) fallbackEditor.style.display = 'none';
+
+  if (tab) {
+    const ta = ensureTabEditor(tab);
+    if (tab.easyMDE) {
+      // Rich mode: show the EasyMDE wrapper (textarea stays hidden inside it)
+      const wrapper = getTabEditorWrapper(tab);
+      if (wrapper) wrapper.style.display = '';
+    } else {
+      // Plain mode: show the textarea
+      ta.style.display = '';
+    }
+    editor = ta;
+    easyMDE = tab.easyMDE || null;
+  } else {
+    // No active tab — fall back to the placeholder textarea so global `editor`
+    // is never null and code that accesses it doesn't crash.
+    if (fallbackEditor) {
+      fallbackEditor.style.display = '';
+      editor = fallbackEditor;
+    }
+    easyMDE = null;
+  }
+}
+
+// Free a tab's editor resources (called on tab close).
+function releaseTabEditor(tab) {
+  if (tab.easyMDE) {
+    try { tab.easyMDE.toTextArea(); } catch {}
+    tab.easyMDE = null;
+  }
+  if (tab.editorEl && tab.editorEl.parentNode) {
+    tab.editorEl.parentNode.removeChild(tab.editorEl);
+  }
+  tab.editorEl = null;
+}
+
 function showEditor(content) {
-  editor.value = content;
+  // Find the current tab and make sure its textarea is the active one
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab) {
+    setActiveEditor(tab);
+    // Only seed value when content differs — preserves the textarea's undo
+    // history when re-entering edit mode after a preview toggle.
+    if (typeof content === 'string' && editor.value !== content) {
+      editor.value = content;
+    }
+  } else if (typeof content === 'string') {
+    editor.value = content;
+  }
   editorContainer.classList.remove('hidden');
   markdownBody.classList.add('hidden');
   dropZone.classList.add('hidden');
@@ -1256,17 +1400,6 @@ function hideEditor() {
   editorContainer.classList.add('hidden');
   markdownBody.classList.remove('hidden');
 }
-
-// Editor change handler
-editor.addEventListener('input', () => {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (tab && tab.isEditing) {
-    tab.isModified = true;
-    updateTabUI(activeTabId);
-    document.title = `${tab.fileName} * - OpenMarkdownReader`;
-    updateDocumentWordCount(tab);
-  }
-});
 
 async function writeTabToDisk(tab, { fromAutoSave = false } = {}) {
   if (!tab || !tab.filePath) {
@@ -4754,18 +4887,23 @@ function updateCommandPaletteResults() {
   const displayItems = filteredItems.slice(0, 100);
   commandPaletteResults.innerHTML = displayItems.map((item, index) => {
     const isSelected = index === commandPaletteSelectedIndex;
-    const icon = item.isCommand ? (item.icon || '⌘') : (item.isOpenTab ? '📄' : '📁');
+    const isFolder = item.type === 'folder';
+    const icon = item.isCommand ? (item.icon || '⌘')
+               : isFolder ? '📂'
+               : item.isOpenTab ? '📄'
+               : '📁';
     const pathSep = window.electronAPI.pathSep || '/';
     const pathDir = item.isCommand ? (item.description || 'Command') : (item.path ? item.path.substring(0, item.path.lastIndexOf(pathSep)) : '');
     const isOpenBadge = item.isOpenTab ? '<span class="command-palette-badge">Open</span>' : '';
     const isCommandBadge = item.isCommand ? '<span class="command-palette-badge" style="background: var(--accent-color); color: white;">Command</span>' : '';
+    const isFolderBadge = isFolder ? '<span class="command-palette-badge" title="Opens as project in new window">Folder</span>' : '';
 
     return `
       <div class="command-palette-item ${isSelected ? 'selected' : ''}" data-index="${index}">
         <div class="command-palette-item-icon">${icon}</div>
         <div class="command-palette-item-info">
           <div class="command-palette-item-name">
-            ${escapeHtml(item.name)} ${isOpenBadge} ${isCommandBadge}
+            ${escapeHtml(item.name)} ${isOpenBadge} ${isCommandBadge} ${isFolderBadge}
           </div>
           <div class="command-palette-item-path">${escapeHtml(pathDir)}</div>
         </div>
@@ -4821,6 +4959,14 @@ function selectCommandPaletteItem(index, event = null) {
     if (event && event.metaKey) {
       options.newTab = true;
       options.background = !event.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
+    }
+
+    // Folders open as a workspace in a new window (markdown-reader-7qf).
+    // Picking "Open in New Window" is the safer/clearer default — it doesn't
+    // disturb the user's current workspace.
+    if (file.type === 'folder') {
+      window.electronAPI.openFolderInNewWindow(file.path);
+      return;
     }
 
     if (file.isOpenTab && file.tabId && !options.newTab) {
@@ -5649,67 +5795,27 @@ function openLinkFromEditor(href, e) {
   }
 }
 
-function initRichEditor() {
-  if (easyMDE) return;
-  
-  easyMDE = new EasyMDE({
-    element: editor,
-	    autoDownloadFontAwesome: false,
-    spellChecker: false,
-    status: false, // Hide status bar
-    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-    styleSelectedText: true,
-    minHeight: "100%",
-    maxHeight: "100%"
-  });
-  
-  // Change handler to update tab status
-  easyMDE.codemirror.on('change', (cm, change) => {
-    if (change && change.origin === 'setValue') return;
-    const tab = tabs.find(t => t.id === activeTabId);
-    if (tab && tab.isEditing) {
-      if (!tab.isModified) {
-        tab.isModified = true;
-        updateTabUI(activeTabId);
-        document.title = `${tab.fileName} * - OpenMarkdownReader`;
-      }
-      updateDocumentWordCount(tab);
-    }
-  });
-}
-
-function destroyRichEditor() {
-  if (easyMDE) {
-    easyMDE.toTextArea();
-    easyMDE = null;
-  }
-}
+// Stub — the real per-tab versions are defined further down (see "Redefine
+// initRichEditor to add auto-save hook"). Kept as no-ops to avoid breaking
+// any pre-override callsites.
+function initRichEditor() {}
+function destroyRichEditor() {}
 
 // Toggle Rich/Plain Mode
 richModeBtn.addEventListener('click', () => {
   settings.richEditorMode = !settings.richEditorMode;
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
-    initRichEditor();
-    if (easyMDE) {
-      easyMDE.value(editor.value);
-      setTimeout(() => {
-        if (easyMDE) {
-          easyMDE.codemirror.refresh();
-          easyMDE.codemirror.focus();
-        }
-      }, 10);
-    }
+    enterRichMode();
     if (richToolbarBtn) {
       richToolbarBtn.classList.remove('hidden');
       updateRichToolbarUI();
     }
   } else {
     richModeBtn.classList.remove('active');
-    if (easyMDE) editor.value = easyMDE.value();
-    destroyRichEditor();
+    leaveRichMode();
     if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
-    editor.focus();
+    if (editor && editor.focus) editor.focus();
   }
 });
 
@@ -5739,44 +5845,52 @@ if (richToolbarBtn) {
 // Overridden Functions to support EasyMDE
 // ------------------------------------------
 
+// Per-tab showEditor: make sure the active tab's editor (textarea or EasyMDE
+// wrapper) is the visible one, and seed content only if the editor doesn't
+// already have it (preserves undo on preview/mode toggles).
 showEditor = function(content) {
-  editor.value = content;
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+
+  // Make sure tab's textarea exists and is the active one
+  setActiveEditor(tab);
+
+  // Seed plain-mode textarea content only if it differs (preserves undo)
+  if (typeof content === 'string' && tab.editorEl && tab.editorEl.value !== content) {
+    tab.editorEl.value = content;
+  }
+
   editorContainer.classList.remove('hidden');
   markdownBody.classList.add('hidden');
   dropZone.classList.add('hidden');
   document.getElementById('content').classList.remove('hidden');
-  editor.focus();
 
-  // Rich Mode Logic
   richModeBtn.classList.remove('hidden');
-  
+
   if (settings.richEditorMode) {
     richModeBtn.classList.add('active');
-    initRichEditor();
     if (richToolbarBtn) richToolbarBtn.classList.remove('hidden');
     updateRichToolbarUI();
-    if (easyMDE) {
-      easyMDE.value(content);
-      // Refresh to fix layout issues and focus editor
-      setTimeout(() => {
-        if (easyMDE) {
-          easyMDE.codemirror.refresh();
-          easyMDE.codemirror.focus();
-        }
-      }, 10);
+    enterRichMode();
+    // Sync content into rich editor only if it differs (preserves CM undo)
+    if (tab.easyMDE && typeof content === 'string' && tab.easyMDE.value() !== content) {
+      tab.easyMDE.value(content);
     }
   } else {
     richModeBtn.classList.remove('active');
     if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
-    destroyRichEditor();
-    editor.focus();
+    if (tab.easyMDE) leaveRichMode();
+    if (tab.editorEl) tab.editorEl.focus();
   }
 };
 
+// Per-tab hideEditor: capture in-flight content into tab.content and hide
+// the editor container. Does NOT destroy the per-tab editor instances —
+// they stay in the DOM (just hidden) so undo survives.
 hideEditor = function() {
-  if (easyMDE) {
-    // Sync content back to textarea just in case
-    editor.value = easyMDE.value();
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.isEditing) {
+    tab.content = tab.easyMDE ? tab.easyMDE.value() : (tab.editorEl ? tab.editorEl.value : tab.content);
   }
   editorContainer.classList.add('hidden');
   markdownBody.classList.remove('hidden');
@@ -5785,14 +5899,18 @@ hideEditor = function() {
 };
 
 switchToTab = function(tabId) {
-  // Save current tab state
+  // Save current tab state — read content from THIS tab's own editor instance
+  // (not the global `editor`/`easyMDE` refs which would be reassigned in a moment)
   if (activeTabId !== null) {
     const currentTab = tabs.find(t => t.id === activeTabId);
     if (currentTab) {
       currentTab.scrollPos = window.scrollY;
       if (currentTab.isEditing) {
-        // Capture content from EasyMDE if active
-        currentTab.content = easyMDE ? easyMDE.value() : editor.value;
+        if (currentTab.easyMDE) {
+          currentTab.content = currentTab.easyMDE.value();
+        } else if (currentTab.editorEl) {
+          currentTab.content = currentTab.editorEl.value;
+        }
       }
     }
   }
@@ -5997,6 +6115,9 @@ closeTab = async function(tabId, silent = false) {
     }
   }
 
+  // Free per-tab editor resources before removing the tab
+  releaseTabEditor(tab);
+
   // Remove tab
   tabs.splice(tabIndex, 1);
   const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
@@ -6053,52 +6174,129 @@ function triggerAutoSave() {
 // Hook Auto-Save into Editor
 editor.addEventListener('input', triggerAutoSave);
 
-// Redefine initRichEditor to add auto-save hook
-	initRichEditor = function() {
-	  if (easyMDE) return;
-	  
-	  easyMDE = new EasyMDE({
-	    element: editor,
-		    autoDownloadFontAwesome: false,
-	    spellChecker: false,
-	    status: false,
-	    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
-	    styleSelectedText: true,
-	    minHeight: "100%",
-	    maxHeight: "100%",
-	    previewRender: (plainText) => marked.parse(plainText)
-	  });
-	  
-	  // Cmd/Ctrl+click links inside editor (Obsidian-style)
-	  const cm = easyMDE.codemirror;
-	  cm.on('mousedown', (cmInstance, e) => {
-	    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
-	    const pos = cmInstance.coordsChar({ left: e.clientX, top: e.clientY }, 'window');
-	    const lineText = cmInstance.getLine(pos.line);
-	    const href = extractMarkdownLinkAt(lineText, pos.ch);
-	    if (!href) return;
+// Per-tab EasyMDE initializer. Creates the EasyMDE instance for the active
+// tab if it doesn't already exist, attaches all listeners, and assigns it to
+// `tab.easyMDE` AND the global `easyMDE`. Idempotent — calling twice on the
+// same tab is a no-op (which is what preserves undo across mode toggles).
+initRichEditor = function() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+  // Already created for this tab — just point the global ref at it
+  if (tab.easyMDE) {
+    easyMDE = tab.easyMDE;
+    return;
+  }
+  // Need a textarea to wrap
+  const ta = ensureTabEditor(tab);
 
-	    e.preventDefault();
-	    e.stopPropagation();
-	    openLinkFromEditor(href, e);
-	  });
-	  
-		  easyMDE.codemirror.on('change', (cmInstance, change) => {
-		    if (change && change.origin === 'setValue') return;
-		    const tab = tabs.find(t => t.id === activeTabId);
-		    if (tab && tab.isEditing) {
-		      if (!tab.isModified) {
-	        tab.isModified = true;
-	        updateTabUI(activeTabId);
-	        document.title = `${tab.fileName} * - OpenMarkdownReader`;
-	      }
-	      updateDocumentWordCount(tab);
-	      triggerAutoSave();
-	    }
-	  });
+  const instance = new EasyMDE({
+    element: ta,
+    autoDownloadFontAwesome: false,
+    spellChecker: false,
+    status: false,
+    toolbar: ['bold', 'italic', 'heading', '|', 'quote', 'code', 'unordered-list', 'ordered-list', '|', 'link', 'image', 'table', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide'],
+    styleSelectedText: true,
+    minHeight: "100%",
+    maxHeight: "100%",
+    previewRender: (plainText) => marked.parse(plainText)
+  });
 
-		  updateRichToolbarUI();
-	};
+  // Cmd/Ctrl+click links inside editor (Obsidian-style)
+  const cm = instance.codemirror;
+  cm.on('mousedown', (cmInstance, e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+    const pos = cmInstance.coordsChar({ left: e.clientX, top: e.clientY }, 'window');
+    const lineText = cmInstance.getLine(pos.line);
+    const href = extractMarkdownLinkAt(lineText, pos.ch);
+    if (!href) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openLinkFromEditor(href, e);
+  });
+
+  cm.on('change', (cmInstance, change) => {
+    if (change && change.origin === 'setValue') return;
+    const t = tabs.find(tt => tt.id === activeTabId);
+    if (t && t.isEditing) {
+      if (!t.isModified) {
+        t.isModified = true;
+        updateTabUI(activeTabId);
+        document.title = `${t.fileName} * - OpenMarkdownReader`;
+      }
+      updateDocumentWordCount(t);
+      triggerAutoSave();
+    }
+  });
+
+  tab.easyMDE = instance;
+  easyMDE = instance;
+  updateRichToolbarUI();
+};
+
+// Per-tab "leave rich mode" — sync content back to the textarea, hide the
+// EasyMDE wrapper, show the textarea. We DO NOT call easyMDE.toTextArea()
+// because that destroys the CodeMirror instance and its undo history.
+// Toggling back to rich mode reuses the same instance, preserving undo.
+//
+// Note: switching tabs while in different modes is handled by setActiveEditor,
+// which calls this only indirectly via showEditor/setActiveEditor logic.
+function leaveRichMode() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.easyMDE) return;
+  // Sync content from CodeMirror back to the underlying textarea so plain mode
+  // sees the latest text.
+  try {
+    tab.editorEl.value = tab.easyMDE.value();
+  } catch {}
+  // Hide the EasyMDE wrapper
+  const wrapper = tab.editorEl.closest('.EasyMDEContainer');
+  if (wrapper) wrapper.style.display = 'none';
+  // Show the bare textarea — but we need to MOVE it out of the EasyMDE wrapper
+  // first because EasyMDE put it inside. Re-parent to the editor host so it
+  // becomes a sibling of the (now hidden) wrapper.
+  if (tab.editorEl.parentNode !== editorContainer) {
+    editorContainer.appendChild(tab.editorEl);
+  }
+  tab.editorEl.style.display = '';
+  easyMDE = null;
+}
+
+// Per-tab "enter rich mode" — moves the textarea back inside its EasyMDE
+// wrapper (creating the wrapper on first call), hides the bare textarea, and
+// shows the wrapper. Sync content from textarea → CodeMirror.
+function enterRichMode() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+  if (!tab.easyMDE) {
+    // First time — create the EasyMDE instance.
+    initRichEditor();
+    return;
+  }
+  // Reusing existing instance: move textarea back into wrapper, sync content
+  const wrapper = tab.editorEl.closest('.EasyMDEContainer');
+  if (wrapper) {
+    if (tab.editorEl.parentNode !== wrapper) {
+      // Find the original location inside the wrapper (EasyMDE wraps with
+      // a textarea inside; on re-parent we just append to wrapper)
+      wrapper.appendChild(tab.editorEl);
+    }
+    wrapper.style.display = '';
+  }
+  // Sync the content the user may have typed in plain mode back into CM
+  // (This DOES reset CM history — acceptable since user was editing plain)
+  try {
+    if (tab.easyMDE.value() !== tab.editorEl.value) {
+      tab.easyMDE.value(tab.editorEl.value);
+    }
+  } catch {}
+  easyMDE = tab.easyMDE;
+  setTimeout(() => {
+    if (tab.easyMDE) {
+      tab.easyMDE.codemirror.refresh();
+      tab.easyMDE.codemirror.focus();
+    }
+  }, 10);
+}
 
 window.electronAPI.onSetAutoSave((enabled) => {
   settings.autoSave = enabled;
@@ -6664,11 +6862,17 @@ window.electronAPI.onAgentCommand?.((cmd) => {
         break;
       }
       case 'set-content': {
-        const editorEl = document.getElementById('editor');
         const activeT = tabs.find(t => t.id === activeTabId);
-        if (activeT && activeT.isEditing && editorEl) {
-          editorEl.value = cmd.content;
-          editorEl.dispatchEvent(new Event('input'));
+        if (activeT && activeT.isEditing) {
+          // Use per-tab editor (textarea or EasyMDE) — see editor-per-tab refactor
+          if (activeT.easyMDE) {
+            activeT.easyMDE.value(cmd.content);
+            activeT.isModified = true;
+            updateTabUI(activeT.id);
+          } else if (activeT.editorEl) {
+            activeT.editorEl.value = cmd.content;
+            activeT.editorEl.dispatchEvent(new Event('input'));
+          }
           result.set = true;
         } else {
           result = { error: 'No active editing tab' };
@@ -6676,22 +6880,64 @@ window.electronAPI.onAgentCommand?.((cmd) => {
         break;
       }
       case 'insert': {
-        const editorEl = document.getElementById('editor');
         const activeT = tabs.find(t => t.id === activeTabId);
-        if (activeT && activeT.isEditing && editorEl) {
-          const pos = cmd.position === 'end' ? editorEl.value.length :
-                      cmd.position === 'start' ? 0 :
-                      typeof cmd.position === 'number' ? cmd.position :
-                      editorEl.selectionStart;
-          const before = editorEl.value.slice(0, pos);
-          const after = editorEl.value.slice(pos);
-          editorEl.value = before + cmd.text + after;
-          editorEl.selectionStart = editorEl.selectionEnd = pos + cmd.text.length;
-          editorEl.dispatchEvent(new Event('input'));
-          result.insertedAt = pos;
+        if (activeT && activeT.isEditing && activeT.editorEl) {
+          const editorEl = activeT.editorEl;
+          if (activeT.easyMDE) {
+            // Use CodeMirror's replaceSelection so undo history is preserved
+            activeT.easyMDE.codemirror.replaceSelection(cmd.text);
+            result.insertedAt = activeT.easyMDE.codemirror.indexFromPos(activeT.easyMDE.codemirror.getCursor());
+          } else {
+            const pos = cmd.position === 'end' ? editorEl.value.length :
+                        cmd.position === 'start' ? 0 :
+                        typeof cmd.position === 'number' ? cmd.position :
+                        editorEl.selectionStart;
+            const before = editorEl.value.slice(0, pos);
+            const after = editorEl.value.slice(pos);
+            editorEl.value = before + cmd.text + after;
+            editorEl.selectionStart = editorEl.selectionEnd = pos + cmd.text.length;
+            editorEl.dispatchEvent(new Event('input'));
+            result.insertedAt = pos;
+          }
         } else {
           result = { error: 'No active editing tab' };
         }
+        break;
+      }
+      case '_debug-editor-state': {
+        // Internal debug command — verifies the per-tab editor structure
+        result.tabs = tabs.map(t => {
+          // Live value: from CodeMirror if rich, from textarea if plain
+          let liveValue = null;
+          if (t.easyMDE) {
+            try { liveValue = t.easyMDE.value().slice(0, 80); } catch {}
+          } else if (t.editorEl) {
+            liveValue = t.editorEl.value.slice(0, 80);
+          }
+          // Whether the editor wrapper (textarea or EasyMDEContainer) is visible
+          let wrapperVisible = null;
+          if (t.editorEl) {
+            const wrapper = t.easyMDE
+              ? t.editorEl.closest('.EasyMDEContainer') || t.editorEl
+              : t.editorEl;
+            wrapperVisible = wrapper.style.display !== 'none';
+          }
+          return {
+            id: t.id,
+            fileName: t.fileName,
+            isEditing: t.isEditing,
+            isActive: t.id === activeTabId,
+            isModified: t.isModified,
+            hasEditorEl: !!t.editorEl,
+            hasEasyMDE: !!t.easyMDE,
+            editorElInDom: !!(t.editorEl && document.contains(t.editorEl)),
+            liveValue,
+            tabContent: t.content ? t.content.slice(0, 80) : null,
+            wrapperVisible
+          };
+        });
+        result.globalEditorTagName = editor ? editor.tagName : null;
+        result.globalEditorIsFallback = editor === fallbackEditor;
         break;
       }
       case 'find': {
