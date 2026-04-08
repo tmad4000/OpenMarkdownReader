@@ -223,6 +223,7 @@ let allFilesCachePromise = null;
 let wikiLinkByPath = new Map();
 let wikiLinkByName = new Map();
 let wikiLinkConflicts = new Set(); // Base names with multiple matches
+let shownWikiConflictWarnings = new Set();
 
 // Build wiki link indices from allFilesCache
 function buildWikiLinkIndex() {
@@ -289,55 +290,98 @@ function setAllFilesCache(files) {
   }
 }
 
-// Process wiki links in markdown content: [[page]] or [[folder/page|display text]]
-// Supports: [[filename]], [[folder/filename]], [[folder/filename|Display Text]]
-function processWikiLinks(markdown) {
-  if (!currentDirectory || (wikiLinkByPath.size === 0 && wikiLinkByName.size === 0)) {
-    return markdown;
+function canResolveWikiLinks() {
+  return !!currentDirectory && (wikiLinkByPath.size > 0 || wikiLinkByName.size > 0);
+}
+
+function parseWikiLinkMarkup(innerText) {
+  const raw = typeof innerText === 'string' ? innerText.trim() : '';
+  const pipeIndex = raw.indexOf('|');
+  const targetPart = (pipeIndex >= 0 ? raw.slice(0, pipeIndex) : raw).trim();
+  const displayText = (pipeIndex >= 0 ? raw.slice(pipeIndex + 1) : '').trim();
+  const hashIndex = targetPart.indexOf('#');
+  const pathPart = (hashIndex >= 0 ? targetPart.slice(0, hashIndex) : targetPart).trim();
+  const headingPart = (hashIndex >= 0 ? targetPart.slice(hashIndex + 1) : '').trim();
+
+  return {
+    raw,
+    targetPart,
+    displayText,
+    pathPart,
+    headingPart,
+    display: displayText || targetPart
+  };
+}
+
+function resolveWikiLinkTarget(targetPart) {
+  const parsed = parseWikiLinkMarkup(targetPart);
+
+  if (!parsed.pathPart) {
+    if (parsed.headingPart) {
+      return {
+        type: 'anchor',
+        href: `#${slugifyHeadingText(parsed.headingPart)}`,
+        headingPart: parsed.headingPart,
+        headingSlug: slugifyHeadingText(parsed.headingPart)
+      };
+    }
+    return { type: 'missing' };
   }
 
-  const shownConflictWarnings = new Set();
+  if (!canResolveWikiLinks()) {
+    return { type: 'unresolved' };
+  }
 
-  // Match [[page]] or [[page|alias]]
-  const wikiLinkPattern = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const lookupName = parsed.pathPart.toLowerCase();
+  let targetPath = wikiLinkByPath.get(lookupName);
 
-  return markdown.replace(wikiLinkPattern, (match, pageName, displayText) => {
-    const lookupName = pageName.trim().toLowerCase();
-    const display = displayText ? displayText.trim() : pageName.trim();
+  if (!targetPath) {
+    const justName = lookupName.includes('/')
+      ? lookupName.split('/').pop()
+      : lookupName;
 
-    // Try path-based lookup first (folder/filename)
-    let targetPath = wikiLinkByPath.get(lookupName);
+    targetPath = wikiLinkByName.get(justName);
 
-    // If not found by path, try name-only lookup
-    if (!targetPath) {
-      // Extract just the filename part if it's a path
-      const justName = lookupName.includes('/')
-        ? lookupName.split('/').pop()
-        : lookupName;
+    if (targetPath && wikiLinkConflicts.has(justName) && !shownWikiConflictWarnings.has(justName)) {
+      shownWikiConflictWarnings.add(justName);
+      showToast(`Multiple files match "${justName}" - using first match`, 'warning', 5000);
+    }
+  }
 
-      targetPath = wikiLinkByName.get(justName);
+  if (!targetPath) {
+    return { type: 'missing' };
+  }
 
-      // Show conflict warning if needed
-      if (targetPath && wikiLinkConflicts.has(justName) && !shownConflictWarnings.has(justName)) {
-        shownConflictWarnings.add(justName);
-        showToast(`Multiple files match "${justName}" - using first match`, 'warning', 5000);
-      }
+  return {
+    type: 'file',
+    href: targetPath,
+    targetPath,
+    headingPart: parsed.headingPart || '',
+    headingSlug: parsed.headingPart ? slugifyHeadingText(parsed.headingPart) : ''
+  };
+}
+
+function renderWikiLinkToken(token, parser) {
+  const innerHtml = parser.parseInline(token.tokens || []);
+
+  if (token.href) {
+    const attrs = [
+      'class="wiki-link"',
+      `href="${escapeHtml(token.href)}"`
+    ];
+
+    if (token.headingSlug) {
+      attrs.push(`data-wiki-heading="${escapeHtml(token.headingSlug)}"`);
     }
 
-    if (targetPath) {
-      // Emit raw HTML <a> directly instead of markdown [text](url) syntax.
-      // marked v12 always percent-encodes link destinations, but the click
-      // handler at markdownBody passes the literal href to fs APIs that
-      // expect a real filesystem path (with spaces, emojis, &, etc. intact).
-      // Going through HTML keeps the path literal end-to-end.
-      const safeHref = escapeHtml(targetPath);
-      const safeText = escapeHtml(display);
-      return `<a class="wiki-link" href="${safeHref}">${safeText}</a>`;
+    if (token.pageName) {
+      attrs.push(`data-wiki-target="${escapeHtml(token.pageName)}"`);
     }
 
-    // Page not found - return as a broken link with special styling
-    return `<span class="wiki-link-broken" title="Page not found: ${escapeHtml(pageName)}">${escapeHtml(display)}</span>`;
-  });
+    return `<a ${attrs.join(' ')}>${innerHtml}</a>`;
+  }
+
+  return `<span class="wiki-link-broken" title="Page not found: ${escapeHtml(token.pageName || '')}">${innerHtml}</span>`;
 }
 
 function escapeHtml(text) {
@@ -3884,6 +3928,38 @@ function hideCSVView() {
 // Configure marked to generate heading IDs
 const markedRenderer = new marked.Renderer();
 let fallbackHeadingSlugCounts = new Map();
+const wikiLinkMarkedExtension = {
+  name: 'wikilink',
+  level: 'inline',
+  start(src) {
+    const index = src.indexOf('[[');
+    return index >= 0 ? index : undefined;
+  },
+  tokenizer(src) {
+    const match = /^\[\[([^\]]+)\]\]/.exec(src);
+    if (!match) return false;
+
+    const parsed = parseWikiLinkMarkup(match[1]);
+    if (!parsed.targetPart && !parsed.headingPart) return false;
+
+    const resolved = resolveWikiLinkTarget(parsed.targetPart);
+    if (resolved && resolved.type === 'unresolved') {
+      return false;
+    }
+
+    return {
+      type: 'wikilink',
+      raw: match[0],
+      pageName: parsed.targetPart || parsed.raw,
+      href: resolved && resolved.type !== 'missing' ? resolved.href : '',
+      headingSlug: resolved && resolved.headingSlug ? resolved.headingSlug : '',
+      tokens: this.lexer.inlineTokens(parsed.display || parsed.targetPart || parsed.raw)
+    };
+  },
+  renderer(token) {
+    return renderWikiLinkToken(token, this.parser);
+  }
+};
 
 function slugifyHeadingText(value) {
   return value
@@ -4009,6 +4085,10 @@ markedRenderer.heading = function(text, level, raw, slugger) {
   return `<h${headingLevel} ${attrs.join(' ')}>${collapseToggle}${cleanedHtml}${anchorLink}</h${headingLevel}>`;
 };
 
+marked.use({
+  extensions: [wikiLinkMarkedExtension]
+});
+
 marked.setOptions({
   renderer: markedRenderer,
   gfm: true,
@@ -4126,9 +4206,7 @@ function renderMarkdown(mdContent) {
     document.documentElement.classList.remove('chat-view');
     fallbackHeadingSlugCounts = new Map();
 
-    // Process wiki links [[page]] -> [page](path) before parsing
-    const processedContent = processWikiLinks(mdContent);
-    const html = marked.parse(processedContent);
+    const html = marked.parse(mdContent);
     markdownBody.innerHTML = html;
 
     buildCollapsibleSections();
@@ -5692,6 +5770,16 @@ markdownBody.addEventListener('click', (e) => {
   // Relative file links - try to open the file
   const tab = tabs.find(t => t.id === activeTabId);
   if (tab && tab.filePath) {
+    const wikiHeading = link.getAttribute('data-wiki-heading');
+    if (wikiHeading && href === tab.filePath) {
+      const target = document.getElementById(wikiHeading);
+      if (target) {
+        expandSectionAncestors(target);
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+      return;
+    }
+
     const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
     const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
 
@@ -5764,7 +5852,13 @@ function extractMarkdownLinkAt(lineText, ch) {
 
   // Wiki-style links: [[file.md]]
   m = findRegexMatchAt(/\[\[([^\]]+)\]\]/g, lineText, ch);
-  if (m) return m[1];
+  if (m) {
+    const parsed = parseWikiLinkMarkup(m[1]);
+    const resolved = resolveWikiLinkTarget(parsed.targetPart);
+    if (resolved && resolved.type === 'anchor') return resolved.href;
+    if (resolved && resolved.type === 'file') return resolved.href;
+    return null;
+  }
 
   return null;
 }
