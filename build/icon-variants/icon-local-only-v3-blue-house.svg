@@ -1,0 +1,41 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-grad" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Squircle - Same blue as standard, subtle differentiation via badge -->
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#bg-grad)" stroke="#3B82F6" stroke-width="8"/>
+
+  <!-- Content Group -->
+  <g transform="translate(192, 230)">
+    <!-- Header # -->
+    <path d="M100 120 H200 M100 160 H200 M130 90 V190 M170 90 V190" stroke="#2563EB" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- Title Line -->
+    <rect x="240" y="125" width="300" height="30" rx="15" fill="#1E293B"/>
+
+    <!-- Text Lines -->
+    <rect x="100" y="240" width="440" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="290" width="380" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="340" width="420" height="20" rx="10" fill="#94A3B8"/>
+
+    <!-- Stylized M logo at bottom -->
+    <path d="M420 520 L420 420 L470 520 L520 420 L520 520" stroke="#2563EB" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Corner fold -->
+    <path d="M500 0 L640 0 L640 140 L500 0" fill="#E2E8F0"/>
+  </g>
+
+  <!-- House/home badge in top-right corner -->
+  <g transform="translate(780, 100)">
+    <!-- Circle background -->
+    <circle cx="72" cy="72" r="84" fill="#0F172A" stroke="#3B82F6" stroke-width="4"/>
+    <!-- House shape -->
+    <path d="M72 28 L128 76 L128 120 L100 120 L100 92 L44 92 L44 120 L16 120 L16 76 Z" fill="#60A5FA"/>
+    <!-- Door -->
+    <rect x="60" y="96" width="24" height="24" fill="#0F172A"/>
+  </g>
+</svg>

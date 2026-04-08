@@ -1,0 +1,37 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-grad" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#475569" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Squircle - Slate/graphite (premium / serious / professional) -->
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#bg-grad)" stroke="#64748B" stroke-width="8"/>
+
+  <!-- Content Group -->
+  <g transform="translate(192, 210)">
+    <!-- Header # -->
+    <path d="M100 120 H200 M100 160 H200 M130 90 V190 M170 90 V190" stroke="#475569" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- Title Line -->
+    <rect x="240" y="125" width="300" height="30" rx="15" fill="#1E293B"/>
+
+    <!-- Text Lines -->
+    <rect x="100" y="240" width="440" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="290" width="380" height="20" rx="10" fill="#94A3B8"/>
+    <rect x="100" y="340" width="420" height="20" rx="10" fill="#94A3B8"/>
+
+    <!-- Stylized M logo at bottom -->
+    <path d="M420 500 L420 400 L470 500 L520 400 L520 500" stroke="#475569" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Corner fold -->
+    <path d="M500 0 L640 0 L640 140 L500 0" fill="#E2E8F0"/>
+  </g>
+
+  <!-- "LOCAL" ribbon badge (bottom) -->
+  <g transform="translate(0, 820)">
+    <rect x="64" y="0" width="896" height="100" fill="#0F172A" opacity="0.95"/>
+    <text x="512" y="68" font-family="-apple-system, 'SF Pro Display', Helvetica, Arial, sans-serif" font-size="72" font-weight="800" fill="#E2E8F0" text-anchor="middle" letter-spacing="8">LOCAL</text>
+  </g>
+</svg>

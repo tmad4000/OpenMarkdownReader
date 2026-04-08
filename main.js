@@ -1939,10 +1939,16 @@ app.whenReady().then(() => {
     copyright: 'Jacob Cole'
   });
 
-  // Set orange dev dock icon when running unpackaged
+  // Set dev dock icon when running unpackaged
+  // Picks the right variant based on edition (standard vs local-only)
   if (!app.isPackaged && process.platform === 'darwin') {
     try {
-      const iconPath = path.join(__dirname, 'build', 'icon-dev.png');
+      // Detect local-only edition via env var (set by build:mas-local-only script).
+      // When the dual-edition system lands (ticket markdown-reader-xwc), this
+      // should read from build-edition.js instead.
+      const isLocalOnly = process.env.OMR_EDITION === 'local-only';
+      const devIconName = isLocalOnly ? 'icon-local-only-dev.png' : 'icon-dev.png';
+      const iconPath = path.join(__dirname, 'build', devIconName);
       if (fs.existsSync(iconPath)) {
         app.dock.setIcon(iconPath);
       }
