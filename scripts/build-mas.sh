@@ -15,13 +15,81 @@
 set -euo pipefail
 
 UPLOAD=false
-if [[ "${1:-}" == "--upload" ]]; then
-    UPLOAD=true
-fi
+AUTO_BUMP=false
+for arg in "$@"; do
+    case "$arg" in
+        --upload) UPLOAD=true ;;
+        --auto-bump) AUTO_BUMP=true ;;
+    esac
+done
 
 APP_DIR="dist/mas-arm64/OpenMarkdownReader.app"
 INSTALLER_CERT="3rd Party Mac Developer Installer: IdeaFlow, Inc. (JESMXK96LG)"
 
+# ── Version safeguard ──────────────────────────────────────────────────
+# Refuse to build if package.json version matches a version that already
+# has an uploaded build in App Store Connect. This prevents the scenario
+# where CFBundleVersion (epoch) ticks up but CFBundleShortVersionString
+# stays the same across rebuilds — legal for TestFlight but confusing.
+# Pass --auto-bump to automatically increment the patch version instead.
+echo "=== Step 0: Version safeguard ==="
+PKG_VERSION=$(node -p "require('./package.json').version")
+echo "  package.json version: $PKG_VERSION"
+
+LAST_UPLOADED_VERSION=$(python3 - << 'PYEOF' 2>/dev/null || echo ""
+import jwt, time, json, urllib.request, sys
+try:
+    with open('/Users/jacobcole/.private_keys/AuthKey_KWJX4896S5.p8') as f:
+        key = f.read()
+    now = int(time.time())
+    token = jwt.encode(
+        {'iss': '69a6de95-2833-47e3-e053-5b8c7c11a4d1', 'iat': now, 'exp': now + 600, 'aud': 'appstoreconnect-v1'},
+        key, algorithm='ES256', headers={'kid': 'KWJX4896S5'}
+    )
+    req = urllib.request.Request(
+        'https://api.appstoreconnect.apple.com/v1/builds?filter[app]=6758376669&sort=-uploadedDate&limit=1&include=preReleaseVersion',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    # The marketing version lives in the included preReleaseVersion
+    for inc in data.get('included', []):
+        if inc.get('type') == 'preReleaseVersions':
+            print(inc['attributes'].get('version', ''))
+            sys.exit(0)
+    # Fallback: versionString on the build itself (rarely populated)
+    if data.get('data'):
+        print(data['data'][0]['attributes'].get('versionString', '') or '')
+except Exception:
+    pass
+PYEOF
+)
+
+if [[ -n "$LAST_UPLOADED_VERSION" ]]; then
+    echo "  Last uploaded marketing version: $LAST_UPLOADED_VERSION"
+    if [[ "$PKG_VERSION" == "$LAST_UPLOADED_VERSION" ]]; then
+        if [[ "$AUTO_BUMP" == "true" ]]; then
+            # Auto-bump patch version (1.0.5 → 1.0.6)
+            NEW_VERSION=$(echo "$PKG_VERSION" | awk -F. '{print $1"."$2"."$3+1}')
+            echo "  ⚠ Version $PKG_VERSION already uploaded. Auto-bumping to $NEW_VERSION"
+            node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version='$NEW_VERSION'; fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n');"
+            PKG_VERSION="$NEW_VERSION"
+        else
+            echo ""
+            echo "  ✗ ERROR: package.json version ($PKG_VERSION) matches the last uploaded build."
+            echo "    TestFlight allows this but it's confusing. Either:"
+            echo "    1. Bump the version in package.json manually, or"
+            echo "    2. Re-run with --auto-bump to increment patch version automatically"
+            exit 1
+        fi
+    else
+        echo "  ✓ Version differs from last upload ($LAST_UPLOADED_VERSION → $PKG_VERSION)"
+    fi
+else
+    echo "  (Could not fetch last uploaded version — proceeding anyway)"
+fi
+
+echo ""
 echo "=== Step 1: Package + sign with electron-builder ==="
 node scripts/generate-build-info.js
 # electron-builder signs everything correctly but fails at the pkg step
