@@ -6714,8 +6714,15 @@ function setNoosWidgetVisible(visible) {
   if (widgetEl) {
     widgetEl.style.display = visible ? '' : 'none';
   }
-  if (!visible && window.NoosFeedback) {
-    window.NoosFeedback.close();
+  // Defensive: NoosFeedback may not be fully initialized when this fires (race
+  // between this setting handler and the deferred widget script). Only call
+  // close() if it's actually a function on the global object.
+  if (!visible && window.NoosFeedback && typeof window.NoosFeedback.close === 'function') {
+    try {
+      window.NoosFeedback.close();
+    } catch (err) {
+      console.warn('NoosFeedback.close() failed:', err);
+    }
   }
 }
 

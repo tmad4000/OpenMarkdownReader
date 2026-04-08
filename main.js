@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage, clipboard, crashReporter } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -15,12 +15,133 @@ log.transports.console.level = 'debug';
 // Redirect console to electron-log so all output is captured to file
 Object.assign(console, log.functions);
 
+// Native crash dumps for hard crashes (Electron itself dying, native code crashes,
+// GPU/utility process hard crashes). These are minidumps written to:
+//   ~/Library/Application Support/OpenMarkdownReader/Crashpad/completed/
+// Without this, hard crashes leave nothing behind except whatever macOS captured
+// to ~/Library/Logs/DiagnosticReports/.
+// uploadToServer:false keeps everything local — no telemetry sent anywhere.
+crashReporter.start({
+  productName: 'OpenMarkdownReader',
+  companyName: 'jacobcole',
+  uploadToServer: false,
+  ignoreSystemCrashHandler: false,
+  rateLimit: false,
+  compress: true
+});
+
 // Global error handlers — catch anything that would silently kill the app
 process.on('uncaughtException', (error) => {
   console.error('[UNCAUGHT EXCEPTION]', error.stack || error);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason);
+});
+
+// ── Crash diagnostics ───────────────────────────────────────────────────
+// Translates Electron's terse exit codes/reasons into something a human or
+// support engineer can act on. Used by render-process-gone and child-process-gone.
+const CRASH_REASON_MAP = {
+  'clean-exit':         'Process exited cleanly',
+  'abnormal-exit':      'Process exited abnormally',
+  'killed':             'Process was killed (SIGTERM/SIGKILL — usually deliberate)',
+  'crashed':            'Process crashed (segfault, JS uncaught exception, etc.)',
+  'oom':                'Process ran out of memory',
+  'launch-failed':      'Process failed to launch',
+  'integrity-failure':  'Code signing integrity check failed'
+};
+
+const CRASH_EXIT_CODE_MAP = {
+  0:   'Clean exit',
+  9:   'SIGKILL (force-killed by OS or `kill -9`)',
+  11:  'SIGSEGV (segmentation fault)',
+  15:  'SIGTERM (deliberately stopped, e.g. `pkill`)',
+  '-1': 'Unknown'
+};
+
+function describeCrash(processType, details) {
+  const reasonText = CRASH_REASON_MAP[details.reason] || details.reason || 'unknown';
+  const exitText = CRASH_EXIT_CODE_MAP[details.exitCode] != null
+    ? CRASH_EXIT_CODE_MAP[details.exitCode]
+    : `exit code ${details.exitCode}`;
+  return `${processType} process: ${reasonText} (${exitText})`;
+}
+
+function handleProcessCrash(processType, details, win) {
+  const summary = describeCrash(processType, details);
+  console.error(`[${processType.toUpperCase()} CRASHED] reason=${details.reason} exitCode=${details.exitCode}`);
+
+  // Build full diagnostic text the user can copy to a bug report
+  const logPath = log.transports.file.getFile().path;
+  const dumpDir = path.join(app.getPath('userData'), 'Crashpad', 'completed');
+  const diagnosticText = [
+    'OpenMarkdownReader crash report',
+    '─────────────────────────────',
+    `Time:        ${new Date().toISOString()}`,
+    `Process:     ${processType}`,
+    `Reason:      ${details.reason}`,
+    `Exit code:   ${details.exitCode}`,
+    `Description: ${summary}`,
+    '',
+    `App version: ${buildInfo.version} (build ${buildInfo.buildNumber}, ${buildInfo.gitHash})`,
+    `Platform:    ${process.platform} ${os.release()}`,
+    `Electron:    ${process.versions.electron}`,
+    `Node:        ${process.versions.node}`,
+    `Arch:        ${process.arch}`,
+    '',
+    `Log file:    ${logPath}`,
+    `Crash dumps: ${dumpDir}`,
+  ].join('\n');
+
+  // Don't show a dialog for renderer 'killed' on app quit — that's expected
+  // (the main process intentionally tears down renderers during shutdown).
+  if (details.reason === 'killed' && app.isQuittingForReal) {
+    return;
+  }
+
+  // Async dialog so we don't block the main thread; offers actionable buttons.
+  const dialogOptions = {
+    type: 'error',
+    title: 'OpenMarkdownReader crashed',
+    message: 'OpenMarkdownReader crashed',
+    detail: `${summary}\n\nThe app may continue to work, but you should restart it. If this keeps happening, share the diagnostic info with the developer.`,
+    buttons: ['Reload', 'Copy Diagnostics', 'Show Logs in Finder', 'Close'],
+    defaultId: 0,
+    cancelId: 3,
+    noLink: true
+  };
+
+  const targetWin = (win && !win.isDestroyed()) ? win : null;
+  const dialogPromise = targetWin
+    ? dialog.showMessageBox(targetWin, dialogOptions)
+    : dialog.showMessageBox(dialogOptions);
+
+  dialogPromise.then(({ response }) => {
+    if (response === 0 && targetWin && !targetWin.isDestroyed()) {
+      // Reload — try to recover the renderer
+      try {
+        targetWin.webContents.reload();
+      } catch (err) {
+        console.error('Failed to reload after crash:', err);
+      }
+    } else if (response === 1) {
+      clipboard.writeText(diagnosticText);
+    } else if (response === 2) {
+      shell.showItemInFolder(logPath);
+    }
+  }).catch(err => {
+    console.error('Crash dialog error:', err);
+  });
+}
+
+// Catch GPU/utility/plugin process crashes (separate from renderer crashes).
+// Without this, GPU process crashes silently fall through to a black window
+// or graphics glitches with no logging.
+app.on('child-process-gone', (event, details) => {
+  console.error(`[CHILD PROCESS GONE] type=${details.type} name=${details.name || 'n/a'} reason=${details.reason} exitCode=${details.exitCode}`);
+  // Only show dialog for serious crashes — clean exit and 'killed' during shutdown are normal.
+  if (details.reason === 'clean-exit' || details.reason === 'killed') return;
+  handleProcessCrash(details.type || 'child', details, null);
 });
 
 const { getFileIdentity, detectFileMove } = require('./file-watch-utils');
@@ -826,12 +947,7 @@ function createWindow(filePath = null) {
   });
 
   win.webContents.on('render-process-gone', (event, details) => {
-    console.error(`[RENDERER CRASHED] reason=${details.reason} exitCode=${details.exitCode}`);
-    // Show a dialog so the user knows what happened
-    dialog.showErrorBox(
-      'OpenMarkdownReader crashed',
-      `The renderer process ${details.reason === 'killed' ? 'was killed' : 'crashed'} (exit code ${details.exitCode}).\n\nPlease restart the app. If this keeps happening, check Help → Report Issue.`
-    );
+    handleProcessCrash('renderer', details, win);
   });
 
   win.webContents.on('unresponsive', () => {
@@ -1599,6 +1715,15 @@ function setupMenu() {
             shell.showItemInFolder(logPath);
           }
         },
+        {
+          label: 'Show Crash Dumps…',
+          click: () => {
+            const dumpDir = path.join(app.getPath('userData'), 'Crashpad', 'completed');
+            // Make sure the directory exists so showItemInFolder doesn't no-op
+            try { fs.mkdirSync(dumpDir, { recursive: true }); } catch {}
+            shell.openPath(dumpDir);
+          }
+        },
         { type: 'separator' },
         {
           label: `Install '${CLI_COMMAND_NAMES.join("' and '")}' Commands in PATH…`,
@@ -1717,6 +1842,13 @@ async function saveSession() {
   const sessionWindows = [];
 
   for (const win of windows) {
+    // Skip windows whose webContents have been destroyed (e.g. crashed renderer
+    // before we cleaned up the BrowserWindow). Otherwise win.webContents.send()
+    // throws "Render frame was disposed before WebFrameMain could be accessed".
+    if (win.isDestroyed() || !win.webContents || win.webContents.isDestroyed() || win.webContents.isCrashed()) {
+      continue;
+    }
+
     try {
       const sessionData = await new Promise((resolve) => {
         const responseHandler = (event, data) => {
@@ -1726,7 +1858,14 @@ async function saveSession() {
         };
 
         ipcMain.on('session-state', responseHandler);
-        win.webContents.send('get-session-state');
+        try {
+          win.webContents.send('get-session-state');
+        } catch (sendErr) {
+          // Renderer was destroyed between the check above and the send call
+          ipcMain.removeListener('session-state', responseHandler);
+          resolve(null);
+          return;
+        }
 
         // Timeout fallback
         setTimeout(() => {
@@ -2004,6 +2143,7 @@ app.whenReady().then(() => {
 
 // Save session before quitting
 app.on('before-quit', async (e) => {
+  app.isQuittingForReal = true;
   agentServer.stopServer();
   // Only save on normal quit (not file-triggered launch)
   if (windows.size > 0) {
