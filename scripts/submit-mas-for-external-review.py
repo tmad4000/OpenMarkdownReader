@@ -43,7 +43,11 @@ def api(method, path, body=None, token=None):
     req = urllib.request.Request(f'{API_BASE}{path}', data=data, headers=headers, method=method)
     try:
         resp = urllib.request.urlopen(req)
-        return json.loads(resp.read())
+        raw = resp.read()
+        # Some endpoints (POST/PATCH on relationships, 204 No Content) return empty bodies
+        if not raw:
+            return {}
+        return json.loads(raw)
     except urllib.error.HTTPError as e:
         body_text = e.read().decode()
         print(f"HTTP {e.code} on {method} {path}")
