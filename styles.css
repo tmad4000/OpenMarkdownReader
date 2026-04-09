@@ -367,6 +367,9 @@ html, body {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 6px 12px;
   padding-left: calc(12px + var(--depth, 0) * 16px);
   font-size: 13px;
@@ -388,7 +391,9 @@ html, body {
   opacity: 0.6;
 }
 
-.file-tree-item span {
+.file-tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

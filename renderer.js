@@ -2510,12 +2510,14 @@ function renderFileTreeItems(items, container, depth) {
   items.forEach(item => {
     const el = document.createElement('div');
     el.style.setProperty('--depth', depth);
+    const labelTitle = item.path || item.name;
 
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
       const isSelected = !!selectedSidebarFolderPath && item.path === selectedSidebarFolderPath;
       el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}`;
       el.dataset.path = item.path;
+      el.title = labelTitle;
       el.innerHTML = `
         <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
           <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
@@ -2523,7 +2525,7 @@ function renderFileTreeItems(items, container, depth) {
         <svg class="folder-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75z"/>
         </svg>
-        <span>${escapeHtml(item.name)}</span>
+        <span class="file-tree-label" title="${escapeHtml(labelTitle)}">${escapeHtml(item.name)}</span>
       `;
       el.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -2574,12 +2576,12 @@ function renderFileTreeItems(items, container, depth) {
       if (item.path && isActiveSidebarFilePath(item.path, getActiveSidebarFilePath())) {
         el.classList.add('active');
       }
-      el.title = item.path || item.name;
+      el.title = labelTitle;
       el.innerHTML = `
         <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
           <path d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z"/>
         </svg>
-        <span>${escapeHtml(item.name)}</span>
+        <span class="file-tree-label" title="${escapeHtml(labelTitle)}">${escapeHtml(item.name)}</span>
       `;
       // All files are clickable, non-text just shown with muted style
       if (!item.isNew) {
@@ -2618,7 +2620,7 @@ function renderFileTreeItems(items, container, depth) {
           }
         });
         // Double-click to rename
-        el.querySelector('span').addEventListener('dblclick', (e) => {
+        el.querySelector('.file-tree-label').addEventListener('dblclick', (e) => {
           e.stopPropagation();
           startSidebarRename(el, item);
         });
@@ -2683,7 +2685,7 @@ function findItemByPath(items, targetPath) {
 // Rename file from sidebar
 function startSidebarRename(el, item) {
   el.classList.add('renaming');
-  const span = el.querySelector('span');
+  const span = el.querySelector('.file-tree-label');
   const oldName = item.name;
 
   // Create input element
@@ -2709,7 +2711,9 @@ function startSidebarRename(el, item) {
     if (!newName || newName === oldName) {
       // Cancel rename
       const newSpan = document.createElement('span');
+      newSpan.className = 'file-tree-label';
       newSpan.textContent = oldName;
+      newSpan.title = item.path || oldName;
       input.replaceWith(newSpan);
       el.classList.remove('renaming');
       // Re-attach dblclick handler
@@ -2729,6 +2733,7 @@ function startSidebarRename(el, item) {
       item.path = result.newPath;
       item.name = newName;
       el.dataset.path = result.newPath;
+      el.title = result.newPath;
 
       // Update any open tabs with this file
       for (const tab of tabs) {
@@ -2744,7 +2749,9 @@ function startSidebarRename(el, item) {
 
       // Update the span with new name
       const newSpan = document.createElement('span');
+      newSpan.className = 'file-tree-label';
       newSpan.textContent = newName;
+      newSpan.title = result.newPath;
       input.replaceWith(newSpan);
       el.classList.remove('renaming');
       // Re-attach dblclick handler
@@ -2756,7 +2763,9 @@ function startSidebarRename(el, item) {
       // Show error and revert
       alert(`Could not rename file: ${result.error}`);
       const newSpan = document.createElement('span');
+      newSpan.className = 'file-tree-label';
       newSpan.textContent = oldName;
+      newSpan.title = item.path || oldName;
       input.replaceWith(newSpan);
       el.classList.remove('renaming');
       // Re-attach dblclick handler
@@ -4672,7 +4681,7 @@ document.addEventListener('keydown', (e) => {
     sidebarToggle.click();
   }
 
-  // Escape handling: close overlays first, then revert edits if in edit mode
+  // Escape handling: close overlays first, then leave edit mode if the editor has focus
   if (e.key === 'Escape') {
     if (!commandPalette.classList.contains('hidden')) {
       e.preventDefault();
@@ -4690,7 +4699,7 @@ document.addEventListener('keydown', (e) => {
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab && tab.isEditing && editorContainer.contains(e.target)) {
       e.preventDefault();
-      revertChanges();
+      exitEditMode();
     }
   }
 
@@ -6053,6 +6062,38 @@ switchToTab = function(tabId) {
   }
 };
 
+function getEditModeScrollPercent(tab) {
+  if (!tab || !tab.isEditing) return 0;
+  if (tab.easyMDE) {
+    const scrollInfo = tab.easyMDE.codemirror.getScrollInfo();
+    return scrollInfo.top / Math.max(1, scrollInfo.height - scrollInfo.clientHeight);
+  }
+  const activeEditor = tab.editorEl || editor;
+  if (!activeEditor) return 0;
+  return activeEditor.scrollTop / Math.max(1, activeEditor.scrollHeight - activeEditor.clientHeight);
+}
+
+function exitEditMode({ scrollPercent } = {}) {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (!tab || !tab.isEditing) return;
+
+  const previewScrollPercent = typeof scrollPercent === 'number'
+    ? scrollPercent
+    : getEditModeScrollPercent(tab);
+
+  tab.isEditing = false;
+  tab.content = tab.easyMDE ? tab.easyMDE.value() : (tab.editorEl ? tab.editorEl.value : tab.content);
+  hideEditor();
+  renderContent(tab.content, tab.fileName);
+
+  setTimeout(() => {
+    const targetScroll = previewScrollPercent * (markdownBody.scrollHeight - markdownBody.clientHeight);
+    markdownBody.scrollTop = targetScroll;
+  }, 50);
+
+  updateTabUI(activeTabId);
+}
+
 toggleEditMode = function() {
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab) return;
@@ -6078,12 +6119,7 @@ toggleEditMode = function() {
   let scrollPercent = 0;
   if (tab.isEditing) {
     // Switching FROM edit mode - get editor scroll position
-    if (easyMDE) {
-      const scrollInfo = easyMDE.codemirror.getScrollInfo();
-      scrollPercent = scrollInfo.top / Math.max(1, scrollInfo.height - scrollInfo.clientHeight);
-    } else {
-      scrollPercent = editor.scrollTop / Math.max(1, editor.scrollHeight - editor.clientHeight);
-    }
+    scrollPercent = getEditModeScrollPercent(tab);
   } else {
     // Switching FROM preview mode - get preview scroll position
     scrollPercent = markdownBody.scrollTop / Math.max(1, markdownBody.scrollHeight - markdownBody.clientHeight);
@@ -6107,19 +6143,8 @@ toggleEditMode = function() {
       }
     }, 50);
   } else {
-    // Capture content
-    tab.content = easyMDE ? easyMDE.value() : editor.value;
-    hideEditor();
-    renderContent(tab.content, tab.fileName);
-
-    // Restore scroll position in preview after rendering
-    setTimeout(() => {
-      const targetScroll = scrollPercent * (markdownBody.scrollHeight - markdownBody.clientHeight);
-      markdownBody.scrollTop = targetScroll;
-    }, 50);
+    exitEditMode({ scrollPercent });
   }
-
-  updateTabUI(activeTabId);
 };
 
 saveFile = async function(options = {}) {
