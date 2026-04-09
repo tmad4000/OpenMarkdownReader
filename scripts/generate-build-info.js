@@ -29,11 +29,14 @@ try {
 const buildNumber = Math.max(gitCount, previousBuildNumber + 1);
 
 // Build channel: 'dev' for fast local install-dev builds, 'release' for
-// signed+notarized release builds, 'unknown' if not explicitly marked.
-// install-dev.sh sets OMR_BUILD_CHANNEL=dev before invoking this script;
-// the full release build script is expected to set it to 'release' in the
-// future. Until then, an unset channel defaults to undefined (not marked).
-const channel = process.env.OMR_BUILD_CHANNEL || undefined;
+// signed+notarized release builds. install-dev.sh sets OMR_BUILD_CHANNEL=dev;
+// the full release build should set it to 'release'. Unset = undefined.
+const VALID_CHANNELS = new Set(['dev', 'release']);
+const rawChannel = process.env.OMR_BUILD_CHANNEL || undefined;
+if (rawChannel && !VALID_CHANNELS.has(rawChannel)) {
+  console.warn(`⚠ Ignoring unknown OMR_BUILD_CHANNEL="${rawChannel}" (expected: ${[...VALID_CHANNELS].join(', ')})`);
+}
+const channel = rawChannel && VALID_CHANNELS.has(rawChannel) ? rawChannel : undefined;
 const isDev = channel === 'dev';
 
 const buildInfo = {

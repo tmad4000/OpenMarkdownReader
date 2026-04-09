@@ -36,16 +36,28 @@ fi
 echo "→ Quitting any running instance..."
 osascript -e 'tell application "OpenMarkdownReader" to quit' 2>/dev/null || true
 sleep 1
+# Graceful SIGTERM first, then SIGKILL only if still alive after 2s
+pkill -f "OpenMarkdownReader.app/Contents" 2>/dev/null || true
+sleep 2
 pkill -9 -f "OpenMarkdownReader.app/Contents" 2>/dev/null || true
 sleep 1
 
-echo "→ Moving previous install to Trash (if any)..."
+# Copy new build to a staging path first, then atomically swap.
+# This prevents the "no installed app" state if ditto fails mid-copy.
+STAGING="/Applications/OpenMarkdownReader-staging-$$.app"
+
+echo "→ Copying $BUILT_APP → staging..."
+if ! ditto "$BUILT_APP" "$STAGING"; then
+  echo "✗ ditto failed — existing install untouched" >&2
+  rm -rf "$STAGING" 2>/dev/null || true
+  exit 1
+fi
+
+echo "→ Swapping into /Applications/OpenMarkdownReader.app..."
 if [ -d /Applications/OpenMarkdownReader.app ]; then
   mv /Applications/OpenMarkdownReader.app "$HOME/.Trash/OpenMarkdownReader-prev-$(date +%s).app"
 fi
-
-echo "→ Installing $BUILT_APP → /Applications/OpenMarkdownReader.app..."
-ditto "$BUILT_APP" /Applications/OpenMarkdownReader.app
+mv "$STAGING" /Applications/OpenMarkdownReader.app
 
 VER=$(defaults read /Applications/OpenMarkdownReader.app/Contents/Info CFBundleShortVersionString)
 # Build number lives in build-info.json, not CFBundleVersion (electron-builder
