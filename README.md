@@ -1,5 +1,7 @@
 # OpenMarkdownReader
 
+**Homepage:** [wikihub.md/openmarkdownreader](http://wikihub.md/openmarkdownreader)
+
 A beautiful, open-source Markdown file reader and editor for Mac built with Electron.
 
 ## Features
