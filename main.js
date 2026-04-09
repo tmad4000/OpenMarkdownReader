@@ -167,7 +167,8 @@ try {
   } catch {}
 }
 
-log.info(`OpenMarkdownReader starting — v${buildInfo.version} (build ${buildInfo.buildNumber}, ${buildInfo.gitHash})`);
+const devTag = buildInfo.isDev ? ' [DEV]' : (buildInfo.channel ? ` [${buildInfo.channel}]` : '');
+log.info(`OpenMarkdownReader starting — v${buildInfo.version} (build ${buildInfo.buildNumber}, ${buildInfo.gitHash})${devTag}`);
 log.info(`Platform: ${process.platform} ${os.release()} | Electron: ${process.versions.electron} | Node: ${process.versions.node} | Arch: ${process.arch}`);
 
 // Detect if running as Mac App Store (sandboxed) build
@@ -2258,6 +2259,10 @@ function registerAgentCommands() {
     state.app = {
       version: buildInfo.version,
       buildNumber: buildInfo.buildNumber,
+      gitHash: buildInfo.gitHash,
+      buildDate: buildInfo.buildDate,
+      channel: buildInfo.channel,
+      isDev: buildInfo.isDev === true,
       pid: process.pid,
       isPackaged: app.isPackaged
     };

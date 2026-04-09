@@ -18,8 +18,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-echo "→ Generating build info..."
-node scripts/generate-build-info.js
+echo "→ Generating build info (channel=dev)..."
+OMR_BUILD_CHANNEL=dev node scripts/generate-build-info.js
 
 echo "→ Building (arm64 dir target, skip notarization)..."
 # --mac dir: stop after signing, skip DMG + zip packaging (~1 min savings)
@@ -48,11 +48,13 @@ echo "→ Installing $BUILT_APP → /Applications/OpenMarkdownReader.app..."
 ditto "$BUILT_APP" /Applications/OpenMarkdownReader.app
 
 VER=$(defaults read /Applications/OpenMarkdownReader.app/Contents/Info CFBundleShortVersionString)
-BUILD=$(defaults read /Applications/OpenMarkdownReader.app/Contents/Info CFBundleVersion)
+# Build number lives in build-info.json, not CFBundleVersion (electron-builder
+# doesn't thread it through Info.plist by default).
+BUILD=$(python3 -c "import json; print(json.load(open('build-info.json'))['buildNumber'])" 2>/dev/null || echo "?")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "?")
 
 echo ""
-echo "✓ Installed OpenMarkdownReader v${VER} build ${BUILD} (commit ${COMMIT})"
+echo "✓ Installed OpenMarkdownReader v${VER} [DEV build ${BUILD}] (commit ${COMMIT})"
 echo "  → /Applications/OpenMarkdownReader.app"
 echo ""
 echo "Double-click any .md file to open it with the new build."

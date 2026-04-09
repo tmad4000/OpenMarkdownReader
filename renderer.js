@@ -6792,22 +6792,35 @@ window.electronAPI.onNavForward?.(() => navGoForward());
   });
 })();
 
-// Dev badge — visible only in unpackaged dev builds. Tooltip surfaces the
-// exact build identity (version, build number, git hash, build date) so
-// "what's running right now?" is always one hover away.
+// Dev/build badge — always visible. Shape depends on whether this is a
+// dev build (unpackaged `npm start`, or packaged via `npm run install-dev`)
+// versus a proper release build. Tooltip surfaces the exact build identity
+// (version, build number, git hash, build date) so "what's running right now?"
+// is always one hover away.
 (async () => {
   const info = await window.electronAPI.getBuildInfo?.();
   if (!info) return;
   const badge = document.getElementById('dev-badge');
   if (!badge) return;
 
-  // Visible label: DEV+build for dev, just b<n> for packaged.
-  // Either way the build number is visible — that's the whole point of this badge.
-  if (info.isPackaged) {
-    badge.textContent = info.buildNumber ? `b${info.buildNumber}` : `v${info.version || ''}`;
-    badge.classList.add('packaged');
+  // A build is "dev" if it's unpackaged (npm start) OR if the build script
+  // explicitly set channel=dev (install-dev.sh). Release builds leave
+  // isDev=false and get the subtle gray pill; dev builds get the loud
+  // orange one so it's never ambiguous what you're looking at.
+  const isDevBuild = !info.isPackaged || info.isDev === true;
+
+  // Visible label: "DEV v1.0.5 b147" for dev, "v1.0.5 b147" for release.
+  // Always include the version so users / bug reporters don't have to
+  // hover to find it.
+  const versionPart = info.version ? `v${info.version}` : '';
+  const buildPart = info.buildNumber ? `b${info.buildNumber}` : '';
+  const labelCore = [versionPart, buildPart].filter(Boolean).join(' ');
+  if (isDevBuild) {
+    badge.textContent = labelCore ? `DEV ${labelCore}` : 'DEV';
+    badge.classList.remove('packaged');
   } else {
-    badge.textContent = info.buildNumber ? `DEV b${info.buildNumber}` : 'DEV';
+    badge.textContent = labelCore || 'release';
+    badge.classList.add('packaged');
   }
 
   // Tooltip: full details
@@ -6822,7 +6835,10 @@ window.electronAPI.onNavForward?.(() => navGoForward());
   if (info.buildDate) {
     parts.push(info.buildDate);
   }
-  if (!info.isPackaged) parts.unshift('DEV build');
+  if (isDevBuild) {
+    const reason = !info.isPackaged ? 'unpackaged' : 'install-dev';
+    parts.unshift(`DEV build (${reason})`);
+  }
   badge.title = parts.join(' • ');
   badge.classList.remove('hidden');
 })();
