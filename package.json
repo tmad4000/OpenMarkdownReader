@@ -11,7 +11,8 @@
     "build:mac": "node scripts/generate-build-info.js && electron-builder --mac",
     "build:dmg": "node scripts/generate-build-info.js && electron-builder --mac dmg",
     "build:mas": "node scripts/generate-build-info.js && electron-builder --mac mas",
-    "install-dev": "./scripts/install-dev.sh"
+    "install-dev": "./scripts/install-dev.sh",
+    "install-prod": "./scripts/install-prod.sh"
   },
   "keywords": [
     "markdown",
