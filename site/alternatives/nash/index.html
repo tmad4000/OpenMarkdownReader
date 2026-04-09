@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Nash concept for OpenMarkdownReader: a bright, grid-driven homepage that positions the app as a file-native markdown reader with auto-save and Obsidian-compatible workflows.">
+  <meta name="theme-color" content="#f4f0e8">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <title>OpenMarkdownReader | Nash concept</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="sheet">
+    <div class="paper-grid" aria-hidden="true"></div>
+    <div class="margin-mark margin-mark-left" aria-hidden="true"></div>
+    <div class="margin-mark margin-mark-right" aria-hidden="true"></div>
+
+    <header class="masthead">
+      <a class="wordmark" href="#top">
+        <span class="wordmark-kicker">Nash concept</span>
+        <span class="wordmark-title">OpenMarkdownReader</span>
+      </a>
+
+      <nav class="mastnav" aria-label="Sections">
+        <a href="#value">Value</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#compare">Compare</a>
+        <a href="#proof">Proof</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">File-native markdown reader for Mac</p>
+          <h1>Open the file you already have. Keep the notes where they belong.</h1>
+          <p class="lede">
+            This concept positions OpenMarkdownReader as the practical answer for people who want
+            Obsidian-like comfort, but do not want a vault workflow to get in the way of a plain folder
+            full of markdown or text files.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button button-primary" href="#workflow">See the workflow</a>
+            <a class="button button-secondary" href="#compare">See the positioning</a>
+          </div>
+
+          <div class="hero-badges" aria-label="Short differentiators">
+            <span>Open arbitrary files</span>
+            <span>Auto-save friendly</span>
+            <span>Obsidian-compatible wikilinks</span>
+            <span>Fast preview/edit toggle</span>
+          </div>
+        </div>
+
+        <aside class="hero-board" aria-label="Product board">
+          <div class="hero-panel hero-panel-main">
+            <span class="panel-label">Principle</span>
+            <strong>Markdown, but with files instead of ceremony.</strong>
+            <p>
+              The app is for people who already use folders, git, Spotlight, and the filesystem as the source
+              of truth.
+            </p>
+          </div>
+
+          <div class="hero-diagram">
+            <div class="diagram-column">
+              <span>Vault-first</span>
+              <div class="diagram-box muted">Import</div>
+              <div class="diagram-box muted">Structure</div>
+              <div class="diagram-box muted">Lock-in</div>
+            </div>
+            <div class="diagram-arrow">→</div>
+            <div class="diagram-column">
+              <span>File-native</span>
+              <div class="diagram-box active">Open</div>
+              <div class="diagram-box active">Edit</div>
+              <div class="diagram-box active">Save</div>
+            </div>
+          </div>
+
+          <figure class="screenshot">
+            <img src="../../../screenshots/app-OpenMarkdownReader-OpenMarkdownReader-12.png" alt="OpenMarkdownReader start screen with recent files and new file actions">
+            <figcaption>Starts with files, not a library import flow.</figcaption>
+          </figure>
+        </aside>
+      </section>
+
+      <section class="value" id="value">
+        <div class="section-kicker">
+          <span>01</span>
+          <h2>What the product promises</h2>
+        </div>
+
+        <div class="value-grid">
+          <article class="value-card">
+            <h3>Open arbitrary files.</h3>
+            <p>
+              .md, .markdown, .txt, and whatever else belongs in a folder you already own. No mandatory vault
+              model. No rehoming notes just to read them.
+            </p>
+          </article>
+
+          <article class="value-card">
+            <h3>Stay local-first.</h3>
+            <p>
+              The whole premise is that the filesystem is the product boundary. That keeps git, backup tools,
+              and file watchers useful.
+            </p>
+          </article>
+
+          <article class="value-card">
+            <h3>Auto-save can be the easy path.</h3>
+            <p>
+              Low-friction editing matters more than more chrome. The app is designed so the save loop can be
+              near-invisible when you want it that way.
+            </p>
+          </article>
+
+          <article class="value-card">
+            <h3>Obsidian-compatible where it counts.</h3>
+            <p>
+              Wikilinks fit naturally, so users get familiar connective tissue without inheriting a vault-only
+              worldview.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="workflow" id="workflow">
+        <div class="section-kicker">
+          <span>02</span>
+          <h2>A calm three-step workflow</h2>
+        </div>
+
+        <div class="workflow-rail">
+          <article class="workflow-step">
+            <div class="step-number">1</div>
+            <div>
+              <h3>Open a file or folder.</h3>
+              <p>Browse a normal project tree or jump straight into a note from disk.</p>
+            </div>
+          </article>
+
+          <article class="workflow-step">
+            <div class="step-number">2</div>
+            <div>
+              <h3>Read, edit, or switch modes.</h3>
+              <p>Preview and edit sit close together, so moving between them does not feel like a context shift.</p>
+            </div>
+          </article>
+
+          <article class="workflow-step">
+            <div class="step-number">3</div>
+            <div>
+              <h3>Keep moving.</h3>
+              <p>Multi-tab work, sidebar navigation, and file-level persistence keep the note stack honest.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="split" id="compare">
+        <div class="section-kicker">
+          <span>03</span>
+          <h2>Positioning against vault-first apps</h2>
+        </div>
+
+        <div class="split-grid">
+          <article class="compare-card compare-card-strong">
+            <span class="label">OpenMarkdownReader</span>
+            <h3>Feels like a notebook app for people who already live in files.</h3>
+            <p>
+              The distinct message is not “we are another note graph.” It is “use your existing markdown,
+              keep your filesystem workflow, and still get a polished reader/editor.”
+            </p>
+          </article>
+
+          <article class="compare-card">
+            <span class="label">Vault-first apps</span>
+            <h3>Great when you want a managed world.</h3>
+            <p>
+              They are useful, but they often assume import, structure, or a new organizing model before you
+              can get to the actual document.
+            </p>
+          </article>
+        </div>
+
+        <div class="mini-table">
+          <div class="mini-row mini-head">
+            <span>Capability</span>
+            <span>OpenMarkdownReader</span>
+            <span>Vault-first apps</span>
+          </div>
+          <div class="mini-row"><span>Open arbitrary files</span><span>Yes</span><span>Often no</span></div>
+          <div class="mini-row"><span>Auto-save friendly</span><span>Yes</span><span>Varies</span></div>
+          <div class="mini-row"><span>Obsidian-style wikilinks</span><span>Yes</span><span>Yes</span></div>
+          <div class="mini-row"><span>Needs import ceremony</span><span>No</span><span>Often yes</span></div>
+        </div>
+      </section>
+
+      <section class="proof" id="proof">
+        <div class="section-kicker">
+          <span>04</span>
+          <h2>Why this layout is different</h2>
+        </div>
+
+        <div class="proof-grid">
+          <article class="proof-card">
+            <span class="proof-tag">Typography</span>
+            <p>Large serif headlines over a plain paper field create a more editorial, printed feel.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-tag">Structure</span>
+            <p>Cards, rails, and diagram blocks make the page read like a product spec sheet, not a splash page.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-tag">Tone</span>
+            <p>The copy is more practical and direct, aimed at people choosing a tool for existing files.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-tag">Visual rhythm</span>
+            <p>Horizontal rails and boxed callouts create a more technical, field-manual composition.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="footer-note">
+        <p>
+          OpenMarkdownReader is the answer for users who want markdown convenience without giving up the
+          filesystem. This Nash concept leans into that promise with a lighter, more printed, more diagram-driven
+          presentation than the primary homepage.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

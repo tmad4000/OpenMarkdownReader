@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenMarkdownReader: A Mac app for reading and editing markdown files without vault lock-in. Open any file, edit quickly, keep your notes where they live.">
+  <meta name="theme-color" content="#faf8f5">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <title>OpenMarkdownReader — Your files, your way</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="logo" href="#top">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#2d5a45"/>
+          <path d="M8 12h16M8 16h12M8 20h14" stroke="#faf8f5" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>OpenMarkdownReader</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="#why">Why</a>
+        <a href="#features">Features</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#download" class="nav-cta">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <div class="hero-content">
+          <p class="hero-label">A Mac app for markdown files</p>
+          <h1>Open any file.<br>Edit it fast.<br>Leave it where it lives.</h1>
+          <p class="hero-summary">
+            OpenMarkdownReader gives you Obsidian-style comfort without requiring a vault.
+            Open loose <code>.md</code> files, scratch notes, or entire folders—no import ceremony,
+            no lock-in, just your files rendered beautifully.
+          </p>
+          <div class="hero-actions">
+            <a href="#download" class="btn btn-primary">Download for Mac</a>
+            <a href="#features" class="btn btn-secondary">See features</a>
+          </div>
+        </div>
+        <figure class="hero-figure">
+          <img
+            src="../../../screenshots/app-OpenMarkdownReader-OpenMarkdownReader-12.png"
+            alt="OpenMarkdownReader start screen showing recent files and quick actions"
+            loading="eager"
+          >
+          <figcaption>Start from your recent files, or open anything on disk.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="principles" id="why">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-number">01</span>
+          <h2>Why another markdown app?</h2>
+          <p>
+            Most markdown apps want you to adopt their system. We think you already have one—it's
+            called the filesystem. OpenMarkdownReader meets you where your files already are.
+          </p>
+        </header>
+
+        <div class="principles-grid">
+          <article class="principle">
+            <div class="principle-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <h3>Open arbitrary files</h3>
+            <p>
+              No vault required. Open any <code>.md</code>, <code>.txt</code>, or <code>.markdown</code>
+              file from anywhere on your Mac. Your Downloads folder, a git repo, a shared drive—it all works.
+            </p>
+          </article>
+
+          <article class="principle">
+            <div class="principle-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </div>
+            <h3>Local-first, always</h3>
+            <p>
+              Your notes stay on disk where git, Spotlight, backup tools, and your own scripts can
+              reach them. No sync service required, no cloud dependency.
+            </p>
+          </article>
+
+          <article class="principle">
+            <div class="principle-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+            </div>
+            <h3>Low-friction editing</h3>
+            <p>
+              Toggle between preview and edit with <kbd>⌘E</kbd>. Auto-save keeps your changes safe.
+              No ceremony, no confirmation dialogs—just write.
+            </p>
+          </article>
+
+          <article class="principle">
+            <div class="principle-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                <line x1="9" y1="9" x2="9.01" y2="9"/>
+                <line x1="15" y1="9" x2="15.01" y2="9"/>
+              </svg>
+            </div>
+            <h3>Obsidian-compatible</h3>
+            <p>
+              Wikilinks work naturally, so your [[connections]] stay intact. But you're never forced
+              into a vault-first workflow just to read a single note.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="showcase" id="features">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-number">02</span>
+          <h2>Built for how you actually work</h2>
+          <p>
+            A focused set of features that make reading and editing markdown feel effortless,
+            without the bloat of a full knowledge management system.
+          </p>
+        </header>
+
+        <div class="showcase-grid">
+          <figure class="showcase-item showcase-item-large">
+            <img
+              src="../../../screenshots/appstore/ss1.png"
+              alt="OpenMarkdownReader with file sidebar, tabs, and markdown preview"
+              loading="lazy"
+            >
+            <figcaption>
+              <strong>Native Mac experience</strong>
+              <span>Traffic lights, dark mode, and a file sidebar that feels like home.</span>
+            </figcaption>
+          </figure>
+
+          <div class="feature-list">
+            <article class="feature">
+              <h3>Multi-tab, multi-window</h3>
+              <p>Work on several files at once. Each tab remembers scroll position and edit state.</p>
+            </article>
+            <article class="feature">
+              <h3>GitHub-flavored markdown</h3>
+              <p>Tables, task lists, strikethrough, code blocks with syntax highlighting—it all renders.</p>
+            </article>
+            <article class="feature">
+              <h3>Folder navigation</h3>
+              <p>Open a folder and browse its contents in the sidebar. Jump between notes without leaving the app.</p>
+            </article>
+            <article class="feature">
+              <h3>Drag and drop</h3>
+              <p>Drop a file onto the window to open it. Simple as that.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow" id="workflow">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-number">03</span>
+          <h2>A calm, three-step workflow</h2>
+        </header>
+
+        <ol class="workflow-steps">
+          <li class="workflow-step">
+            <span class="step-num">1</span>
+            <div class="step-content">
+              <h3>Open</h3>
+              <p>
+                Press <kbd>⌘O</kbd> or drag a file onto the window. Open a single note or an entire folder.
+                Your recent files are always one click away.
+              </p>
+            </div>
+          </li>
+          <li class="workflow-step">
+            <span class="step-num">2</span>
+            <div class="step-content">
+              <h3>Read or edit</h3>
+              <p>
+                Preview mode shows clean, styled markdown. Press <kbd>⌘E</kbd> to switch to edit mode.
+                Changes auto-save as you type.
+              </p>
+            </div>
+          </li>
+          <li class="workflow-step">
+            <span class="step-num">3</span>
+            <div class="step-content">
+              <h3>Move on</h3>
+              <p>
+                Close the app. Your file is exactly where you left it—on disk, ready for git,
+                Spotlight, or whatever comes next.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="comparison">
+      <div class="container">
+        <header class="section-header section-header-centered">
+          <h2>The right tool for loose files</h2>
+          <p>
+            If you want a full knowledge graph with plugins, backlinks, and a managed vault,
+            Obsidian is excellent. If you want to open a markdown file and start reading,
+            OpenMarkdownReader is faster.
+          </p>
+        </header>
+
+        <div class="comparison-table-wrap">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>OpenMarkdownReader</th>
+                <th>Vault-first apps</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Open arbitrary files</td>
+                <td><span class="check">Yes</span></td>
+                <td><span class="neutral">Often no</span></td>
+              </tr>
+              <tr>
+                <td>Local-first by default</td>
+                <td><span class="check">Yes</span></td>
+                <td><span class="neutral">Sometimes</span></td>
+              </tr>
+              <tr>
+                <td>Fast preview/edit toggle</td>
+                <td><span class="check">Yes</span></td>
+                <td><span class="check">Usually</span></td>
+              </tr>
+              <tr>
+                <td>Wikilink support</td>
+                <td><span class="check">Yes</span></td>
+                <td><span class="check">Yes</span></td>
+              </tr>
+              <tr>
+                <td>Requires vault/import</td>
+                <td><span class="check">No</span></td>
+                <td><span class="neutral">Often yes</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta" id="download">
+      <div class="container">
+        <div class="cta-content">
+          <h2>Ready to try it?</h2>
+          <p>
+            OpenMarkdownReader is free, open-source, and built for Mac.
+            Download it, open a file, and see how simple markdown can be.
+          </p>
+          <div class="cta-actions">
+            <a href="https://github.com/tmad4000/markdown-reader/releases" class="btn btn-primary btn-large">
+              Download for Mac
+            </a>
+            <a href="https://github.com/tmad4000/markdown-reader" class="btn btn-secondary btn-large">
+              View on GitHub
+            </a>
+          </div>
+          <p class="cta-note">
+            Requires macOS. Universal binary for Intel and Apple Silicon.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>
+        <strong>OpenMarkdownReader</strong> — Open-source markdown reader for Mac.
+        <a href="https://github.com/tmad4000/markdown-reader">GitHub</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenMarkdownReader is a Mac markdown reader and editor built for local files, fast preview/edit loops, and Obsidian-compatible workflows without the vault lock-in.">
+  <meta name="theme-color" content="#0d1117">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <title>OpenMarkdownReader</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <div class="ambient ambient-a" aria-hidden="true"></div>
+    <div class="ambient ambient-b" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="OpenMarkdownReader home">
+        <span class="brand-mark">OMR</span>
+        <span class="brand-copy">
+          <strong>OpenMarkdownReader</strong>
+          <span>Markdown, without the vault.</span>
+        </span>
+      </a>
+
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#proof">Proof</a>
+        <a href="#compare">Compare</a>
+        <a href="#screenshots">Screenshots</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Mac app for files on disk</p>
+          <h1>Open any markdown file. Edit it quickly. Leave the file where it lives.</h1>
+          <p class="lede">
+            OpenMarkdownReader is for people who want the Obsidian comfort zone without the vault requirement.
+            It opens arbitrary <code>.md</code> and text files, keeps the preview/editor loop fast, and stays
+            local-first by design.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button button-primary" href="#screenshots">See the app</a>
+            <a class="button button-secondary" href="#compare">Why not just Obsidian?</a>
+          </div>
+
+          <ul class="signal-list" aria-label="Key product signals">
+            <li>Open loose files, folders, and notes from anywhere on disk</li>
+            <li>Low-friction editing with auto-save and preview toggling</li>
+            <li>Obsidian-style wikilinks, without Obsidian-style lock-in</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual reveal">
+          <figure class="screenshot hero-shot">
+            <img src="../screenshots/app-OpenMarkdownReader-OpenMarkdownReader-12.png" alt="OpenMarkdownReader app showing the start screen with recent files and new file buttons">
+            <figcaption>
+              The app starts like a file reader, not a content database.
+            </figcaption>
+          </figure>
+
+          <div class="hero-note">
+            <div class="hero-note-kicker">What stands out</div>
+            <p>
+              Preview and edit are one toggle away. The sidebar stays close, the content stays local, and the
+              app is built for people who already have a folder full of markdown.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof-strip reveal" id="proof" aria-label="Product proof points">
+        <article>
+          <span>1</span>
+          <strong>Open arbitrary files</strong>
+          <p>No required vault, no import ceremony, no forced project shape.</p>
+        </article>
+        <article>
+          <span>2</span>
+          <strong>Fast preview/edit loop</strong>
+          <p>Cmd+E toggles the mode you need without making you think about the editor stack.</p>
+        </article>
+        <article>
+          <span>3</span>
+          <strong>Local-first</strong>
+          <p>Your markdown stays on disk, where file watchers, git, and other tools can see it.</p>
+        </article>
+        <article>
+          <span>4</span>
+          <strong>Obsidian-adjacent, not Obsidian-bound</strong>
+          <p>Wikilinks fit in naturally, but the app still works on plain files in plain folders.</p>
+        </article>
+      </section>
+
+      <section class="feature-grid" id="features">
+        <div class="section-heading reveal">
+          <p class="eyebrow">What it is</p>
+          <h2>A reader and editor built around files, not a database.</h2>
+          <p>
+            The goal is simple: keep the markdown workflow familiar, fast, and low-friction while preserving
+            the freedom to open whatever is already on your Mac.
+          </p>
+        </div>
+
+        <div class="cards">
+          <article class="card reveal">
+            <p class="card-label">Open anything</p>
+            <h3>Loose files, folders, text notes.</h3>
+            <p>
+              The app is built for real files on disk. That means existing notes, ad hoc docs, scratch files,
+              and the long tail of markdown that never lived in a vault.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <p class="card-label">Low friction editing</p>
+            <h3>Auto-save when you want it, no ceremony when you do not.</h3>
+            <p>
+              The workflow is designed around quick edits, preview toggles, and keeping your changes in sync
+              without turning every note into a full project.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <p class="card-label">Wikilink support</p>
+            <h3>Feels familiar to Obsidian users.</h3>
+            <p>
+              Parser-level wikilinks make notes feel connected, while the underlying model stays simple:
+              files, folders, and markdown.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <p class="card-label">Fast browsing</p>
+            <h3>Sidebar navigation that stays out of the way.</h3>
+            <p>
+              File-tree navigation, multi-tab workflows, and a readable preview pane keep large note sets usable
+              without a lot of UI ceremony.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="manifesto reveal">
+        <blockquote>
+          “Obsidian, but you can open arbitrary files and not be forced into a vault-first workflow.”
+        </blockquote>
+        <p>
+          That is the positioning in one sentence. The rest of the homepage just explains why that matters:
+          less friction, fewer imports, and a cleaner fit for the markdown files people already have.
+        </p>
+      </section>
+
+      <section class="compare reveal" id="compare">
+        <div class="section-heading">
+          <p class="eyebrow">Positioning</p>
+          <h2>Built for people who want notes, not a ceremony.</h2>
+        </div>
+
+        <div class="comparison-wrap">
+          <table class="comparison">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>OpenMarkdownReader</th>
+                <th>Vault-first apps</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Open arbitrary files</td>
+                <td>Yes</td>
+                <td>Often no</td>
+              </tr>
+              <tr>
+                <td>Local-first by default</td>
+                <td>Yes</td>
+                <td>Sometimes</td>
+              </tr>
+              <tr>
+                <td>Fast preview/edit toggle</td>
+                <td>Yes</td>
+                <td>Usually yes</td>
+              </tr>
+              <tr>
+                <td>Wikilink-compatible</td>
+                <td>Yes</td>
+                <td>Yes</td>
+              </tr>
+              <tr>
+                <td>Requires import ceremony</td>
+                <td>No</td>
+                <td>Often yes</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="comparison-note">
+            The goal is not to out-Obsidian Obsidian. It is to remove the parts of the experience that get in
+            the way when you already have a folder of markdown and just want to read or edit it.
+          </p>
+        </div>
+      </section>
+
+      <section class="gallery" id="screenshots">
+        <div class="section-heading reveal">
+          <p class="eyebrow">Screenshots</p>
+          <h2>What the app looks like in practice.</h2>
+        </div>
+
+        <div class="gallery-grid">
+          <figure class="screenshot screenshot-large reveal">
+            <img src="../screenshots/appstore/ss1.png" alt="OpenMarkdownReader window with file sidebar, editor area, and markdown preview in dark mode">
+            <figcaption>Native Mac shell, file sidebar, and a preview-focused reading surface.</figcaption>
+          </figure>
+
+          <figure class="screenshot screenshot-card reveal">
+            <img src="../screenshots/app-OpenMarkdownReader-OpenMarkdownReader-12.png" alt="OpenMarkdownReader start screen with open and new file controls">
+            <figcaption>Start from a file, a folder, or a blank note.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <footer class="footer reveal">
+        <div>
+          <strong>OpenMarkdownReader</strong>
+          <p>Electron on macOS. Markdown files on disk. No required vault.</p>
+        </div>
+        <a href="../README.md">Project README</a>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
