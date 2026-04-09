@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 const path = require('path');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Platform
+  getPlatform: () => ipcRenderer.invoke('get-platform'),
+
   // File operations
   onFileLoaded: (callback) => ipcRenderer.on('file-loaded', (event, data) => callback(data)),
   onNewTab: (callback) => ipcRenderer.on('new-tab', () => callback()),
