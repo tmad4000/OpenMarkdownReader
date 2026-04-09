@@ -8,10 +8,22 @@ npm start
 
 ## Building and Installing
 
-After making changes, build and install to Applications:
+### Fast local dev install (no notarization)
+
+For iterating on local changes — builds an arm64-only, signed-but-not-notarized `.app` and installs it over `/Applications/OpenMarkdownReader.app`. Takes ~90 seconds vs ~5+ minutes for the full release build. Bundle ID is unchanged so the system default `.md` handler keeps working.
 
 ```bash
-# Build the Mac app (universal binary for Intel + Apple Silicon)
+npm run install-dev
+```
+
+First launch after install may show a Gatekeeper "unknown developer" prompt (unsigned quarantine bit); click Open Anyway and it's trusted forever.
+
+### Full release build (universal, notarized)
+
+For releases that go up on GitHub:
+
+```bash
+# Requires APPLE_API_KEY env vars (see memory/ for notarization setup)
 npm run build:mac
 
 # Install to Applications (ditto preserves code signatures; cp -R breaks them!)
