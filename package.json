@@ -157,6 +157,12 @@
         "mimeType": "application/json"
       },
       {
+        "ext": "jsonl",
+        "name": "JSON Lines Document",
+        "role": "Viewer",
+        "mimeType": "application/jsonl"
+      },
+      {
         "ext": "yaml",
         "name": "YAML Document",
         "role": "Viewer",
