@@ -3415,6 +3415,14 @@ customWidthInput.addEventListener('keydown', (e) => {
 window.electronAPI.onShowCustomWidthDialog(showCustomWidthDialog);
 
 // Listen for refresh file (Cmd+R)
+// Reveal active file's parent folder in Finder
+window.electronAPI.onRevealActiveFileInFinder?.(() => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.filePath) {
+    window.electronAPI.revealInFinder(tab.filePath);
+  }
+});
+
 window.electronAPI.onRefreshFile(async () => {
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab || !tab.filePath) return;
@@ -4763,6 +4771,29 @@ const builtInCommands = [
     description: 'Choose where daily notes are saved',
     icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
     action: () => window.electronAPI.getDailyNotesFolder()
+  },
+  {
+    name: 'Reveal in Finder',
+    description: 'Show the active file in its parent folder (⇧⌘R)',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+    action: () => {
+      const tab = tabs.find(t => t.id === activeTabId);
+      if (tab && tab.filePath) {
+        window.electronAPI.revealInFinder(tab.filePath);
+      }
+    }
+  },
+  {
+    name: 'Open Containing Folder',
+    description: 'Open the parent folder of the active file',
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="13" x2="15" y2="13"></line></svg>',
+    action: () => {
+      const tab = tabs.find(t => t.id === activeTabId);
+      if (tab && tab.filePath) {
+        const dir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
+        if (dir) window.electronAPI.openInFinder(dir);
+      }
+    }
   },
   {
     name: 'Sidebar: New File in Selected Folder',

@@ -1217,6 +1217,15 @@ function setupMenu() {
           }
         },
         {
+          label: 'Reveal in Finder',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('reveal-active-file-in-finder');
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Save',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
