@@ -3225,10 +3225,10 @@ mark.find-match.active {
   background: rgba(255, 213, 0, 0.5);
 }
 
-/* Terminal View Mode */
+/* Terminal View Mode — follows the app theme, not hardcoded dark.
+   Uses CSS variables so light/dark/system all work correctly. */
 .terminal-view #content {
-  background: #1e1e1e;
-  max-width: none !important;
+  background: var(--bg-color);
 }
 
 .terminal-view .markdown-body {
@@ -3237,8 +3237,8 @@ mark.find-match.active {
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
-  color: #d4d4d4;
-  background: #1e1e1e;
+  color: var(--text-color);
+  background: var(--bg-color);
   padding: 20px;
   border-radius: 0;
 }
@@ -3273,7 +3273,7 @@ mark.find-match.active {
 }
 
 .terminal-view .markdown-body a {
-  color: #569cd6;
+  color: var(--link-color);
 }
 
 .terminal-view .markdown-body blockquote {
@@ -3301,7 +3301,7 @@ mark.find-match.active {
 
 .terminal-view .markdown-body hr::before {
   content: '────────────────────────────────────────';
-  color: #6a6a6a;
+  color: var(--text-secondary);
 }
 
 .terminal-view .markdown-body table {
@@ -3311,7 +3311,7 @@ mark.find-match.active {
 
 .terminal-view .markdown-body table th,
 .terminal-view .markdown-body table td {
-  border: 1px solid #6a6a6a;
+  border: 1px solid var(--border-color);
   padding: 4px 8px;
 }
 
@@ -3321,8 +3321,8 @@ mark.find-match.active {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--code-bg);
+  color: var(--text-color);
   border-radius: 4px;
   font-size: 11px;
   font-family: var(--mono-font, monospace);
@@ -3332,12 +3332,8 @@ mark.find-match.active {
   display: flex;
 }
 
-/* Light theme terminal option (if user prefers) */
-[data-theme="light"].terminal-view #content,
-[data-theme="light"].terminal-view .markdown-body {
-  background: #1e1e1e;
-  color: #d4d4d4;
-}
+/* Light/dark overrides are no longer needed — terminal-view now uses
+   CSS variables that follow the theme automatically. */
 
 /* Chat View Mode (layered on terminal view) */
 .chat-view .markdown-body {
@@ -3347,7 +3343,7 @@ mark.find-match.active {
 .chat-message {
   padding: 12px 16px;
   margin: 0;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .chat-message:last-child {
@@ -3372,7 +3368,7 @@ mark.find-match.active {
 }
 
 .chat-message-timestamp {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: normal;
   text-transform: none;
@@ -3385,9 +3381,9 @@ mark.find-match.active {
   line-height: 1.6;
 }
 
-/* Human messages */
+/* Human messages — subtle blue tint */
 .chat-message.human {
-  background: #1a2332;
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .chat-message.human .chat-message-role {
@@ -3397,7 +3393,7 @@ mark.find-match.active {
 
 /* Assistant messages */
 .chat-message.assistant {
-  background: #1e1e1e;
+  background: var(--bg-color);
 }
 
 .chat-message.assistant .chat-message-role {
@@ -3408,19 +3404,19 @@ mark.find-match.active {
 /* System/tool messages */
 .chat-message.system,
 .chat-message.tool {
-  background: #252525;
-  border-left: 3px solid #666;
+  background: var(--code-bg);
+  border-left: 3px solid var(--text-secondary);
 }
 
 .chat-message.system .chat-message-role,
 .chat-message.tool .chat-message-role {
-  background: #525252;
-  color: #d4d4d4;
+  background: var(--hover-bg);
+  color: var(--text-color);
 }
 
 /* Tool call styling */
 .chat-tool-call {
-  background: #2d2d2d;
+  background: var(--code-bg);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 8px 0;
@@ -3432,16 +3428,23 @@ mark.find-match.active {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--text-secondary);
 }
 
 .chat-tool-header:hover {
-  color: #d4d4d4;
+  color: var(--text-color);
 }
 
 .chat-tool-name {
   font-weight: 600;
-  color: #fbbf24;
+  color: #b45309;
+}
+
+[data-theme="dark"] .chat-tool-name,
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chat-tool-name {
+    color: #fbbf24;
+  }
 }
 
 .chat-tool-toggle {
@@ -3457,10 +3460,10 @@ mark.find-match.active {
   display: none;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #404040;
+  border-top: 1px solid var(--border-color);
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   max-height: 300px;
   overflow-y: auto;
@@ -3472,7 +3475,7 @@ mark.find-match.active {
 
 /* Thinking blocks */
 .chat-thinking {
-  background: #1f1f23;
+  background: var(--code-bg);
   border-left: 3px solid #6366f1;
   padding: 8px 12px;
   margin: 8px 0;
@@ -3484,28 +3487,34 @@ mark.find-match.active {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  color: #818cf8;
+  color: #6366f1;
   font-size: 12px;
   font-weight: 500;
 }
 
 .chat-thinking-header:hover {
-  color: #a5b4fc;
+  color: #818cf8;
 }
 
 .chat-thinking-content {
   display: none;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border-color);
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   line-height: 1.5;
 }
 
 .chat-thinking.expanded .chat-thinking-content {
   display: block;
+}
+
+.chat-thinking-preview,
+.chat-tool-preview {
+  color: var(--text-secondary);
+  font-weight: normal;
 }
 
 /* Code blocks in chat */

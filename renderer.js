@@ -4354,7 +4354,7 @@ function renderChatView(messages) {
       html += `<div class="chat-thinking-header">`;
       html += `<span class="chat-tool-toggle">▶</span>`;
       html += `<span>Thinking</span>`;
-      html += `<span style="color: #666; font-weight: normal;">${escapeHtml(thinkingPreview)}</span>`;
+      html += `<span class="chat-thinking-preview">${escapeHtml(thinkingPreview)}</span>`;
       html += `</div>`;
       html += `<div class="chat-thinking-content">${escapeHtml(msg.thinking)}</div>`;
       html += `</div>`;
@@ -4369,7 +4369,7 @@ function renderChatView(messages) {
         html += `<div class="chat-tool-header">`;
         html += `<span class="chat-tool-toggle">▶</span>`;
         html += `<span class="chat-tool-name">${escapeHtml(tool.name)}</span>`;
-        html += `<span style="color: #666;">${escapeHtml(inputPreview)}${inputStr.length > 80 ? '...' : ''}</span>`;
+        html += `<span class="chat-tool-preview">${escapeHtml(inputPreview)}${inputStr.length > 80 ? '...' : ''}</span>`;
         html += `</div>`;
         html += `<div class="chat-tool-content">${escapeHtml(inputStr)}</div>`;
         html += `</div>`;
