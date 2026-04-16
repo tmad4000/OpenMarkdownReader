@@ -1270,6 +1270,58 @@ html, body {
   animation: toastOut 0.2s ease forwards;
 }
 
+/* ---- YAML frontmatter block ---- */
+.markdown-body .md-frontmatter {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin: 0 0 20px;
+  background: var(--code-bg);
+  overflow: hidden;
+  font-size: 0.9em;
+}
+
+.markdown-body .md-frontmatter-summary {
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.markdown-body .md-frontmatter-summary::-webkit-details-marker,
+.markdown-body .md-frontmatter-summary::marker {
+  display: none;
+  content: '';
+}
+
+.markdown-body .md-frontmatter-summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.markdown-body .md-frontmatter[open] > .md-frontmatter-summary::before {
+  transform: rotate(90deg);
+}
+
+.markdown-body .md-frontmatter-body {
+  margin: 0 !important;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
 /* ---- Utility ---- */
 .hidden {
   display: none !important;

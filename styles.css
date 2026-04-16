@@ -1637,6 +1637,62 @@ mark.find-match.active {
   cursor: default;
 }
 
+/* YAML frontmatter block — collapsed by default, shows raw YAML when expanded */
+.markdown-body .md-frontmatter {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin: 0 0 24px;
+  background: var(--code-bg);
+  overflow: hidden;
+  font-size: 0.9em;
+}
+
+.markdown-body .md-frontmatter-summary {
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.markdown-body .md-frontmatter-summary::-webkit-details-marker,
+.markdown-body .md-frontmatter-summary::marker {
+  display: none;
+  content: '';
+}
+
+.markdown-body .md-frontmatter-summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.markdown-body .md-frontmatter[open] > .md-frontmatter-summary::before {
+  transform: rotate(90deg);
+}
+
+.markdown-body .md-frontmatter-summary:hover {
+  color: var(--text-primary, inherit);
+}
+
+.markdown-body .md-frontmatter-body {
+  margin: 0 !important;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
 .markdown-body p {
   margin-top: 0;
   margin-bottom: 16px;

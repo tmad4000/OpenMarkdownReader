@@ -230,10 +230,31 @@ function wrapTablesForScroll() {
   });
 }
 
+// Extract leading YAML frontmatter so marked doesn't mangle it
+function extractFrontmatter(content) {
+  if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
+    return { frontmatter: null, body: content };
+  }
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) {
+    return { frontmatter: null, body: content };
+  }
+  return { frontmatter: match[1], body: content.slice(match[0].length) };
+}
+
+function renderFrontmatterBlock(yaml) {
+  return `<details class="md-frontmatter">` +
+    `<summary class="md-frontmatter-summary">Frontmatter</summary>` +
+    `<pre class="md-frontmatter-body"><code class="language-yaml">${escapeHtml(yaml)}</code></pre>` +
+    `</details>`;
+}
+
 function renderMarkdown(mdContent) {
   try {
     fallbackHeadingSlugCounts = new Map();
-    const html = marked.parse(mdContent);
+    const { frontmatter, body } = extractFrontmatter(mdContent);
+    const frontmatterHtml = frontmatter !== null ? renderFrontmatterBlock(frontmatter) : '';
+    const html = frontmatterHtml + marked.parse(body);
     markdownBody.innerHTML = html;
 
     wrapTablesForScroll();
