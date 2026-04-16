@@ -3501,6 +3501,24 @@ ipcMain.handle('search-in-files', async (event, dirPath, query, options = {}) =>
   };
 });
 
+// Cheap emptiness check: returns true if dirPath contains no visible
+// (non-dotfile) entries. Short-circuits on first visible entry.
+function isFolderEmpty(folderPath) {
+  let dir;
+  try {
+    dir = fs.opendirSync(folderPath);
+    let entry;
+    while ((entry = dir.readSync()) !== null) {
+      if (!entry.name.startsWith('.')) return false;
+    }
+    return true;
+  } catch (err) {
+    return false; // permission denied / unreadable — don't mislabel as empty
+  } finally {
+    if (dir) { try { dir.closeSync(); } catch (e) {} }
+  }
+}
+
 // Get all files and folders in directory
 function getDirectoryContents(dirPath) {
   const folders = [];
@@ -3518,7 +3536,8 @@ function getDirectoryContents(dirPath) {
         folders.push({
           name: entry.name,
           path: fullPath,
-          type: 'folder'
+          type: 'folder',
+          isEmpty: isFolderEmpty(fullPath)
         });
       } else if (entry.isFile()) {
         const isMarkdown = isMarkdownFileExt(entry.name);

@@ -2515,9 +2515,10 @@ function renderFileTreeItems(items, container, depth) {
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
       const isSelected = !!selectedSidebarFolderPath && item.path === selectedSidebarFolderPath;
-      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}`;
+      const isEmpty = item.isEmpty === true;
+      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}${isEmpty ? ' empty' : ''}`;
       el.dataset.path = item.path;
-      el.title = labelTitle;
+      el.title = isEmpty ? `${labelTitle} (empty)` : labelTitle;
       el.innerHTML = `
         <svg class="folder-chevron" viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
           <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
@@ -2654,6 +2655,11 @@ async function toggleFolder(folderPath, element) {
     const folderItem = findItemByPath(directoryFiles, folderPath);
     if (folderItem) {
       folderItem.children = contents;
+      // Sync isEmpty state with what we just discovered (external filesystem
+      // changes could have added/removed contents since the parent was listed).
+      folderItem.isEmpty = contents.length === 0;
+      element.classList.toggle('empty', folderItem.isEmpty);
+      element.title = folderItem.isEmpty ? `${folderPath} (empty)` : folderPath;
     }
 
     // Insert children container after folder element

@@ -432,6 +432,20 @@ body.platform-win32 .titlebar-drag-spacer {
   opacity: 0.8;
 }
 
+/* Empty folders — dim chevron + icon + label so it's obvious there's
+   nothing to expand. Still clickable/selectable for context menus. */
+.file-tree-folder.empty .folder-chevron {
+  opacity: 0.25;
+}
+
+.file-tree-folder.empty .folder-icon {
+  opacity: 0.35;
+}
+
+.file-tree-folder.empty .file-tree-label {
+  color: var(--text-secondary);
+}
+
 .file-tree-folder.drop-target {
   background: color-mix(in srgb, var(--link-color) 18%, transparent);
   outline: 1px solid color-mix(in srgb, var(--link-color) 45%, transparent);
