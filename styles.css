@@ -432,6 +432,12 @@ body.platform-win32 .titlebar-drag-spacer {
   opacity: 0.8;
 }
 
+.file-tree-spacer {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+}
+
 /* Empty folders — dim chevron + icon + label so it's obvious there's
    nothing to expand. Still clickable/selectable for context menus. */
 .file-tree-folder.empty .folder-chevron {
