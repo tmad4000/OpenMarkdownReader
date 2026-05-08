@@ -173,40 +173,46 @@
             <span id="sidebar-sort-status-indicator" class="sidebar-sort-status-indicator">A-Z</span>
           </span>
         </div>
-        <div class="sidebar-header-buttons">
-          <button id="sidebar-new-file-btn" class="sidebar-btn" title="New File">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H1.75zM0 1.75C0 .784.784 0 1.75 0h9.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75z"/>
-              <path d="M8 4a.75.75 0 01.75.75v2.5h2.5a.75.75 0 010 1.5h-2.5v2.5a.75.75 0 01-1.5 0v-2.5h-2.5a.75.75 0 010-1.5h2.5v-2.5A.75.75 0 018 4z"/>
-            </svg>
-          </button>
-          <button id="sidebar-new-folder-btn" class="sidebar-btn" title="New Folder">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75zM0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 00.2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75z"/>
-              <path d="M8 6a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 6z"/>
-            </svg>
-          </button>
-          <button id="sidebar-sort-btn" class="sidebar-btn" title="Sort by Name / Date Modified">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path d="M2 4a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11A.5.5 0 012 4zm0 4a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7A.5.5 0 012 8zm0 4a.5.5 0 01.5-.5h4a.5.5 0 010 1h-4A.5.5 0 012 12z"/>
-            </svg>
-          </button>
-          <button id="sidebar-recent-btn" class="sidebar-btn" title="Show Recently Modified">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path fill-rule="evenodd" d="M1.75 8a6.25 6.25 0 1112.5 0 6.25 6.25 0 01-12.5 0zM8 3.25a.75.75 0 01.75.75v3.25H11a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4A.75.75 0 018 3.25zM8 12.75a4.75 4.75 0 100-9.5 4.75 4.75 0 000 9.5z"/>
-            </svg>
-          </button>
-          <button id="sidebar-collapse-all-btn" class="sidebar-btn" title="Collapse All Folders">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path d="M3.5 4.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5z"/>
-              <path d="M11.854 8.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L8 10.793l2.646-2.647a.5.5 0 0 1 .708 0z" transform="rotate(180 8 10)"/>
-            </svg>
-          </button>
-          <button id="open-folder-btn" class="sidebar-btn" title="Open Folder">
-            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
-              <path d="M3.75 3A1.75 1.75 0 002 4.75v10.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0018 15.25v-8.5A1.75 1.75 0 0016.25 5H9.414a.25.25 0 01-.177-.073l-.896-.897A1.75 1.75 0 006.586 3.5H3.75z"/>
-            </svg>
-          </button>
+        <div class="sidebar-header-buttons" aria-label="File sidebar actions">
+          <div class="sidebar-btn-group">
+            <button id="sidebar-new-file-btn" class="sidebar-btn" title="New File">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V4.664a.25.25 0 00-.073-.177l-2.914-2.914a.25.25 0 00-.177-.073H1.75zM0 1.75C0 .784.784 0 1.75 0h9.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75z"/>
+                <path d="M8 4a.75.75 0 01.75.75v2.5h2.5a.75.75 0 010 1.5h-2.5v2.5a.75.75 0 01-1.5 0v-2.5h-2.5a.75.75 0 010-1.5h2.5v-2.5A.75.75 0 018 4z"/>
+              </svg>
+            </button>
+            <button id="sidebar-new-folder-btn" class="sidebar-btn" title="New Folder">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H7.5c-.55 0-1.07-.26-1.4-.7l-.9-1.2a.25.25 0 00-.2-.1H1.75zM0 2.75C0 1.784.784 1 1.75 1H5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 00.2.1h6.75c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75z"/>
+                <path d="M8 6a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 6z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="sidebar-btn-group">
+            <button id="sidebar-sort-btn" class="sidebar-btn" title="Sort by Name / Date Modified">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M2 4a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11A.5.5 0 012 4zm0 4a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7A.5.5 0 012 8zm0 4a.5.5 0 01.5-.5h4a.5.5 0 010 1h-4A.5.5 0 012 12z"/>
+              </svg>
+            </button>
+            <button id="sidebar-recent-btn" class="sidebar-btn" title="Show Recently Modified">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path fill-rule="evenodd" d="M1.75 8a6.25 6.25 0 1112.5 0 6.25 6.25 0 01-12.5 0zM8 3.25a.75.75 0 01.75.75v3.25H11a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4A.75.75 0 018 3.25zM8 12.75a4.75 4.75 0 100-9.5 4.75 4.75 0 000 9.5z"/>
+              </svg>
+            </button>
+            <button id="sidebar-collapse-all-btn" class="sidebar-btn" title="Collapse All Folders">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M3.5 4.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5z"/>
+                <path d="M11.854 8.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L8 10.793l2.646-2.647a.5.5 0 0 1 .708 0z" transform="rotate(180 8 10)"/>
+              </svg>
+            </button>
+          </div>
+          <div class="sidebar-btn-group">
+            <button id="open-folder-btn" class="sidebar-btn" title="Open Folder">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                <path d="M3.75 3A1.75 1.75 0 002 4.75v10.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0018 15.25v-8.5A1.75 1.75 0 0016.25 5H9.414a.25.25 0 01-.177-.073l-.896-.897A1.75 1.75 0 006.586 3.5H3.75z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
       <div id="sidebar-path" class="sidebar-path hidden">

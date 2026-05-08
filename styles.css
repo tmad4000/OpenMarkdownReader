@@ -252,17 +252,18 @@ body.platform-win32 .titlebar-drag-spacer {
 }
 
 .sidebar-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .sidebar-header-meta {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -276,8 +277,10 @@ body.platform-win32 .titlebar-drag-spacer {
 .sidebar-sort-status {
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   gap: 6px;
-  max-width: 160px;
+  max-width: min(160px, 100%);
+  min-width: 0;
   padding: 2px 6px;
   border: 1px solid var(--border-color);
   border-radius: 999px;
@@ -288,7 +291,10 @@ body.platform-win32 .titlebar-drag-spacer {
 }
 
 .sidebar-sort-status-label {
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-sort-status-indicator {
@@ -334,7 +340,27 @@ body.platform-win32 .titlebar-drag-spacer {
 
 .sidebar-header-buttons {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sidebar-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.sidebar-btn-group + .sidebar-btn-group {
+  border-left-color: var(--border-color);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 8px;
 }
 
 .sidebar-path {
