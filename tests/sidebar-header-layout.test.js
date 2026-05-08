@@ -18,6 +18,16 @@ test('sidebar header keeps action icons in explicit groups', () => {
   assert.match(headerHtml, /class="sidebar-header-buttons" aria-label="File sidebar actions"/);
 });
 
+test('sidebar sort state is a menu control, not a separate icon toggle', () => {
+  const headerMatch = indexHtml.match(/<div class="sidebar-header">[\s\S]*?<div id="sidebar-path"/);
+  assert.ok(headerMatch, 'sidebar header markup should exist');
+
+  const headerHtml = headerMatch[0];
+  assert.match(headerHtml, /id="sidebar-sort-status"[\s\S]*aria-haspopup="menu"/);
+  assert.match(headerHtml, /id="sidebar-sort-menu"[\s\S]*data-sort-mode="name"[\s\S]*data-sort-mode="date"/);
+  assert.doesNotMatch(headerHtml, /id="sidebar-sort-btn"/);
+});
+
 test('sidebar header layout prevents sort controls from overflowing action icons', () => {
   assert.match(styles, /\.sidebar-header\s*{[\s\S]*?display:\s*grid;/);
   assert.match(styles, /\.sidebar-header-meta\s*{[\s\S]*?justify-content:\s*space-between;/);

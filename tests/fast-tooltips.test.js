@@ -20,7 +20,13 @@ test('fast tooltip layer is loaded before renderer creates dynamic controls', ()
 test('fast tooltip layer shows quickly and suppresses native title delay', () => {
   assert.match(tooltipScript, /SHOW_DELAY_MS\s*=\s*120/);
   assert.match(tooltipScript, /removeAttribute\('title'\)/);
-  assert.match(tooltipScript, /closest\('\[title\], \[data-tooltip\], \[aria-label\]'\)/);
+  assert.match(tooltipScript, /closest\('\[title\], \[data-fast-tooltip-title\], \[data-tooltip\], \[aria-label\]'\)/);
+});
+
+test('fast tooltip layer updates immediately between adjacent targets', () => {
+  assert.match(tooltipScript, /tooltipEl\?\.classList\.contains\('visible'\)/);
+  assert.match(tooltipScript, /showTooltip\(target\);\s*return;/);
+  assert.match(tooltipScript, /nextTooltipTarget && nextTooltipTarget !== activeTarget/);
 });
 
 test('fast tooltip styling stays above app chrome without taking pointer events', () => {

@@ -168,10 +168,20 @@
       <div class="sidebar-header">
         <div class="sidebar-header-meta">
           <span class="sidebar-title">Files</span>
-          <span id="sidebar-sort-status" class="sidebar-sort-status" title="Sorted alphabetically (A to Z)">
+          <button id="sidebar-sort-status" class="sidebar-sort-status" type="button" aria-haspopup="menu" aria-expanded="false" title="Change sort order">
             <span id="sidebar-sort-status-label" class="sidebar-sort-status-label">Sort: Name</span>
             <span id="sidebar-sort-status-indicator" class="sidebar-sort-status-indicator">A-Z</span>
-          </span>
+          </button>
+          <div id="sidebar-sort-menu" class="sidebar-sort-menu hidden" role="menu" aria-label="Sort files">
+            <button class="sidebar-sort-menu-item" type="button" role="menuitemradio" data-sort-mode="name" aria-checked="true">
+              <span class="sidebar-sort-menu-check" aria-hidden="true">&check;</span>
+              <span>Name A-Z</span>
+            </button>
+            <button class="sidebar-sort-menu-item" type="button" role="menuitemradio" data-sort-mode="date" aria-checked="false">
+              <span class="sidebar-sort-menu-check" aria-hidden="true">&check;</span>
+              <span>Date Modified</span>
+            </button>
+          </div>
         </div>
         <div class="sidebar-header-buttons" aria-label="File sidebar actions">
           <div class="sidebar-btn-group">
@@ -189,11 +199,6 @@
             </button>
           </div>
           <div class="sidebar-btn-group">
-            <button id="sidebar-sort-btn" class="sidebar-btn" title="Sort by Name / Date Modified">
-              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-                <path d="M2 4a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11A.5.5 0 012 4zm0 4a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7A.5.5 0 012 8zm0 4a.5.5 0 01.5-.5h4a.5.5 0 010 1h-4A.5.5 0 012 12z"/>
-              </svg>
-            </button>
             <button id="sidebar-recent-btn" class="sidebar-btn" title="Show Recently Modified">
               <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
                 <path fill-rule="evenodd" d="M1.75 8a6.25 6.25 0 1112.5 0 6.25 6.25 0 01-12.5 0zM8 3.25a.75.75 0 01.75.75v3.25H11a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4A.75.75 0 018 3.25zM8 12.75a4.75 4.75 0 100-9.5 4.75 4.75 0 000 9.5z"/>

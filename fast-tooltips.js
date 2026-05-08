@@ -38,7 +38,7 @@
 
   function findTooltipTarget(start) {
     if (!start || typeof start.closest !== 'function') return null;
-    return start.closest('[title], [data-tooltip], [aria-label]');
+    return start.closest('[title], [data-fast-tooltip-title], [data-tooltip], [aria-label]');
   }
 
   function positionTooltip(target) {
@@ -64,6 +64,9 @@
     if (!text) return;
 
     const tooltip = ensureTooltip();
+    if (activeTarget && activeTarget !== target) {
+      activeTarget.removeAttribute('aria-describedby');
+    }
     activeTarget = target;
     tooltip.textContent = text;
     tooltip.setAttribute('aria-hidden', 'false');
@@ -75,6 +78,10 @@
 
   function scheduleTooltip(target) {
     clearTimeout(showTimer);
+    if (tooltipEl?.classList.contains('visible') && activeTarget !== target) {
+      showTooltip(target);
+      return;
+    }
     showTimer = setTimeout(() => showTooltip(target), SHOW_DELAY_MS);
   }
 
@@ -106,6 +113,8 @@
     }
 
     const nextTarget = event.relatedTarget;
+    const nextTooltipTarget = findTooltipTarget(nextTarget);
+    if (nextTooltipTarget && nextTooltipTarget !== activeTarget) return;
     if (nextTarget && activeTarget.contains(nextTarget)) return;
     hideTooltip();
   }

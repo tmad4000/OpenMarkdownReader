@@ -20,7 +20,7 @@ test('name mode indicator copy is explicit and legible', () => {
     label: 'Sort: Name',
     indicator: 'A-Z',
     tooltip: 'Sorted alphabetically (A to Z)',
-    buttonTitle: 'Sort mode: Name (A-Z) (click to switch to Recent first)'
+    buttonTitle: 'Change sort order'
   });
 });
 
@@ -28,9 +28,9 @@ test('date mode indicator copy is explicit and legible', () => {
   const state = getSidebarSortIndicatorState('date');
   assert.deepEqual(state, {
     mode: 'date',
-    label: 'Sort: Recent',
+    label: 'Sort: Modified',
     indicator: 'NEW',
     tooltip: 'Sorted by most recently modified first',
-    buttonTitle: 'Sort mode: Recent first (click to switch to Name)'
+    buttonTitle: 'Change sort order'
   });
 });

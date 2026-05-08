@@ -441,10 +441,11 @@ const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
-const sidebarSortBtn = document.getElementById('sidebar-sort-btn');
 const sidebarSortStatus = document.getElementById('sidebar-sort-status');
 const sidebarSortStatusLabel = document.getElementById('sidebar-sort-status-label');
 const sidebarSortStatusIndicator = document.getElementById('sidebar-sort-status-indicator');
+const sidebarSortMenu = document.getElementById('sidebar-sort-menu');
+const sidebarSortMenuItems = Array.from(document.querySelectorAll('.sidebar-sort-menu-item[data-sort-mode]'));
 const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
 const sidebarCollapseAllBtn = document.getElementById('sidebar-collapse-all-btn');
 const sidebarPath = document.getElementById('sidebar-path');
@@ -501,10 +502,10 @@ function getSidebarSortIndicatorState(mode) {
   if (normalizedMode === 'date') {
     return {
       mode: 'date',
-      label: 'Sort: Recent',
+      label: 'Sort: Modified',
       indicator: 'NEW',
       tooltip: 'Sorted by most recently modified first',
-      buttonTitle: 'Sort mode: Recent first (click to switch to Name)'
+      buttonTitle: 'Change sort order'
     };
   }
 
@@ -513,7 +514,7 @@ function getSidebarSortIndicatorState(mode) {
     label: 'Sort: Name',
     indicator: 'A-Z',
     tooltip: 'Sorted alphabetically (A to Z)',
-    buttonTitle: 'Sort mode: Name (A-Z) (click to switch to Recent first)'
+    buttonTitle: 'Change sort order'
   };
 }
 
@@ -533,17 +534,17 @@ function updateSidebarSortUI() {
   const sortState = getSidebarSortIndicatorState(settings.sidebarSortMode);
   settings.sidebarSortMode = sortState.mode;
 
-  sidebarSortBtn.classList.toggle('active', sortState.mode === 'date');
-  sidebarSortBtn.style.color = sortState.mode === 'date' ? 'var(--link-color)' : '';
-  sidebarSortBtn.title = sortState.buttonTitle;
-
   if (!sidebarSortStatus || !sidebarSortStatusLabel || !sidebarSortStatusIndicator) return;
 
   sidebarSortStatus.dataset.mode = sortState.mode;
-  sidebarSortStatus.title = sortState.tooltip;
-  sidebarSortStatus.setAttribute('aria-label', sortState.tooltip);
+  sidebarSortStatus.title = sortState.buttonTitle;
+  sidebarSortStatus.setAttribute('aria-label', sortState.buttonTitle);
   sidebarSortStatusLabel.textContent = sortState.label;
   sidebarSortStatusIndicator.textContent = sortState.indicator;
+
+  sidebarSortMenuItems.forEach((item) => {
+    item.setAttribute('aria-checked', item.dataset.sortMode === sortState.mode ? 'true' : 'false');
+  });
 }
 
 function clampSidebarWidth(value) {
@@ -1585,16 +1586,63 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
-// Toggle sort mode
-sidebarSortBtn.addEventListener('click', () => {
-  settings.sidebarSortMode = settings.sidebarSortMode === 'name' ? 'date' : 'name';
+function closeSidebarSortMenu() {
+  if (!sidebarSortMenu || !sidebarSortStatus) return;
+  sidebarSortMenu.classList.add('hidden');
+  sidebarSortStatus.setAttribute('aria-expanded', 'false');
+}
+
+function openSidebarSortMenu() {
+  if (!sidebarSortMenu || !sidebarSortStatus) return;
+  sidebarSortMenu.classList.remove('hidden');
+  sidebarSortStatus.setAttribute('aria-expanded', 'true');
+}
+
+function toggleSidebarSortMenu() {
+  if (!sidebarSortMenu || !sidebarSortStatus) return;
+  if (sidebarSortMenu.classList.contains('hidden')) {
+    openSidebarSortMenu();
+  } else {
+    closeSidebarSortMenu();
+  }
+}
+
+function setSidebarSortMode(mode) {
+  const sortState = getSidebarSortIndicatorState(mode);
+  settings.sidebarSortMode = sortState.mode;
   updateSidebarSortUI();
-  
-  // Sort and re-render
+
   if (directoryFiles) {
     sortDirectoryFiles(directoryFiles);
     renderFileTree();
   }
+}
+
+// Sort menu
+if (sidebarSortStatus) {
+  sidebarSortStatus.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleSidebarSortMenu();
+  });
+}
+
+sidebarSortMenuItems.forEach((item) => {
+  item.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setSidebarSortMode(item.dataset.sortMode);
+    closeSidebarSortMenu();
+  });
+});
+
+document.addEventListener('click', (event) => {
+  if (!sidebarSortMenu || sidebarSortMenu.classList.contains('hidden')) return;
+  if (sidebarSortMenu.contains(event.target) || sidebarSortStatus?.contains(event.target)) return;
+  closeSidebarSortMenu();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  closeSidebarSortMenu();
 });
 
 updateSidebarSortUI();

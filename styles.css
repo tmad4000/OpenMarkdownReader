@@ -260,6 +260,7 @@ body.platform-win32 .titlebar-drag-spacer {
 }
 
 .sidebar-header-meta {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -288,6 +289,15 @@ body.platform-win32 .titlebar-drag-spacer {
   color: var(--text-secondary);
   font-size: 10px;
   line-height: 1.2;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.sidebar-sort-status:hover,
+.sidebar-sort-status[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--link-color) 45%, var(--border-color));
+  color: var(--text-color);
 }
 
 .sidebar-sort-status-label {
@@ -317,6 +327,55 @@ body.platform-win32 .titlebar-drag-spacer {
 [data-theme="dark"] .sidebar-sort-status[data-mode="date"] {
   border-color: rgba(88, 166, 255, 0.4);
   background: rgba(88, 166, 255, 0.14);
+}
+
+.sidebar-sort-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 156px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-color);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-sort-menu.hidden {
+  display: none;
+}
+
+.sidebar-sort-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-sort-menu-item:hover,
+.sidebar-sort-menu-item:focus-visible {
+  background: var(--hover-bg);
+  outline: none;
+}
+
+.sidebar-sort-menu-check {
+  width: 12px;
+  color: var(--link-color);
+  opacity: 0;
+}
+
+.sidebar-sort-menu-item[aria-checked="true"] .sidebar-sort-menu-check {
+  opacity: 1;
 }
 
 .sidebar-btn {
