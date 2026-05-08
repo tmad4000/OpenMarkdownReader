@@ -4,6 +4,7 @@ const path = require('path');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Platform
   getPlatform: () => ipcRenderer.invoke('get-platform'),
+  getAppName: () => ipcRenderer.invoke('get-app-name'),
 
   // File operations
   onFileLoaded: (callback) => ipcRenderer.on('file-loaded', (event, data) => callback(data)),

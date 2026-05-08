@@ -1,0 +1,41 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-grad" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="bar-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Squircle (OMR family resemblance) -->
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#bg-grad)" stroke="#3B82F6" stroke-width="8"/>
+
+  <!-- Content Group: dashboard motif (live bar chart) -->
+  <g transform="translate(192, 220)">
+    <!-- Card backplate -->
+    <rect x="40" y="40" width="560" height="500" rx="40" fill="#0F172A" fill-opacity="0.45" stroke="#1E40AF" stroke-width="4"/>
+
+    <!-- Baseline grid -->
+    <line x1="80" y1="500" x2="560" y2="500" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+    <line x1="80" y1="400" x2="560" y2="400" stroke="#334155" stroke-width="2" stroke-dasharray="6 8"/>
+    <line x1="80" y1="300" x2="560" y2="300" stroke="#334155" stroke-width="2" stroke-dasharray="6 8"/>
+    <line x1="80" y1="200" x2="560" y2="200" stroke="#334155" stroke-width="2" stroke-dasharray="6 8"/>
+
+    <!-- Bars: ascending heights, amber gradient -->
+    <rect x="100" y="380" width="64" height="120" rx="14" fill="url(#bar-grad)"/>
+    <rect x="190" y="300" width="64" height="200" rx="14" fill="url(#bar-grad)"/>
+    <rect x="280" y="220" width="64" height="280" rx="14" fill="url(#bar-grad)"/>
+    <rect x="370" y="320" width="64" height="180" rx="14" fill="url(#bar-grad)"/>
+    <rect x="460" y="160" width="64" height="340" rx="14" fill="url(#bar-grad)"/>
+
+    <!-- Live indicator dot (top-right of card) -->
+    <circle cx="560" cy="80" r="14" fill="#22C55E"/>
+    <circle cx="560" cy="80" r="22" fill="#22C55E" fill-opacity="0.25"/>
+  </g>
+
+  <!-- Corner fold (document affordance) -->
+  <path d="M692 230 L832 230 L832 370 L692 230" fill="#E2E8F0"/>
+</svg>

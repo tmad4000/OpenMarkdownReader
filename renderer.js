@@ -1,5 +1,21 @@
 console.log(`[RENDERER] Starting at ${new Date().toISOString()}`);
 
+// Window/document title brand — fetched from main process so dashboard and
+// any future editions show their own name in the title bar instead of OMR's.
+let APP_NAME = 'OpenMarkdownReader';
+if (window.electronAPI && window.electronAPI.getAppName) {
+  window.electronAPI.getAppName().then(name => {
+    if (name) {
+      APP_NAME = name;
+      // Refresh current title in case a file was loaded before this resolved
+      const cur = document.title;
+      if (cur && cur.includes('OpenMarkdownReader')) {
+        document.title = cur.replace('OpenMarkdownReader', APP_NAME);
+      }
+    }
+  }).catch(() => {});
+}
+
 // Startup health check — detect missing dependencies and show error instead of blank screen
 (function startupHealthCheck() {
   const missing = [];
@@ -1098,7 +1114,7 @@ function switchToTab(tabId) {
       renderContent(tab.content, tab.fileName);
     }
     updateDocumentWordCount(tab);
-    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - ${APP_NAME}`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
     // Show welcome screen
@@ -1106,7 +1122,7 @@ function switchToTab(tabId) {
     hideCSVView();
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
-    document.title = 'OpenMarkdownReader';
+    document.title = APP_NAME;
     updateDocumentWordCount(null);
   }
 
@@ -1304,7 +1320,7 @@ function revertChanges() {
   hideEditor();
   renderContent(tab.content, tab.fileName);
   updateTabUI(activeTabId);
-  document.title = `${tab.fileName} - OpenMarkdownReader`;
+  document.title = `${tab.fileName} - ${APP_NAME}`;
 }
 
 // ─── Per-tab editor lifecycle ─────────────────────────────────────────
@@ -1328,7 +1344,7 @@ function attachEditorListeners(textareaEl) {
     if (tab && tab.isEditing) {
       tab.isModified = true;
       updateTabUI(activeTabId);
-      document.title = `${tab.fileName} * - OpenMarkdownReader`;
+      document.title = `${tab.fileName} * - ${APP_NAME}`;
       updateDocumentWordCount(tab);
     }
   });
@@ -1501,7 +1517,7 @@ async function saveFile() {
         tab.originalContent = tab.content;
       }
       updateTabUI(activeTabId);
-      document.title = `${tab.fileName} - OpenMarkdownReader`;
+      document.title = `${tab.fileName} - ${APP_NAME}`;
     }
   } else {
     // No file path, use save as
@@ -1519,7 +1535,7 @@ async function saveFile() {
       updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
       updateTabUI(activeTabId);
       syncActiveSidebarFileHighlight();
-      document.title = `${tab.fileName} - OpenMarkdownReader`;
+      document.title = `${tab.fileName} - ${APP_NAME}`;
     }
   }
 }
@@ -1552,7 +1568,7 @@ async function saveFileAs() {
   updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
   updateTabUI(activeTabId);
   syncActiveSidebarFileHighlight();
-  document.title = `${tab.fileName} - OpenMarkdownReader`;
+  document.title = `${tab.fileName} - ${APP_NAME}`;
 
   if (settings.watchFileMode) {
     window.electronAPI.watchFile(tab.filePath, getWatcherOptions());
@@ -2488,7 +2504,7 @@ function updateOpenTabsForMovedFile(oldPath, newPath, fileName) {
       tab.fileName = fileName;
       updateTabDisplay(tab.id, fileName, newPath);
       if (tab.id === activeTabId) {
-        document.title = `${fileName} - OpenMarkdownReader`;
+        document.title = `${fileName} - ${APP_NAME}`;
       }
     }
   });
@@ -2773,7 +2789,7 @@ function startSidebarRename(el, item) {
           tab.fileName = newName;
           updateTabDisplay(tab.id, newName, result.newPath);
           if (tab.id === activeTabId) {
-            document.title = `${newName} - OpenMarkdownReader`;
+            document.title = `${newName} - ${APP_NAME}`;
           }
         }
       }
@@ -3085,7 +3101,7 @@ window.electronAPI.onFileLoaded((data) => {
         } else {
           renderContent(data.content, data.fileName);
         }
-        document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+        document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - ${APP_NAME}`;
       }
       updateTabUI(reuseTab);
       return;
@@ -3123,7 +3139,7 @@ window.electronAPI.onFileLoaded((data) => {
           } else {
             renderContent(data.content, data.fileName);
           }
-          document.title = `${existingTab.fileName}${existingTab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+          document.title = `${existingTab.fileName}${existingTab.isModified ? ' *' : ''} - ${APP_NAME}`;
         }
       }
       return;
@@ -3169,7 +3185,7 @@ window.electronAPI.onFileLoaded((data) => {
       renderContent(data.content, data.fileName);
     }
     
-    document.title = `${data.fileName} - OpenMarkdownReader`;
+    document.title = `${data.fileName} - ${APP_NAME}`;
     // Start watching new file
     if (data.filePath && settings.watchFileMode) {
       window.electronAPI.watchFile(data.filePath, getWatcherOptions());
@@ -3653,7 +3669,7 @@ window.electronAPI.onFilePathChanged(async ({ oldPath, newPath }) => {
     updateTabDisplay(tab.id, newFileName, newPath);
     updateTabUI(tab.id);
     if (tab.id === activeTabId) {
-      document.title = `${newFileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+      document.title = `${newFileName}${tab.isModified ? ' *' : ''} - ${APP_NAME}`;
     }
     updatedTabCount++;
   }
@@ -3730,7 +3746,7 @@ window.electronAPI.onFileChanged(({ filePath, content, mtime }) => {
     } else {
       renderContent(content, tab.fileName);
     }
-    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - ${APP_NAME}`;
   }
   updateTabUI(tab.id);
 });
@@ -4607,7 +4623,7 @@ function handleFileDrop(files) {
         if (index === 0 && activeTab && !activeTab.content) {
           updateTab(activeTabId, file.name, event.target.result, null);
           renderContent(event.target.result, file.name);
-          document.title = `${file.name} - OpenMarkdownReader`;
+          document.title = `${file.name} - ${APP_NAME}`;
         } else {
           createTab(file.name, event.target.result, null);
         }
@@ -6120,7 +6136,7 @@ switchToTab = function(tabId) {
       renderContent(tab.content, tab.fileName);
     }
     updateDocumentWordCount(tab);
-    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - OpenMarkdownReader`;
+    document.title = `${tab.fileName}${tab.isModified ? ' *' : ''} - ${APP_NAME}`;
     setTimeout(() => window.scrollTo(0, tab.scrollPos), 0);
   } else {
     // Show welcome screen
@@ -6128,7 +6144,7 @@ switchToTab = function(tabId) {
     hideCSVView();
     dropZone.classList.remove('hidden');
     content.classList.add('hidden');
-    document.title = 'OpenMarkdownReader';
+    document.title = APP_NAME;
     updateDocumentWordCount(null);
   }
 
@@ -6248,7 +6264,7 @@ saveFile = async function(options = {}) {
         tab.originalContent = tab.content;
       }
       updateTabUI(activeTabId);
-      document.title = `${tab.fileName} - OpenMarkdownReader`;
+      document.title = `${tab.fileName} - ${APP_NAME}`;
     }
   } else {
     const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
@@ -6263,7 +6279,7 @@ saveFile = async function(options = {}) {
         updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
         updateTabUI(activeTabId);
         syncActiveSidebarFileHighlight();
-        document.title = `${tab.fileName} - OpenMarkdownReader`;
+        document.title = `${tab.fileName} - ${APP_NAME}`;
     }
   }
 };
@@ -6336,7 +6352,7 @@ closeTab = async function(tabId, silent = false) {
       hideCSVView();
       dropZone.classList.remove('hidden');
       content.classList.add('hidden');
-      document.title = 'OpenMarkdownReader';
+      document.title = APP_NAME;
       updateDocumentWordCount(null);
     }
   }
@@ -6424,7 +6440,7 @@ initRichEditor = function() {
       if (!t.isModified) {
         t.isModified = true;
         updateTabUI(activeTabId);
-        document.title = `${t.fileName} * - OpenMarkdownReader`;
+        document.title = `${t.fileName} * - ${APP_NAME}`;
       }
       updateDocumentWordCount(t);
       triggerAutoSave();

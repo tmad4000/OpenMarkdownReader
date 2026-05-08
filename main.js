@@ -7,6 +7,23 @@ const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
 const agentServer = require('./agent-server');
 
+// Edition descriptor — generated at build/dev start by scripts/generate-edition.js.
+// Falls back to the standard profile if the file isn't present (e.g., first run
+// before the script has been wired into the user's start command).
+let edition;
+try {
+  edition = require('./build-edition');
+} catch {
+  edition = { profile: 'standard', productName: 'OpenMarkdownReader', defaultFile: null, defaultWatch: false };
+}
+
+// Non-standard editions get their own app name early — this gives them a
+// separate single-instance lock (so they coexist with the standard build) and
+// a separate userData path (so config/sessions don't bleed across editions).
+if (edition.profile !== 'standard' && edition.productName) {
+  app.setName(edition.productName);
+}
+
 // Configure electron-log: writes to ~/Library/Logs/OpenMarkdownReader/
 log.initialize();
 log.transports.file.level = 'info';
@@ -593,7 +610,18 @@ function openPathInWindow(win, targetPath, options = {}) {
     }
     loadMarkdownFile(win, targetPath, options);
   } catch (err) {
-    dialog.showErrorBox('Error', `Could not open path: ${err.message}`);
+    // ENOENT (and other stat errors) come up routinely during session restore
+    // when paths have moved. A modal per missing file looks like an infinite
+    // loop. Log, prune recents, and show at most one non-blocking notification.
+    console.warn(`openPathInWindow: ${err.message}`);
+    if (err.code === 'ENOENT' && Array.isArray(config.recentFiles)) {
+      const before = config.recentFiles.length;
+      config.recentFiles = config.recentFiles.filter(item => item.path !== targetPath);
+      if (config.recentFiles.length !== before) saveConfig();
+    }
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('path-open-failed', { path: targetPath, message: err.message, code: err.code });
+    }
   }
 }
 
@@ -605,6 +633,17 @@ function loadConfig() {
     }
   } catch (err) {
     console.error('Error loading config:', err);
+  }
+  // Prune recentFiles entries that no longer exist on disk so the
+  // Open Recent menu and any future restore paths don't hit ENOENT.
+  if (Array.isArray(config.recentFiles) && config.recentFiles.length > 0) {
+    const valid = config.recentFiles.filter(item => {
+      try { return item && item.path && fs.existsSync(item.path); } catch { return false; }
+    });
+    if (valid.length !== config.recentFiles.length) {
+      config.recentFiles = valid;
+      saveConfig();
+    }
   }
 }
 
@@ -1816,7 +1855,7 @@ function loadMarkdownFile(win, filePath, options = {}) {
       forceEdit: options.forceEdit || false
     });
     if (!options.background) {
-      win.setTitle(`${fileName} - OpenMarkdownReader`);
+      win.setTitle(`${fileName} - ${edition.productName}`);
     }
     addToRecent(filePath, 'file');
     agentServer.emitEvent('file-opened', { filePath, fileName });
@@ -1902,7 +1941,38 @@ function restoreSession() {
     return false;
   }
 
-  const sessionWindows = config.session.windows;
+  // Drop tabs/directories that no longer exist before sending to renderer.
+  // Without this, every stale path triggers an error path on launch, which
+  // (when many paths are stale) looks like the app is stuck in a loop.
+  let prunedAny = false;
+  const sessionWindows = config.session.windows
+    .map(windowData => {
+      const tabs = Array.isArray(windowData.tabs) ? windowData.tabs : [];
+      const validTabs = tabs.filter(t => {
+        if (!t || !t.filePath) return true; // untitled/empty tabs are fine
+        try { return fs.existsSync(t.filePath); } catch { return false; }
+      });
+      if (validTabs.length !== tabs.length) prunedAny = true;
+
+      let directory = windowData.directory;
+      if (directory && directory !== '/' && !fs.existsSync(directory)) {
+        prunedAny = true;
+        directory = undefined;
+      }
+
+      const activeIndex = typeof windowData.activeTabIndex === 'number'
+        ? Math.min(windowData.activeTabIndex, Math.max(0, validTabs.length - 1))
+        : 0;
+
+      return { ...windowData, tabs: validTabs, directory, activeTabIndex: activeIndex };
+    })
+    .filter(w => (w.tabs && w.tabs.length > 0) || w.directory);
+
+  if (prunedAny) {
+    config.session = { windows: sessionWindows };
+    saveConfig();
+  }
+
   if (sessionWindows.length === 0) return false;
 
   // Create windows and restore their state
@@ -2082,21 +2152,24 @@ app.whenReady().then(() => {
   // Set About panel with build info
   const buildSuffix = buildInfo.buildNumber ? ` (Build ${buildInfo.buildNumber})` : '';
   app.setAboutPanelOptions({
-    applicationName: 'OpenMarkdownReader',
+    applicationName: edition.productName || 'OpenMarkdownReader',
     applicationVersion: `${buildInfo.version}${buildSuffix}`,
     version: buildInfo.gitHash !== 'dev' ? buildInfo.gitHash : '',
     copyright: 'Jacob Cole'
   });
 
-  // Set dev dock icon when running unpackaged
-  // Picks the right variant based on edition (standard vs local-only)
+  // Set dev dock icon when running unpackaged. Picks the right variant based
+  // on edition. The dashboard profile (build-edition.js) takes precedence;
+  // local-only is the legacy env-var mechanism that ticket markdown-reader-xwc
+  // will eventually fold into build-edition.js too.
   if (!app.isPackaged && process.platform === 'darwin') {
     try {
-      // Detect local-only edition via env var (set by build:mas-local-only script).
-      // When the dual-edition system lands (ticket markdown-reader-xwc), this
-      // should read from build-edition.js instead.
-      const isLocalOnly = process.env.OMR_EDITION === 'local-only';
-      const devIconName = isLocalOnly ? 'icon-local-only-dev.png' : 'icon-dev.png';
+      let devIconName = 'icon-dev.png';
+      if (edition.profile === 'dashboard') {
+        devIconName = 'icon-dashboard-dev.png';
+      } else if (process.env.OMR_EDITION === 'local-only') {
+        devIconName = 'icon-local-only-dev.png';
+      }
       const iconPath = path.join(__dirname, 'build', devIconName);
       if (fs.existsSync(iconPath)) {
         app.dock.setIcon(iconPath);
@@ -2109,8 +2182,12 @@ app.whenReady().then(() => {
     setTimeout(checkForUpdates, 3000);
   }
 
-  // Prompt to set as default app (after a delay)
-  promptSetAsDefaultApp();
+  // Prompt to set as default app (after a delay) — only the standard edition
+  // claims the default-handler role. Specialized editions (dashboard) shouldn't
+  // try to take over .md files.
+  if (edition.profile === 'standard') {
+    promptSetAsDefaultApp();
+  }
 
   // Merge any files received via open-file event (Finder double-click / Open With)
   // These arrive before ready and are queued in pendingOpenFiles
@@ -2119,6 +2196,17 @@ app.whenReady().then(() => {
       if (!args.files.includes(f)) args.files.push(f);
     });
     pendingOpenFiles.length = 0;
+  }
+
+  // Dashboard profile: when launched without an explicit user-chosen file
+  // (dock click, or `electron .` in dev which pushes cwd into args.files),
+  // pin to the configured default file in watch mode. Explicit user intent
+  // always wins.
+  const onlyCwd = args.files.length === 1 && args.files[0] === process.cwd();
+  const isFreshLaunch = (args.files.length === 0 || onlyCwd) && !args.scratch && !args.ref && !args.newFile;
+  if (edition.profile === 'dashboard' && isFreshLaunch && edition.defaultFile && fs.existsSync(edition.defaultFile)) {
+    args.files = [edition.defaultFile];
+    if (edition.defaultWatch) watchFileMode = true;
   }
 
   // Handle files, daily notes, or new file passed via CLI or Finder on launch
@@ -2607,6 +2695,7 @@ function searchInDirectorySync(dirPath, query, options = {}) {
 
 // IPC handlers
 ipcMain.handle('get-build-info', () => ({ ...buildInfo, isPackaged: app.isPackaged }));
+ipcMain.handle('get-app-name', () => edition.productName || 'OpenMarkdownReader');
 ipcMain.handle('get-update-info', () => latestRelease);
 ipcMain.handle('open-file-dialog', () => openFileOrFolder());
 ipcMain.handle('open-file-or-folder', () => openFileOrFolder());
