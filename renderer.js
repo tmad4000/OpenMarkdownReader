@@ -4849,7 +4849,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Cmd+E to toggle edit
-  if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
     e.preventDefault();
     toggleEditMode();
   }
@@ -6327,9 +6327,8 @@ toggleEditMode = function() {
     scrollPercent = markdownBody.scrollTop / Math.max(1, markdownBody.scrollHeight - markdownBody.clientHeight);
   }
 
-  tab.isEditing = !tab.isEditing;
-
-  if (tab.isEditing) {
+  if (!tab.isEditing) {
+    tab.isEditing = true;
     tab.originalContent = tab.content;
     showEditor(tab.content);
 
