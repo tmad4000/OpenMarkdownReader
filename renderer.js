@@ -441,12 +441,15 @@ const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
+const sidebarViewStatus = document.getElementById('sidebar-view-status');
+const sidebarViewStatusLabel = document.getElementById('sidebar-view-status-label');
+const sidebarViewMenu = document.getElementById('sidebar-view-menu');
+const sidebarViewMenuItems = Array.from(document.querySelectorAll('.sidebar-view-menu-item[data-view-mode]'));
 const sidebarSortStatus = document.getElementById('sidebar-sort-status');
 const sidebarSortStatusLabel = document.getElementById('sidebar-sort-status-label');
 const sidebarSortStatusIndicator = document.getElementById('sidebar-sort-status-indicator');
 const sidebarSortMenu = document.getElementById('sidebar-sort-menu');
 const sidebarSortMenuItems = Array.from(document.querySelectorAll('.sidebar-sort-menu-item[data-sort-mode]'));
-const sidebarRecentBtn = document.getElementById('sidebar-recent-btn');
 const sidebarCollapseAllBtn = document.getElementById('sidebar-collapse-all-btn');
 const sidebarPath = document.getElementById('sidebar-path');
 const devRestartBtn = document.getElementById('dev-restart-btn');
@@ -518,6 +521,29 @@ function getSidebarSortIndicatorState(mode) {
   };
 }
 
+function getSidebarViewState(mode) {
+  const normalizedMode = ['recent', 'timeline'].includes(mode) ? mode : 'tree';
+  if (normalizedMode === 'recent') {
+    return {
+      mode: 'recent',
+      label: 'View: Recent',
+      title: 'Change sidebar view'
+    };
+  }
+  if (normalizedMode === 'timeline') {
+    return {
+      mode: 'timeline',
+      label: 'View: Timeline',
+      title: 'Change sidebar view'
+    };
+  }
+  return {
+    mode: 'tree',
+    label: 'View: Files',
+    title: 'Change sidebar view'
+  };
+}
+
 fileTree.addEventListener('dragover', (e) => {
   if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
   e.preventDefault();
@@ -544,6 +570,22 @@ function updateSidebarSortUI() {
 
   sidebarSortMenuItems.forEach((item) => {
     item.setAttribute('aria-checked', item.dataset.sortMode === sortState.mode ? 'true' : 'false');
+  });
+}
+
+function updateSidebarViewUI() {
+  const viewState = getSidebarViewState(settings.sidebarViewMode);
+  settings.sidebarViewMode = viewState.mode;
+
+  if (!sidebarViewStatus || !sidebarViewStatusLabel) return;
+
+  sidebarViewStatus.dataset.mode = viewState.mode;
+  sidebarViewStatus.title = viewState.title;
+  sidebarViewStatus.setAttribute('aria-label', viewState.title);
+  sidebarViewStatusLabel.textContent = viewState.label;
+
+  sidebarViewMenuItems.forEach((item) => {
+    item.setAttribute('aria-checked', item.dataset.viewMode === viewState.mode ? 'true' : 'false');
   });
 }
 
@@ -1586,25 +1628,31 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
-function closeSidebarSortMenu() {
-  if (!sidebarSortMenu || !sidebarSortStatus) return;
-  sidebarSortMenu.classList.add('hidden');
-  sidebarSortStatus.setAttribute('aria-expanded', 'false');
+function closeSidebarHeaderMenu(menu, trigger) {
+  if (!menu || !trigger) return;
+  menu.classList.add('hidden');
+  trigger.setAttribute('aria-expanded', 'false');
 }
 
-function openSidebarSortMenu() {
-  if (!sidebarSortMenu || !sidebarSortStatus) return;
-  sidebarSortMenu.classList.remove('hidden');
-  sidebarSortStatus.setAttribute('aria-expanded', 'true');
+function openSidebarHeaderMenu(menu, trigger) {
+  if (!menu || !trigger) return;
+  closeSidebarHeaderMenus();
+  menu.classList.remove('hidden');
+  trigger.setAttribute('aria-expanded', 'true');
 }
 
-function toggleSidebarSortMenu() {
-  if (!sidebarSortMenu || !sidebarSortStatus) return;
-  if (sidebarSortMenu.classList.contains('hidden')) {
-    openSidebarSortMenu();
+function toggleSidebarHeaderMenu(menu, trigger) {
+  if (!menu || !trigger) return;
+  if (menu.classList.contains('hidden')) {
+    openSidebarHeaderMenu(menu, trigger);
   } else {
-    closeSidebarSortMenu();
+    closeSidebarHeaderMenu(menu, trigger);
   }
+}
+
+function closeSidebarHeaderMenus() {
+  closeSidebarHeaderMenu(sidebarViewMenu, sidebarViewStatus);
+  closeSidebarHeaderMenu(sidebarSortMenu, sidebarSortStatus);
 }
 
 function setSidebarSortMode(mode) {
@@ -1618,11 +1666,33 @@ function setSidebarSortMode(mode) {
   }
 }
 
-// Sort menu
+function setSidebarViewMode(mode) {
+  const viewState = getSidebarViewState(mode);
+  settings.sidebarViewMode = viewState.mode;
+  updateSidebarViewUI();
+  renderFileTree();
+}
+
+// Header menus
+if (sidebarViewStatus) {
+  sidebarViewStatus.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleSidebarHeaderMenu(sidebarViewMenu, sidebarViewStatus);
+  });
+}
+
+sidebarViewMenuItems.forEach((item) => {
+  item.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setSidebarViewMode(item.dataset.viewMode);
+    closeSidebarHeaderMenus();
+  });
+});
+
 if (sidebarSortStatus) {
   sidebarSortStatus.addEventListener('click', (event) => {
     event.stopPropagation();
-    toggleSidebarSortMenu();
+    toggleSidebarHeaderMenu(sidebarSortMenu, sidebarSortStatus);
   });
 }
 
@@ -1630,21 +1700,27 @@ sidebarSortMenuItems.forEach((item) => {
   item.addEventListener('click', (event) => {
     event.stopPropagation();
     setSidebarSortMode(item.dataset.sortMode);
-    closeSidebarSortMenu();
+    closeSidebarHeaderMenus();
   });
 });
 
 document.addEventListener('click', (event) => {
-  if (!sidebarSortMenu || sidebarSortMenu.classList.contains('hidden')) return;
-  if (sidebarSortMenu.contains(event.target) || sidebarSortStatus?.contains(event.target)) return;
-  closeSidebarSortMenu();
+  const target = event.target;
+  const isInHeaderMenu =
+    sidebarViewMenu?.contains(target) ||
+    sidebarViewStatus?.contains(target) ||
+    sidebarSortMenu?.contains(target) ||
+    sidebarSortStatus?.contains(target);
+  if (isInHeaderMenu) return;
+  closeSidebarHeaderMenus();
 });
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  closeSidebarSortMenu();
+  closeSidebarHeaderMenus();
 });
 
+updateSidebarViewUI();
 updateSidebarSortUI();
 applySidebarWidth(settings.sidebarWidth);
 initSidebarResizer();
@@ -1665,27 +1741,6 @@ if (sidebarCollapseAllBtn) {
     collapseAllFolders();
   });
 }
-
-// Toggle recent files view
-sidebarRecentBtn.addEventListener('click', () => {
-  if (settings.sidebarViewMode === 'tree') {
-    settings.sidebarViewMode = 'recent';
-    sidebarRecentBtn.classList.add('active');
-    sidebarRecentBtn.style.color = 'var(--link-color)';
-    sidebarRecentBtn.title = 'View: Recent by Folder (Click for Timeline)';
-  } else if (settings.sidebarViewMode === 'recent') {
-    settings.sidebarViewMode = 'timeline';
-    sidebarRecentBtn.classList.add('active');
-    sidebarRecentBtn.style.color = '#8250df'; // Purple for timeline
-    sidebarRecentBtn.title = 'View: Timeline (Click for File Tree)';
-  } else {
-    settings.sidebarViewMode = 'tree';
-    sidebarRecentBtn.classList.remove('active');
-    sidebarRecentBtn.style.color = '';
-    sidebarRecentBtn.title = 'Show Recently Modified';
-  }
-  renderFileTree();
-});
 
 // Dev restart button — handles two modes:
 //   - 'restart' (main.js / preload.js changed) → full app.relaunch()
@@ -2487,8 +2542,7 @@ async function renderRecentFilesTimeline() {
 async function revealFolderInTree(targetPath) {
   // Switch to tree view
   settings.sidebarViewMode = 'tree';
-  sidebarRecentBtn.classList.remove('active');
-  sidebarRecentBtn.style.color = '';
+  updateSidebarViewUI();
   
   // Re-render tree
   renderFileTree();

@@ -18,6 +18,16 @@ test('sidebar header keeps action icons in explicit groups', () => {
   assert.match(headerHtml, /class="sidebar-header-buttons" aria-label="File sidebar actions"/);
 });
 
+test('sidebar view state is a menu control, not a cycling recent icon', () => {
+  const headerMatch = indexHtml.match(/<div class="sidebar-header">[\s\S]*?<div id="sidebar-path"/);
+  assert.ok(headerMatch, 'sidebar header markup should exist');
+
+  const headerHtml = headerMatch[0];
+  assert.match(headerHtml, /id="sidebar-view-status"[\s\S]*aria-haspopup="menu"/);
+  assert.match(headerHtml, /id="sidebar-view-menu"[\s\S]*data-view-mode="tree"[\s\S]*data-view-mode="recent"[\s\S]*data-view-mode="timeline"/);
+  assert.doesNotMatch(headerHtml, /id="sidebar-recent-btn"/);
+});
+
 test('sidebar sort state is a menu control, not a separate icon toggle', () => {
   const headerMatch = indexHtml.match(/<div class="sidebar-header">[\s\S]*?<div id="sidebar-path"/);
   assert.ok(headerMatch, 'sidebar header markup should exist');
@@ -32,5 +42,5 @@ test('sidebar header layout prevents sort controls from overflowing action icons
   assert.match(styles, /\.sidebar-header\s*{[\s\S]*?display:\s*grid;/);
   assert.match(styles, /\.sidebar-header-meta\s*{[\s\S]*?justify-content:\s*space-between;/);
   assert.match(styles, /\.sidebar-header-buttons\s*{[\s\S]*?flex-wrap:\s*wrap;/);
-  assert.match(styles, /\.sidebar-sort-status-label\s*{[\s\S]*?text-overflow:\s*ellipsis;/);
+  assert.match(styles, /\.sidebar-status-pill-label\s*{[\s\S]*?text-overflow:\s*ellipsis;/);
 });
