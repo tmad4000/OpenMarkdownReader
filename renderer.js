@@ -1698,31 +1698,55 @@ function stopSidebarLiveWatcher() {
   }
 }
 
-async function computeSidebarLiveSignature(dirPath) {
-  if (!dirPath) return '';
+async function computeSidebarLiveSnapshot(dirPath) {
+  if (!dirPath) return { signature: '', allFiles: [] };
   try {
     const allFiles = await window.electronAPI.getAllFilesRecursive(dirPath);
     const signatures = allFiles
       .map(item => `${item.path || ''}:${item.mtime || ''}`)
       .sort();
-    return signatures.join('|');
+    return {
+      signature: signatures.join('|'),
+      allFiles
+    };
   } catch {
-    return '';
+    return { signature: '', allFiles: [] };
   }
+}
+
+async function hydrateExpandedSidebarFolders(items) {
+  await Promise.all((items || []).map(async (item) => {
+    if (!item || item.type !== 'folder' || !expandedFolders.has(item.path)) return;
+
+    const children = await window.electronAPI.getDirectoryContents(item.path);
+    sortDirectoryFiles(children);
+    item.children = children;
+    item.isEmpty = children.length === 0;
+    await hydrateExpandedSidebarFolders(children);
+  }));
 }
 
 async function refreshSidebarFromFilesystem(force = false) {
   if (!currentDirectory) return;
+  const refreshDirectory = currentDirectory;
   try {
-    const signature = await computeSidebarLiveSignature(currentDirectory);
+    const { signature, allFiles } = await computeSidebarLiveSnapshot(refreshDirectory);
+    if (refreshDirectory !== currentDirectory) return;
     if (!force && signature && signature === sidebarLiveWatchSignature) return;
     sidebarLiveWatchSignature = signature;
-    const freshTree = await window.electronAPI.getDirectoryContents(currentDirectory);
+    const freshTree = await window.electronAPI.getDirectoryContents(refreshDirectory);
+    if (refreshDirectory !== currentDirectory) return;
     directoryFiles = freshTree;
     sortDirectoryFiles(directoryFiles);
+    await hydrateExpandedSidebarFolders(directoryFiles);
+    if (refreshDirectory !== currentDirectory) return;
+    setAllFilesCache(allFiles);
     renderFileTree();
     if (selectedSidebarFolderPath) {
       setSelectedSidebarFolder(selectedSidebarFolderPath);
+    }
+    if (!commandPalette.classList.contains('hidden')) {
+      updateCommandPaletteResults();
     }
     syncActiveSidebarFileHighlight();
   } catch (err) {
