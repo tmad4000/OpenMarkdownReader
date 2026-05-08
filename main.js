@@ -14,7 +14,15 @@ let edition;
 try {
   edition = require('./build-edition');
 } catch {
-  edition = { profile: 'standard', productName: 'OpenMarkdownReader', defaultFile: null, defaultWatch: false };
+  edition = {
+    profile: 'standard',
+    productName: 'OpenMarkdownReader',
+    bundleId: 'com.jacobcole.openmarkdownreader',
+    icon: 'icon.icns',
+    devIcon: 'icon-dev.png',
+    defaultFile: null,
+    defaultWatch: false
+  };
 }
 
 // Non-standard editions get their own app name early — this gives them a
@@ -22,6 +30,9 @@ try {
 // a separate userData path (so config/sessions don't bleed across editions).
 if (edition.profile !== 'standard' && edition.productName) {
   app.setName(edition.productName);
+}
+if (edition.bundleId && typeof app.setAppUserModelId === 'function') {
+  app.setAppUserModelId(edition.bundleId);
 }
 
 // Configure electron-log: writes to ~/Library/Logs/OpenMarkdownReader/
@@ -39,7 +50,7 @@ Object.assign(console, log.functions);
 // to ~/Library/Logs/DiagnosticReports/.
 // uploadToServer:false keeps everything local — no telemetry sent anywhere.
 crashReporter.start({
-  productName: 'OpenMarkdownReader',
+  productName: edition.productName || 'OpenMarkdownReader',
   companyName: 'jacobcole',
   uploadToServer: false,
   ignoreSystemCrashHandler: false,
@@ -2158,16 +2169,12 @@ app.whenReady().then(() => {
     copyright: 'Jacob Cole'
   });
 
-  // Set dev dock icon when running unpackaged. Picks the right variant based
-  // on edition. The dashboard profile (build-edition.js) takes precedence;
-  // local-only is the legacy env-var mechanism that ticket markdown-reader-xwc
-  // will eventually fold into build-edition.js too.
+  // Set dev dock icon when running unpackaged. Packaged builds get their icon
+  // from electron-builder, while dev runs need an explicit Dock icon override.
   if (!app.isPackaged && process.platform === 'darwin') {
     try {
-      let devIconName = 'icon-dev.png';
-      if (edition.profile === 'dashboard') {
-        devIconName = 'icon-dashboard-dev.png';
-      } else if (process.env.OMR_EDITION === 'local-only') {
+      let devIconName = edition.devIcon || 'icon-dev.png';
+      if (edition.profile === 'standard' && process.env.OMR_EDITION === 'local-only') {
         devIconName = 'icon-local-only-dev.png';
       }
       const iconPath = path.join(__dirname, 'build', devIconName);
