@@ -29,6 +29,12 @@ test('fast tooltip layer updates immediately between adjacent targets', () => {
   assert.match(tooltipScript, /nextTooltipTarget && nextTooltipTarget !== activeTarget/);
 });
 
+test('fast tooltip layer suppresses hints while menus and expanded popovers are active', () => {
+  assert.match(tooltipScript, /function isTooltipSuppressed\(target\)/);
+  assert.match(tooltipScript, /\[role="menu"\], \[role="listbox"\], \[role="menuitem"\], \[role="menuitemradio"\], \[role="option"\]/);
+  assert.match(tooltipScript, /aria-expanded'\) === 'true'/);
+});
+
 test('fast tooltip styling stays above app chrome without taking pointer events', () => {
   assert.match(styles, /\.fast-tooltip\s*{[\s\S]*?z-index:\s*10000;/);
   assert.match(styles, /\.fast-tooltip\s*{[\s\S]*?pointer-events:\s*none;/);

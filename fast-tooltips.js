@@ -41,6 +41,14 @@
     return start.closest('[title], [data-fast-tooltip-title], [data-tooltip], [aria-label]');
   }
 
+  function isTooltipSuppressed(target) {
+    if (!target || typeof target.closest !== 'function') return true;
+    if (target.closest('[role="menu"], [role="listbox"], [role="menuitem"], [role="menuitemradio"], [role="option"]')) {
+      return true;
+    }
+    return target.getAttribute('aria-expanded') === 'true';
+  }
+
   function positionTooltip(target) {
     const tooltip = ensureTooltip();
     const targetRect = target.getBoundingClientRect();
@@ -60,6 +68,8 @@
   }
 
   function showTooltip(target) {
+    if (isTooltipSuppressed(target)) return;
+
     const text = getTooltipText(target).trim();
     if (!text) return;
 
@@ -78,6 +88,10 @@
 
   function scheduleTooltip(target) {
     clearTimeout(showTimer);
+    if (isTooltipSuppressed(target)) {
+      hideTooltip();
+      return;
+    }
     if (tooltipEl?.classList.contains('visible') && activeTarget !== target) {
       showTooltip(target);
       return;
