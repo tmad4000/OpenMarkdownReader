@@ -5641,11 +5641,26 @@ function toggleFind() {
   }
 }
 
+function focusFindInput() {
+  if (!findInput) return;
+  findInput.focus({ preventScroll: true });
+  findInput.select();
+}
+
+function handleFindCommand() {
+  if (findState.isOpen) {
+    focusFindInput();
+    updateFindResults({ preserveInputFocus: true });
+    return;
+  }
+
+  showFindBar();
+}
+
 function showFindBar() {
   findState.isOpen = true;
   findBar.classList.remove('hidden');
-  findInput.focus();
-  findInput.select();
+  focusFindInput();
   updateFindResults();
 }
 
@@ -5928,7 +5943,15 @@ findPrevBtn.addEventListener('click', () => {
 
 findCloseBtn.addEventListener('click', hideFindBar);
 
-window.electronAPI.onFindInFile(toggleFind);
+window.electronAPI.onFindInFile(handleFindCommand);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    e.stopPropagation();
+    handleFindCommand();
+  }
+}, true);
 
 window.electronAPI.onFileLoaded(() => {
   if (findState.isOpen) {
