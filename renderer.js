@@ -564,7 +564,7 @@ function updateDocumentWordCount(tab = tabs.find(t => t.id === activeTabId)) {
 }
 
 // Create a new tab
-function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null) {
+function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null, isRemote = false) {
   const tabId = ++tabIdCounter;
   const tab = {
     id: tabId,
@@ -572,6 +572,7 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     filePath,
     content: mdContent,
     lastKnownMtime: mtime,
+    isRemote,
     scrollPos: 0,
     isEditing: false,
     isModified: false,
@@ -643,8 +644,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
 }
 
 // Create tab in background (doesn't switch to it)
-function createTabBackground(fileName, mdContent, filePath, mtime = null) {
-  return createTab(fileName, mdContent, filePath, false, mtime);
+function createTabBackground(fileName, mdContent, filePath, mtime = null, isRemote = false) {
+  return createTab(fileName, mdContent, filePath, false, mtime, isRemote);
 }
 
 // Tab drag-to-reorder
@@ -1138,13 +1139,14 @@ async function closeTab(tabId, silent = false) {
 }
 
 // Update tab content
-function updateTab(tabId, fileName, mdContent, filePath, mtime = null) {
+function updateTab(tabId, fileName, mdContent, filePath, mtime = null, isRemote = false) {
   const tab = tabs.find(t => t.id === tabId);
   if (tab) {
     tab.fileName = fileName;
     tab.content = mdContent;
     tab.filePath = filePath;
     tab.lastKnownMtime = mtime;
+    tab.isRemote = isRemote;
     tab.scrollPos = 0;
     tab.isModified = false;
     tab.externalChangePending = false;
@@ -1246,6 +1248,9 @@ async function writeTabToDisk(tab, { fromAutoSave = false } = {}) {
   if (!tab || !tab.filePath) {
     return { success: false, error: 'missing-path' };
   }
+  if (tab.isRemote) {
+    return { success: false, error: 'remote-read-only' };
+  }
 
   const currentMtime = await window.electronAPI.getFileMtime(tab.filePath);
   const hasExternalChange = !!tab.externalChangePending
@@ -1331,17 +1336,18 @@ async function saveFileAs() {
   }
 
   const previousPath = tab.filePath;
-  const defaultPath = tab.filePath || tab.fileName;
+  const defaultPath = tab.isRemote ? tab.fileName : (tab.filePath || tab.fileName);
   const result = await window.electronAPI.saveFileAs(tab.content, defaultPath);
   if (!result) return;
 
-  if (settings.watchFileMode && previousPath && previousPath !== result.filePath) {
+  if (settings.watchFileMode && previousPath && !tab.isRemote && previousPath !== result.filePath) {
     window.electronAPI.unwatchFile(previousPath);
   }
 
   tab.filePath = result.filePath;
   tab.fileName = result.fileName;
   tab.lastKnownMtime = result.mtime;
+  tab.isRemote = false;
   tab.isModified = false;
   tab.externalChangePending = false;
   if (tab.isEditing) tab.originalContent = tab.content;
@@ -2767,6 +2773,7 @@ window.electronAPI.onFileLoaded((data) => {
   const openInBackground = data.openInBackground || false;
   const forceNewTab = data.forceNewTab || false;
   const reuseTab = data.reuseTab || null;
+  const isRemote = data.isRemote || false;
 
   // If reuseTab is specified (e.g., for refresh), update that specific tab
   if (reuseTab) {
@@ -2774,6 +2781,7 @@ window.electronAPI.onFileLoaded((data) => {
     if (tab) {
       tab.content = data.content;
       tab.lastKnownMtime = data.mtime || null;
+      tab.isRemote = isRemote;
       tab.isModified = false;
       tab.externalChangePending = false;
       tab.originalContent = data.content;
@@ -2810,6 +2818,7 @@ window.electronAPI.onFileLoaded((data) => {
       if (!existingTab.isModified) {
         existingTab.content = data.content;
         existingTab.lastKnownMtime = data.mtime || null;
+        existingTab.isRemote = isRemote;
         existingTab.externalChangePending = false;
         if (existingTab.isEditing) {
           existingTab.originalContent = data.content;
@@ -2840,7 +2849,7 @@ window.electronAPI.onFileLoaded((data) => {
 
   // If forcing new tab or opening in background, always create new tab
   if (forceNewTab || openInBackground) {
-    const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime);
+    const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime, isRemote);
     
     // Set edit mode if requested
     if (data.forceEdit) {
@@ -2852,7 +2861,7 @@ window.electronAPI.onFileLoaded((data) => {
     }
 
     // Start watching if watch mode is on
-    if (data.filePath && settings.watchFileMode) {
+    if (data.filePath && settings.watchFileMode && !isRemote) {
       window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
     // If not background, switch to the new tab
@@ -2865,7 +2874,7 @@ window.electronAPI.onFileLoaded((data) => {
     if (activeTab.filePath && settings.watchFileMode) {
       window.electronAPI.unwatchFile(activeTab.filePath);
     }
-    updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime);
+    updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime, isRemote);
     
     if (data.forceEdit) {
       activeTab.isEditing = true;
@@ -2877,11 +2886,11 @@ window.electronAPI.onFileLoaded((data) => {
     
     document.title = `${data.fileName} - OpenMarkdownReader`;
     // Start watching new file
-    if (data.filePath && settings.watchFileMode) {
+    if (data.filePath && settings.watchFileMode && !isRemote) {
       window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
   } else {
-    const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime);
+    const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime, isRemote);
     if (data.forceEdit) {
       const tab = tabs.find(t => t.id === newTabId);
       if (tab) {
@@ -2891,7 +2900,7 @@ window.electronAPI.onFileLoaded((data) => {
       }
     }
     // Start watching if watch mode is on
-    if (data.filePath && settings.watchFileMode) {
+    if (data.filePath && settings.watchFileMode && !isRemote) {
       window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
   }
@@ -3154,7 +3163,7 @@ window.electronAPI.onShowCustomWidthDialog(showCustomWidthDialog);
 // Listen for refresh file (Cmd+R)
 window.electronAPI.onRefreshFile(async () => {
   const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.filePath) return;
+  if (!tab || !tab.filePath || tab.isRemote) return;
 
   // If there are unsaved changes, confirm first
   if (tab.isModified) {
@@ -3332,7 +3341,7 @@ window.electronAPI.onSetWatchMode((watchMode) => {
   // Start/stop watching all open tabs with paths (not just the active tab)
   for (const tab of tabs) {
     if (!tab.filePath) continue;
-    if (watchMode) {
+    if (watchMode && !tab.isRemote) {
       window.electronAPI.watchFile(tab.filePath, getWatcherOptions());
     } else {
       window.electronAPI.unwatchFile(tab.filePath);
@@ -4571,12 +4580,12 @@ function updateCommandPaletteResults() {
   // 0. Add URL/File option if detected
   if (isUrl) {
     allItems.push({
-      name: `Open URL: ${inputVal}`,
+      name: `Open Markdown URL: ${inputVal}`,
       path: inputVal,
       type: 'url',
       isCommand: true,
       icon: '🌐',
-      action: () => window.electronAPI.openExternal(inputVal)
+      action: () => window.electronAPI.openFileByPath(inputVal)
     });
   } else if (isPath) {
     allItems.push({
@@ -5964,7 +5973,7 @@ saveFile = async function(options = {}) {
     tab.content = easyMDE ? easyMDE.value() : editor.value;
   }
 
-  if (tab.filePath) {
+  if (tab.filePath && !tab.isRemote) {
     const { fromAutoSave = false } = options;
     const result = await writeTabToDisk(tab, { fromAutoSave });
     if (result && result.success) {
@@ -6010,7 +6019,7 @@ closeTab = async function(tabId, silent = false) {
             tab.content = editor.value; 
         }
       }
-      if (tab.filePath) {
+      if (tab.filePath && !tab.isRemote) {
         const saveResult = await writeTabToDisk(tab);
         if (!saveResult || !saveResult.success) return;
         tab.isModified = false;
@@ -6026,7 +6035,7 @@ closeTab = async function(tabId, silent = false) {
   }
 
   // Stop watching the file if we were watching it
-  if (tab && tab.filePath && settings.watchFileMode) {
+  if (tab && tab.filePath && settings.watchFileMode && !tab.isRemote) {
     window.electronAPI.unwatchFile(tab.filePath);
   }
 
@@ -6076,7 +6085,7 @@ function triggerAutoSave() {
   if (!settings.autoSave) return;
   
   const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.filePath) return;
+  if (!tab || !tab.filePath || tab.isRemote) return;
   
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {

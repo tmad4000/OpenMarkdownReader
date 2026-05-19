@@ -5,6 +5,11 @@ const fs = require('fs');
 const https = require('https');
 const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
+const {
+  deriveRemoteMarkdownFileName,
+  fetchRemoteMarkdown,
+  isHttpUrl
+} = require('./remote-markdown-utils');
 
 // Configure electron-log: writes to ~/Library/Logs/OpenMarkdownReader/
 log.initialize();
@@ -118,7 +123,7 @@ function parseArgs(argv) {
           arg === 'main.js' ||
           arg === '.') continue;
           
-      if (path.isAbsolute(arg) || arg.includes('/') || arg.includes('\\') || arg.endsWith('.md')) {
+      if (isHttpUrl(arg) || path.isAbsolute(arg) || arg.includes('/') || arg.includes('\\') || arg.endsWith('.md')) {
         flags.files.push(arg);
       }
     }
@@ -173,7 +178,7 @@ if (!gotTheLock) {
 
       // Open any files passed
       args.files.forEach(file => {
-        const fullPath = path.isAbsolute(file) ? file : path.join(workingDirectory, file);
+        const fullPath = isHttpUrl(file) || path.isAbsolute(file) ? file : path.join(workingDirectory, file);
         openPathInWindow(win, fullPath, { forceEdit: args.edit });
       });
 
@@ -461,6 +466,11 @@ async function uninstallCliCommand() {
 }
 
 function openPathInWindow(win, targetPath, options = {}) {
+  if (isHttpUrl(targetPath)) {
+    openRemoteMarkdownUrl(win, targetPath, options);
+    return;
+  }
+
   try {
     const stats = fs.statSync(targetPath);
     if (stats.isDirectory()) {
@@ -472,6 +482,31 @@ function openPathInWindow(win, targetPath, options = {}) {
     loadMarkdownFile(win, targetPath, options);
   } catch (err) {
     dialog.showErrorBox('Error', `Could not open path: ${err.message}`);
+  }
+}
+
+async function openRemoteMarkdownUrl(win, url, options = {}) {
+  if (!win) return;
+  try {
+    const result = await fetchRemoteMarkdown(url);
+    const fileName = deriveRemoteMarkdownFileName(result.finalUrl, result.contentType);
+    win.webContents.send('file-loaded', {
+      content: result.content,
+      fileName,
+      filePath: result.finalUrl,
+      mtime: Date.now(),
+      openInBackground: options.background || false,
+      forceNewTab: options.newTab || false,
+      reuseTab: options.reuseTab || null,
+      forceEdit: false,
+      isRemote: true,
+    });
+    if (!options.background) {
+      win.setTitle(`${fileName} - OpenMarkdownReader`);
+    }
+    addToRecent(result.finalUrl, 'file');
+  } catch (err) {
+    dialog.showErrorBox('Error', `Could not open Markdown URL: ${err.message}`);
   }
 }
 
@@ -1998,7 +2033,7 @@ app.whenReady().then(() => {
       if (args.newFile) win.webContents.send('new-file');
 
       args.files.forEach(file => {
-        const fullPath = path.isAbsolute(file) ? file : path.resolve(file);
+        const fullPath = isHttpUrl(file) || path.isAbsolute(file) ? file : path.resolve(file);
         openPathInWindow(win, fullPath, { forceEdit: args.edit });
       });
     });
