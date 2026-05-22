@@ -1,7 +1,7 @@
 {
   "name": "open-markdown-reader",
   "productName": "OpenMarkdownReader",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {

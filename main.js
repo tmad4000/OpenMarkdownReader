@@ -222,7 +222,7 @@ const fileWatchStates = new Map(); // Track watcher metadata (path/inode/search 
 const pendingOpenFiles = [];
 
 // Argument Parsing
-function parseArgs(argv) {
+function parseArgs(argv, baseDirectory = process.cwd()) {
   const flags = {
     watch: false,
     edit: false,
@@ -263,7 +263,7 @@ function parseArgs(argv) {
     } else if (arg === '--debug') {
       flags.debug = true;
     } else if (arg === '.') {
-      flags.files.push(process.cwd());
+      flags.files.push(baseDirectory);
     } else if (!arg.startsWith('-')) {
       if (arg.includes('node_modules') || 
           arg.includes('OpenMarkdownReader.app') || 
@@ -292,7 +292,7 @@ if (!gotTheLock) {
       if (win.isMinimized()) win.restore();
       win.focus();
       
-      const args = parseArgs(argv);
+      const args = parseArgs(argv, workingDirectory);
       
       // Apply flags to session
       if (args.watch) {
@@ -1848,6 +1848,36 @@ const REMOTE_TEXT_CONTENT_TYPES = new Set([
   'application/x-sh'
 ]);
 
+const BROAD_RECURSIVE_SCAN_DIRS = new Set([
+  '/',
+  '/Applications',
+  '/Library',
+  '/System',
+  '/bin',
+  '/private',
+  '/sbin',
+  '/usr',
+  '/var',
+  '/Volumes'
+]);
+
+function normalizeScanRoot(dirPath) {
+  if (typeof dirPath !== 'string' || !dirPath.trim()) return '';
+  try {
+    return path.resolve(dirPath);
+  } catch {
+    return '';
+  }
+}
+
+function isBroadRecursiveScanRoot(dirPath) {
+  const resolved = normalizeScanRoot(dirPath);
+  if (!resolved) return true;
+  if (resolved === path.parse(resolved).root) return true;
+  if (process.platform === 'darwin' && BROAD_RECURSIVE_SCAN_DIRS.has(resolved)) return true;
+  return false;
+}
+
 function getRemoteUrlFileName(remoteUrl) {
   try {
     const parsed = new URL(remoteUrl);
@@ -3199,6 +3229,10 @@ ipcMain.handle('get-directory-contents', async (event, dirPath) => {
 // Get all files (and folders) recursively (for command palette search).
 // Cmd+P needs folders so users can pick a folder and "open as project".
 ipcMain.handle('get-all-files-recursive', async (event, dirPath) => {
+  if (isBroadRecursiveScanRoot(dirPath)) {
+    console.warn(`Skipping recursive file scan for broad directory: ${dirPath}`);
+    return [];
+  }
   return getAllFilesRecursive(dirPath, 5, { includeDirs: true });
 });
 
@@ -3216,6 +3250,11 @@ function isMarkdownFileExt(filename) {
 
 // Recursively get all files in directory
 function getAllFilesRecursive(dirPath, maxDepth = 5, options = {}) {
+  if (isBroadRecursiveScanRoot(dirPath)) {
+    console.warn(`Skipping recursive file scan for broad directory: ${dirPath}`);
+    return [];
+  }
+
   const includeDirs = options.includeDirs || false;
   const files = [];
   const ignoredDirs = new Set([

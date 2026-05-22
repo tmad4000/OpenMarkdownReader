@@ -609,6 +609,11 @@ function setSidebarVisibility(visible) {
   if (sidebarResizer) {
     sidebarResizer.classList.toggle('hidden', !settings.sidebarVisible);
   }
+  if (settings.sidebarVisible) {
+    startSidebarLiveWatcher();
+  } else {
+    stopSidebarLiveWatcher();
+  }
 }
 
 function initSidebarResizer() {
@@ -1826,8 +1831,25 @@ function stopSidebarLiveWatcher() {
   }
 }
 
+function normalizeDirectoryForIndex(dirPath) {
+  if (!dirPath || typeof dirPath !== 'string') return '';
+  const sep = window.electronAPI.pathSep || '/';
+  const normalized = dirPath.replace(/[\\/]+$/, '');
+  return normalized || sep;
+}
+
+function canRecursivelyIndexDirectory(dirPath) {
+  const normalized = normalizeDirectoryForIndex(dirPath);
+  if (!normalized) return false;
+  if (normalized === (window.electronAPI.pathSep || '/')) return false;
+  if ((window.electronAPI.pathSep || '/') === '/') {
+    return !/^\/(Applications|Library|System|bin|private|sbin|usr|var|Volumes)$/.test(normalized);
+  }
+  return true;
+}
+
 async function computeSidebarLiveSnapshot(dirPath) {
-  if (!dirPath) return { signature: '', allFiles: [] };
+  if (!dirPath || !canRecursivelyIndexDirectory(dirPath)) return { signature: '__skipped__', allFiles: [] };
   try {
     const allFiles = await window.electronAPI.getAllFilesRecursive(dirPath);
     const signatures = allFiles
@@ -1856,6 +1878,7 @@ async function hydrateExpandedSidebarFolders(items) {
 
 async function refreshSidebarFromFilesystem(force = false) {
   if (!currentDirectory) return;
+  if (!settings.sidebarVisible || !canRecursivelyIndexDirectory(currentDirectory)) return;
   const refreshDirectory = currentDirectory;
   try {
     const { signature, allFiles } = await computeSidebarLiveSnapshot(refreshDirectory);
@@ -1885,7 +1908,7 @@ async function refreshSidebarFromFilesystem(force = false) {
 function startSidebarLiveWatcher() {
   stopSidebarLiveWatcher();
   sidebarLiveWatchSignature = '';
-  if (!currentDirectory) return;
+  if (!settings.sidebarVisible || !currentDirectory || !canRecursivelyIndexDirectory(currentDirectory)) return;
   refreshSidebarFromFilesystem(true);
   sidebarLiveWatchTimer = setInterval(() => {
     refreshSidebarFromFilesystem(false);
@@ -2159,26 +2182,31 @@ window.electronAPI.onDirectoryLoaded((data) => {
   allFilesCache = null;
   wikiLinkByPath.clear();
   wikiLinkByName.clear();
-  allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
-    .then(files => {
-      // setAllFilesCache builds the wiki link index AND re-renders the active
-      // preview tab so any [[wikilinks]] that rendered before the index was
-      // ready get resolved.
-      setAllFilesCache(files);
-      // If palette is open, update results immediately
-      if (!commandPalette.classList.contains('hidden')) {
-        updateCommandPaletteResults();
-      }
-      return files;
-    })
-    .catch(err => {
-      console.error('Error prefetching files for command palette:', err);
-      allFilesCache = [];
-      return [];
-    })
-    .finally(() => {
-      allFilesCachePromise = null;
-    });
+  if (canRecursivelyIndexDirectory(currentDirectory)) {
+    allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
+      .then(files => {
+        // setAllFilesCache builds the wiki link index AND re-renders the active
+        // preview tab so any [[wikilinks]] that rendered before the index was
+        // ready get resolved.
+        setAllFilesCache(files);
+        // If palette is open, update results immediately
+        if (!commandPalette.classList.contains('hidden')) {
+          updateCommandPaletteResults();
+        }
+        return files;
+      })
+      .catch(err => {
+        console.error('Error prefetching files for command palette:', err);
+        allFilesCache = [];
+        return [];
+      })
+      .finally(() => {
+        allFilesCachePromise = null;
+      });
+  } else {
+    setAllFilesCache([]);
+    allFilesCachePromise = null;
+  }
 
   // Show sidebar and render the file tree
   setSidebarVisibility(true);
@@ -2250,6 +2278,10 @@ async function renderRecentFilesTree() {
   // Use cached files if available, otherwise fetch
   let files = allFilesCache;
   if (!files) {
+    if (!canRecursivelyIndexDirectory(currentDirectory)) {
+      files = [];
+      setAllFilesCache(files);
+    } else {
     fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
     try {
       console.log('Fetching all files recursively...');
@@ -2260,6 +2292,7 @@ async function renderRecentFilesTree() {
       console.error('Error loading recursive files:', e);
       fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
       return;
+    }
     }
   }
 
@@ -2383,6 +2416,10 @@ async function renderRecentFilesTree() {
 async function renderRecentFilesTimeline() {
   let files = allFilesCache;
   if (!files) {
+    if (!canRecursivelyIndexDirectory(currentDirectory)) {
+      files = [];
+      setAllFilesCache(files);
+    } else {
     fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Loading...</div>';
     try {
       files = await window.electronAPI.getAllFilesRecursive(currentDirectory);
@@ -2390,6 +2427,7 @@ async function renderRecentFilesTimeline() {
     } catch (e) {
       fileTree.innerHTML = '<div class="file-tree-item file-tree-empty">Error loading files</div>';
       return;
+    }
     }
   }
 
@@ -3777,7 +3815,11 @@ async function refreshSidebarForExternalMove() {
     sortDirectoryFiles(directoryFiles);
     renderFileTree();
 
-    setAllFilesCache(await window.electronAPI.getAllFilesRecursive(currentDirectory));
+    if (canRecursivelyIndexDirectory(currentDirectory)) {
+      setAllFilesCache(await window.electronAPI.getAllFilesRecursive(currentDirectory));
+    } else {
+      setAllFilesCache([]);
+    }
     if (!commandPalette.classList.contains('hidden')) {
       updateCommandPaletteResults();
     }
@@ -5036,7 +5078,7 @@ async function showCommandPalette() {
   commandPaletteSelectedIndex = 0;
 
   // Load all files if we have a directory
-  if (currentDirectory && !allFilesCache) {
+  if (currentDirectory && !allFilesCache && canRecursivelyIndexDirectory(currentDirectory)) {
     commandPaletteResults.innerHTML = '<div class="command-palette-empty">Loading files...</div>';
     if (!allFilesCachePromise) {
       allFilesCachePromise = window.electronAPI.getAllFilesRecursive(currentDirectory)
@@ -5054,6 +5096,8 @@ async function showCommandPalette() {
         });
     }
     await allFilesCachePromise;
+  } else if (currentDirectory && !allFilesCache) {
+    allFilesCache = [];
   }
 
   updateCommandPaletteResults();
