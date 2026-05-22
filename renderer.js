@@ -413,11 +413,11 @@ function escapeHtml(text) {
 }
 
 // Update tab display (title text and tooltip)
-function updateTabDisplay(tabId, fileName, filePath) {
+function updateTabDisplay(tabId, fileName, filePath, sourceUrl = null) {
   const tabEl = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
   if (tabEl) {
     const titleEl = tabEl.querySelector('.tab-title');
-    const tooltip = filePath || fileName;
+    const tooltip = sourceUrl || filePath || fileName;
     if (titleEl) {
       titleEl.textContent = fileName;
       titleEl.title = tooltip;
@@ -705,12 +705,14 @@ function updateDocumentWordCount(tab = tabs.find(t => t.id === activeTabId)) {
 }
 
 // Create a new tab
-function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null) {
+function createTab(fileName = 'New Tab', mdContent = null, filePath = null, switchTo = true, mtime = null, sourceUrl = null) {
   const tabId = ++tabIdCounter;
   const tab = {
     id: tabId,
     fileName,
     filePath,
+    sourceUrl,
+    isRemote: !!sourceUrl,
     content: mdContent,
     lastKnownMtime: mtime,
     scrollPos: 0,
@@ -731,13 +733,13 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
   tabEl.className = 'tab';
   tabEl.dataset.tabId = tabId;
   tabEl.draggable = true;
-  tabEl.title = filePath || fileName; // Show full path on hover
+  tabEl.title = sourceUrl || filePath || fileName; // Show full path/source on hover
   tabEl.innerHTML = `
     <span class="tab-title">${escapeHtml(fileName)}</span>
     <span class="tab-close">×</span>
   `;
   const tabTitleEl = tabEl.querySelector('.tab-title');
-  if (tabTitleEl) tabTitleEl.title = filePath || fileName;
+  if (tabTitleEl) tabTitleEl.title = sourceUrl || filePath || fileName;
 
   // Append to tab bar
   tabBar.appendChild(tabEl);
@@ -789,8 +791,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
 }
 
 // Create tab in background (doesn't switch to it)
-function createTabBackground(fileName, mdContent, filePath, mtime = null) {
-  return createTab(fileName, mdContent, filePath, false, mtime);
+function createTabBackground(fileName, mdContent, filePath, mtime = null, sourceUrl = null) {
+  return createTab(fileName, mdContent, filePath, false, mtime, sourceUrl);
 }
 
 // Tab drag-to-reorder
@@ -1255,6 +1257,7 @@ async function closeTab(tabId, silent = false) {
     closedTabs.push({
       fileName: tab.fileName,
       filePath: tab.filePath,
+      sourceUrl: tab.sourceUrl || null,
       content: tab.content,
       scrollPos: tab.scrollPos
     });
@@ -1287,18 +1290,20 @@ async function closeTab(tabId, silent = false) {
 }
 
 // Update tab content
-function updateTab(tabId, fileName, mdContent, filePath, mtime = null) {
+function updateTab(tabId, fileName, mdContent, filePath, mtime = null, sourceUrl = null) {
   const tab = tabs.find(t => t.id === tabId);
   if (tab) {
     tab.fileName = fileName;
     tab.content = mdContent;
     tab.filePath = filePath;
+    tab.sourceUrl = sourceUrl;
+    tab.isRemote = !!sourceUrl;
     tab.lastKnownMtime = mtime;
     tab.scrollPos = 0;
     tab.isModified = false;
     tab.externalChangePending = false;
 
-    updateTabDisplay(tabId, fileName, filePath);
+    updateTabDisplay(tabId, fileName, filePath, sourceUrl);
     updateTabUI(tabId);
     if (tabId === activeTabId) {
       syncActiveSidebarFileHighlight();
@@ -1568,6 +1573,8 @@ async function saveFile() {
     if (result) {
       tab.filePath = result.filePath;
       tab.fileName = result.fileName;
+      tab.sourceUrl = null;
+      tab.isRemote = false;
       tab.lastKnownMtime = result.mtime;
       tab.isModified = false;
       tab.externalChangePending = false;
@@ -1603,6 +1610,8 @@ async function saveFileAs() {
 
   tab.filePath = result.filePath;
   tab.fileName = result.fileName;
+  tab.sourceUrl = null;
+  tab.isRemote = false;
   tab.lastKnownMtime = result.mtime;
   tab.isModified = false;
   tab.externalChangePending = false;
@@ -3179,12 +3188,15 @@ window.electronAPI.onFileLoaded((data) => {
   const openInBackground = data.openInBackground || false;
   const forceNewTab = data.forceNewTab || false;
   const reuseTab = data.reuseTab || null;
+  const sourceUrl = data.sourceUrl || null;
 
   // If reuseTab is specified (e.g., for refresh), update that specific tab
   if (reuseTab) {
     const tab = tabs.find(t => t.id === reuseTab);
     if (tab) {
       tab.content = data.content;
+      tab.sourceUrl = sourceUrl;
+      tab.isRemote = !!sourceUrl;
       tab.lastKnownMtime = data.mtime || null;
       tab.isModified = false;
       tab.externalChangePending = false;
@@ -3248,11 +3260,38 @@ window.electronAPI.onFileLoaded((data) => {
     }
   }
 
+  if (sourceUrl) {
+    const existingRemoteTab = tabs.find(t => t.sourceUrl === sourceUrl);
+    if (existingRemoteTab) {
+      if (!openInBackground) {
+        switchToTab(existingRemoteTab.id);
+      }
+      if (!existingRemoteTab.isModified) {
+        existingRemoteTab.content = data.content;
+        existingRemoteTab.lastKnownMtime = data.mtime || null;
+        existingRemoteTab.externalChangePending = false;
+        if (existingRemoteTab.id === activeTabId) {
+          if (existingRemoteTab.isEditing) {
+            if (easyMDE) {
+              easyMDE.value(data.content);
+            } else {
+              editor.value = data.content;
+            }
+          } else {
+            renderContent(data.content, data.fileName);
+          }
+          document.title = `${existingRemoteTab.fileName}${existingRemoteTab.isModified ? ' *' : ''} - ${APP_NAME}`;
+        }
+      }
+      return;
+    }
+  }
+
   const activeTab = tabs.find(t => t.id === activeTabId);
 
   // If forcing new tab or opening in background, always create new tab
   if (forceNewTab || openInBackground) {
-    const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime);
+    const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime, sourceUrl);
     
     // Set edit mode if requested
     if (data.forceEdit) {
@@ -3277,7 +3316,7 @@ window.electronAPI.onFileLoaded((data) => {
     if (activeTab.filePath && settings.watchFileMode) {
       window.electronAPI.unwatchFile(activeTab.filePath);
     }
-    updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime);
+    updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime, sourceUrl);
     
     if (data.forceEdit) {
       activeTab.isEditing = true;
@@ -3293,7 +3332,7 @@ window.electronAPI.onFileLoaded((data) => {
       window.electronAPI.watchFile(data.filePath, getWatcherOptions());
     }
   } else {
-    const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime);
+    const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime, sourceUrl);
     if (data.forceEdit) {
       const tab = tabs.find(t => t.id === newTabId);
       if (tab) {
@@ -3370,6 +3409,13 @@ window.electronAPI.onReopenClosedTab(() => {
   if (closedTab.filePath) {
     // Reopen from file
     window.electronAPI.openFileByPath(closedTab.filePath);
+  } else if (closedTab.sourceUrl && closedTab.content !== undefined) {
+    const tabId = createTab(closedTab.fileName, closedTab.content, null, true, null, closedTab.sourceUrl);
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.scrollPos = closedTab.scrollPos || 0;
+      updateTabUI(tabId);
+    }
   } else if (closedTab.content !== undefined) {
     // Reopen unsaved content
     const tabId = createTab(closedTab.fileName, closedTab.content, null);
@@ -3661,6 +3707,8 @@ async function saveAllFiles() {
         if (result) {
           tab.filePath = result.filePath;
           tab.fileName = result.fileName;
+          tab.sourceUrl = null;
+          tab.isRemote = false;
           tab.lastKnownMtime = result.mtime;
           tab.isModified = false;
           tab.externalChangePending = false;
@@ -5050,12 +5098,18 @@ function updateCommandPaletteResults() {
   // 0. Add URL/File option if detected
   if (isUrl) {
     allItems.push({
-      name: `Open URL: ${inputVal}`,
+      name: `Open Remote File: ${inputVal}`,
       path: inputVal,
       type: 'url',
       isCommand: true,
       icon: '🌐',
-      action: () => window.electronAPI.openExternal(inputVal)
+      description: 'Fetch and open in Markdown Reader',
+      action: async () => {
+        const result = await window.electronAPI.openRemoteUrl(inputVal);
+        if (!result || !result.success) {
+          showToast(`Could not open remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+        }
+      }
     });
   } else if (isPath) {
     allItems.push({
@@ -5094,7 +5148,8 @@ function updateCommandPaletteResults() {
     tabs.forEach(tab => {
       if (tab.content !== null) {
         // Check if this file is already in the list
-        const existingItem = tab.filePath ? allItems.find(f => f.path === tab.filePath) : null;
+        const tabSourcePath = tab.sourceUrl || tab.filePath;
+        const existingItem = tabSourcePath ? allItems.find(f => f.path === tabSourcePath) : null;
         
         if (existingItem) {
           existingItem.isOpenTab = true;
@@ -5103,7 +5158,7 @@ function updateCommandPaletteResults() {
           // Not in file list (or no file path), add it
           allItems.push({
             name: tab.fileName,
-            path: tab.filePath || 'Untitled',
+            path: tab.sourceUrl || tab.filePath || 'Untitled',
             isMarkdown: true,
             isOpenTab: true,
             tabId: tab.id
@@ -5516,6 +5571,8 @@ window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
       if (result) {
         tab.filePath = result.filePath;
         tab.fileName = result.fileName;
+        tab.sourceUrl = null;
+        tab.isRemote = false;
         tab.lastKnownMtime = result.mtime;
         tab.isModified = false;
         tab.externalChangePending = false;
@@ -6395,6 +6452,8 @@ saveFile = async function(options = {}) {
     if (result) {
         tab.filePath = result.filePath;
         tab.fileName = result.fileName;
+        tab.sourceUrl = null;
+        tab.isRemote = false;
         tab.lastKnownMtime = result.mtime;
         tab.isModified = false;
         tab.externalChangePending = false;
@@ -6450,6 +6509,7 @@ closeTab = async function(tabId, silent = false) {
     closedTabs.push({
       fileName: tab.fileName,
       filePath: tab.filePath,
+      sourceUrl: tab.sourceUrl || null,
       content: tab.content,
       scrollPos: tab.scrollPos
     });

@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
 const agentServer = require('./agent-server');
@@ -1833,6 +1834,131 @@ const textFileExtensions = [
   'htaccess', 'npmrc', 'nvmrc'
 ];
 
+const MAX_REMOTE_FILE_BYTES = 15 * 1024 * 1024;
+const REMOTE_TEXT_CONTENT_TYPES = new Set([
+  'application/json',
+  'application/javascript',
+  'application/x-javascript',
+  'application/xml',
+  'application/yaml',
+  'application/x-yaml',
+  'application/toml',
+  'application/x-toml',
+  'application/graphql',
+  'application/x-sh'
+]);
+
+function getRemoteUrlFileName(remoteUrl) {
+  try {
+    const parsed = new URL(remoteUrl);
+    const rawName = path.posix.basename(parsed.pathname) || 'remote.md';
+    return decodeURIComponent(rawName);
+  } catch {
+    return 'remote.md';
+  }
+}
+
+function isTextLikeRemoteResponse(remoteUrl, contentType = '') {
+  const mime = String(contentType).split(';')[0].trim().toLowerCase();
+  if (mime.startsWith('text/')) return true;
+  if (REMOTE_TEXT_CONTENT_TYPES.has(mime)) return true;
+
+  try {
+    const ext = path.extname(new URL(remoteUrl).pathname).toLowerCase().slice(1);
+    if (ext && textFileExtensions.includes(ext)) return true;
+  } catch {}
+
+  return !mime;
+}
+
+function fetchRemoteTextFile(remoteUrl, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch {
+      reject(new Error('Invalid URL'));
+      return;
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      reject(new Error('Only http and https URLs can be opened'));
+      return;
+    }
+
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.get(parsed, {
+      headers: {
+        'User-Agent': `${edition.productName || 'OpenMarkdownReader'}/${buildInfo.version || 'dev'}`,
+        'Accept': 'text/markdown,text/plain,text/*,application/json,application/xml,application/yaml,*/*;q=0.2'
+      }
+    }, (res) => {
+      const status = res.statusCode || 0;
+      const location = res.headers.location;
+
+      if (status >= 300 && status < 400 && location) {
+        res.resume();
+        if (redirectCount >= 5) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        fetchRemoteTextFile(new URL(location, parsed).toString(), redirectCount + 1)
+          .then(resolve, reject);
+        return;
+      }
+
+      if (status < 200 || status >= 300) {
+        res.resume();
+        reject(new Error(`Remote server returned HTTP ${status}`));
+        return;
+      }
+
+      const contentType = res.headers['content-type'] || '';
+      if (!isTextLikeRemoteResponse(remoteUrl, contentType)) {
+        res.resume();
+        reject(new Error(`Remote file does not look like text (${contentType || 'unknown content type'})`));
+        return;
+      }
+
+      const chunks = [];
+      let totalBytes = 0;
+      let rejectedForSize = false;
+
+      res.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_REMOTE_FILE_BYTES) {
+          rejectedForSize = true;
+          reject(new Error('Remote file is larger than 15 MB'));
+          res.destroy();
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      res.on('error', (err) => {
+        if (!rejectedForSize) reject(err);
+      });
+
+      res.on('end', () => {
+        if (rejectedForSize) return;
+        const finalUrl = res.responseUrl || parsed.toString();
+        const mtime = res.headers['last-modified'] ? Date.parse(res.headers['last-modified']) : null;
+        resolve({
+          content: Buffer.concat(chunks).toString('utf8'),
+          fileName: getRemoteUrlFileName(finalUrl),
+          sourceUrl: finalUrl,
+          mtime: Number.isFinite(mtime) ? mtime : null
+        });
+      });
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy(new Error('Timed out opening remote URL'));
+    });
+    req.on('error', reject);
+  });
+}
+
 async function openFileOrFolder(targetWindow = null) {
   const win = targetWindow || getFocusedWindow();
 
@@ -3028,6 +3154,41 @@ ipcMain.handle('open-file-by-path', async (event, filePath, options = {}) => {
     filePath = path.join(os.homedir(), filePath.slice(2));
   }
   openPathInWindow(win, filePath, options);
+});
+
+// Open a remote text/markdown URL inside the app (primarily from Cmd+P).
+ipcMain.handle('open-remote-url', async (event, remoteUrl, options = {}) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) {
+    return { success: false, error: 'No active window' };
+  }
+
+  try {
+    const remoteFile = await fetchRemoteTextFile(remoteUrl);
+    win.webContents.send('file-loaded', {
+      content: remoteFile.content,
+      fileName: remoteFile.fileName,
+      filePath: null,
+      sourceUrl: remoteFile.sourceUrl,
+      isRemote: true,
+      mtime: remoteFile.mtime,
+      openInBackground: options.background || false,
+      forceNewTab: options.newTab || false,
+      reuseTab: options.reuseTab || null,
+      forceEdit: options.forceEdit || false
+    });
+    if (!options.background) {
+      win.setTitle(`${remoteFile.fileName} - ${edition.productName}`);
+    }
+    agentServer.emitEvent('remote-file-opened', {
+      sourceUrl: remoteFile.sourceUrl,
+      fileName: remoteFile.fileName
+    });
+    return { success: true, sourceUrl: remoteFile.sourceUrl, fileName: remoteFile.fileName };
+  } catch (err) {
+    console.warn(`openRemoteUrl: ${err.message}`);
+    return { success: false, error: err.message };
+  }
 });
 
 // Get directory contents (for expanding folders in sidebar)
