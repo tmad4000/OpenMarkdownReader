@@ -143,6 +143,23 @@ The published page should:
 | **Analytics** | View count (privacy-respecting) |
 | **Delete** | Ability to unpublish |
 
+### Related Prior Art: Proof by Every
+
+**Added:** 2026-05-27  
+**Research note:** `research/proof-by-every.md`
+
+Proof by Every/Dan Shipper is the closest current example of an agent-native online document editor. It is web-first, open-source, and built around shared documents, comments, suggestions, realtime collaboration, provenance, and an HTTP API for agents.
+
+The main product lesson is that OMR's online version should not accidentally drift from "read-only publish" into "full collaborative editor" without an explicit architecture decision. Proof's scope requires a server-backed document model, stable block IDs, optimistic locking, idempotency keys, presence, comments/suggestions, and realtime synchronization. That is a separate product surface from the one-click publish feature.
+
+Proof-informed requirements for OMR's publish v1:
+
+- Keep publish opt-in and preserve local-first/offline-first app behavior.
+- Return structured publish metadata with links for humans and agents.
+- Expose raw Markdown via URL or content negotiation so agents can read published docs without browser automation.
+- Include update/delete/revoke semantics before considering realtime collaboration.
+- If comments/suggestions are added online, model them as first-class operations with CLI parity rather than only browser UI.
+
 ### Implementation Plan
 
 **Phase 1: Backend (Cloudflare Worker)**

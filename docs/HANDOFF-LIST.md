@@ -31,7 +31,7 @@ These have real architectural or product decisions that aren't safe to guess at.
 |---|---|---|
 | **markdown-reader-r1r** | P2 — WYSIWYG via Milkdown | Now unblocked (a4h is fixed). Needs a build-system call (Milkdown isn't a CDN drop-in like EasyMDE). Jacob: greenlight + pick build pipeline (esbuild? vite?). |
 | **markdown-reader-mwv** | P2 — VS Code-style split editor | Major UI architecture change. Affects tabs, sidebar, command palette, persistence. Jacob: confirm priority + scope (split current tab? split between tabs? both?). |
-| **markdown-reader-msv** | P2 — Web-based markdown viewer | Whole new project. Hosting? Domain? Integrate with noos? Jacob: define the strategy. |
+| **markdown-reader-msv** | P2 — Web-based markdown viewer | Whole new project. Proof research now narrows the default v1: read-only publish + raw/JSON agent endpoints first; defer realtime collaboration unless Jacob explicitly chooses that larger product. See `research/proof-by-every.md`. |
 | **markdown-reader-kq3** | P2 — Escape to exit edit mode | Now unblocked (a4h is fixed). 3 behavior options in the ticket. Jacob: pick option 1/2/3. |
 | **markdown-reader-st8** | P2 — Browsing/navigation history | Needs UX design — sidebar panel? menu? popover? Visible per-tab or global? |
 | **markdown-reader-xwc** | P2 — Local-only / offline-first mode | Needs scope: which features get gated? Define what "local-only" means precisely (no telemetry? no auto-updates? no font CDN? all of the above?). |
