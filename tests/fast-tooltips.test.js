@@ -19,8 +19,15 @@ test('fast tooltip layer is loaded before renderer creates dynamic controls', ()
 
 test('fast tooltip layer shows quickly and suppresses native title delay', () => {
   assert.match(tooltipScript, /SHOW_DELAY_MS\s*=\s*120/);
+  assert.match(tooltipScript, /TAB_SHOW_DELAY_MS\s*=\s*0/);
   assert.match(tooltipScript, /removeAttribute\('title'\)/);
   assert.match(tooltipScript, /closest\('\[title\], \[data-fast-tooltip-title\], \[data-tooltip\], \[aria-label\]'\)/);
+});
+
+test('tab tooltips show immediately while other tooltips keep a short delay', () => {
+  assert.match(tooltipScript, /target\.closest\?\.\('\.tab'\)\s*\?\s*TAB_SHOW_DELAY_MS\s*:\s*SHOW_DELAY_MS/);
+  assert.match(tooltipScript, /if \(delay === 0\) \{[\s\S]*?showTooltip\(target\);[\s\S]*?return;/);
+  assert.match(tooltipScript, /setTimeout\(\(\) => showTooltip\(target\), delay\)/);
 });
 
 test('fast tooltip layer updates immediately between adjacent targets', () => {

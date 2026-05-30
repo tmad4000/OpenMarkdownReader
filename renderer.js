@@ -1154,6 +1154,10 @@ function switchToTab(tabId) {
   document.querySelectorAll('.tab').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.tabId) === tabId);
   });
+  document.querySelector(`.tab[data-tab-id="${tabId}"]`)?.scrollIntoView({
+    block: 'nearest',
+    inline: 'nearest'
+  });
 
   // Show content
   if (tab && tab.content !== null && tab.content !== undefined) {
@@ -3497,17 +3501,29 @@ const reportIssueContent = document.getElementById('report-issue-content');
 const reportIssueCancel = document.getElementById('report-issue-cancel');
 const reportIssueSubmit = document.getElementById('report-issue-submit');
 const reportIssueStatus = document.getElementById('report-issue-status');
+const reportIssueHeading = document.getElementById('report-issue-heading');
 
 // OpenMarkdownReader Issues list ID in Noos
 const NOOS_ISSUE_LIST_ID = 'mEDpHWSRdT1DwfqfH2Iuv';
 const NOOS_API_URL = 'https://globalbr.ai/api';
+const WIT_API_URL = 'https://sthqnyjniclvnflfkyio.supabase.co/functions/v1';
+const WIT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0aHFueWpuaWNsdm5mbGZreWlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM1NTQxODUsImV4cCI6MjA2OTEzMDE4NX0.mCYF9nB-ctxmlOsuMrgz-DfYqB_3__8m1QJgqzxXcWA';
+const WIT_TRACKER_SLUG = 'openmarkdownreader';
+let reportIssueTarget = 'noos';
 
-function showReportIssue() {
+function showReportIssue(target = 'noos') {
+  reportIssueTarget = target === 'wit' ? 'wit' : 'noos';
   reportIssueTitle.value = '';
   reportIssueContent.value = '';
   reportIssueStatus.className = 'report-issue-status';
   reportIssueStatus.textContent = '';
   reportIssueSubmit.disabled = false;
+  reportIssueHeading.textContent = reportIssueTarget === 'wit'
+    ? 'Report in World Issue Tracker'
+    : 'Report an Issue';
+  reportIssueSubmit.textContent = reportIssueTarget === 'wit'
+    ? 'Submit to WIT'
+    : 'Submit';
   reportIssueModal.classList.remove('hidden');
   reportIssueTitle.focus();
 }
@@ -3529,33 +3545,55 @@ async function submitIssue() {
 
   reportIssueSubmit.disabled = true;
   reportIssueStatus.className = 'report-issue-status loading';
-  reportIssueStatus.textContent = 'Submitting...';
+  reportIssueStatus.textContent = reportIssueTarget === 'wit'
+    ? 'Submitting to World Issue Tracker...'
+    : 'Submitting...';
 
   try {
-    const response = await fetch(`${NOOS_API_URL}/nodes/anonymous-submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        listId: NOOS_ISSUE_LIST_ID,
-        title,
-        content,
-        type: 'issue',
-        metadata: {
-          app: 'OpenMarkdownReader',
-          platform: navigator.platform,
-          timestamp: new Date().toISOString()
-        }
-      })
-    });
+    const response = reportIssueTarget === 'wit'
+      ? await fetch(`${WIT_API_URL}/create-issue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: WIT_ANON_KEY
+          },
+          body: JSON.stringify({
+            tracker_slug: WIT_TRACKER_SLUG,
+            title,
+            description: content,
+            category: 'infrastructure',
+            priority: 'medium',
+            issue_type: 'bug',
+            reporter: 'OpenMarkdownReader app',
+            labels: ['app-feedback'],
+            location: navigator.platform || '',
+          })
+        })
+      : await fetch(`${NOOS_API_URL}/nodes/anonymous-submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            listId: NOOS_ISSUE_LIST_ID,
+            title,
+            content,
+            type: 'issue',
+            metadata: {
+              app: 'OpenMarkdownReader',
+              platform: navigator.platform,
+              timestamp: new Date().toISOString()
+            }
+          })
+        });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || `HTTP ${response.status}`);
     }
 
-    const result = await response.json();
     reportIssueStatus.className = 'report-issue-status success';
-    reportIssueStatus.textContent = 'Issue submitted successfully! Thank you for your feedback.';
+    reportIssueStatus.textContent = reportIssueTarget === 'wit'
+      ? 'Issue submitted to World Issue Tracker.'
+      : 'Issue submitted successfully! Thank you for your feedback.';
 
     // Clear form and close after delay
     setTimeout(() => {

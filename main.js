@@ -1727,7 +1727,14 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+Shift+I',
           click: () => {
             const win = getFocusedWindow();
-            if (win) win.webContents.send('show-report-issue');
+            if (win) win.webContents.send('show-report-issue', 'noos');
+          }
+        },
+        {
+          label: 'Report in World Issue Tracker…',
+          click: () => {
+            const win = getFocusedWindow();
+            if (win) win.webContents.send('show-report-issue', 'wit');
           }
         },
         {

@@ -51,3 +51,9 @@ test('top bar tab wrapper can receive right-click context menu events', () => {
   assert.match(renderer, /showActiveTabContextMenu\(e\)/);
   assert.match(styles, /\.tab-bar-wrapper\s*{[\s\S]*?-webkit-app-region:\s*no-drag;/);
 });
+
+test('active tab is visually prominent and kept in view', () => {
+  assert.match(renderer, /scrollIntoView\(\{[\s\S]*?block:\s*'nearest'[\s\S]*?inline:\s*'nearest'/);
+  assert.match(styles, /\.tab\.active\s*{[\s\S]*?inset 0 2px 0 var\(--link-color\)/);
+  assert.match(styles, /\.tab\.active\s*{[\s\S]*?font-weight:\s*600;/);
+});

@@ -1,5 +1,6 @@
 (function () {
   const SHOW_DELAY_MS = 120;
+  const TAB_SHOW_DELAY_MS = 0;
   const OFFSET = 8;
   const EDGE_PADDING = 8;
   const TOOLTIP_ID = 'fast-tooltip';
@@ -96,7 +97,12 @@
       showTooltip(target);
       return;
     }
-    showTimer = setTimeout(() => showTooltip(target), SHOW_DELAY_MS);
+    const delay = target.closest?.('.tab') ? TAB_SHOW_DELAY_MS : SHOW_DELAY_MS;
+    if (delay === 0) {
+      showTooltip(target);
+      return;
+    }
+    showTimer = setTimeout(() => showTooltip(target), delay);
   }
 
   function hideTooltip() {

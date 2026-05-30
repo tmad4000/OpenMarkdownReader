@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRefreshFile: (callback) => ipcRenderer.on('refresh-file', () => callback()),
   onRevealActiveFileInFinder: (callback) => ipcRenderer.on('reveal-active-file-in-finder', () => callback()),
   onShowKeyboardShortcuts: (callback) => ipcRenderer.on('show-keyboard-shortcuts', () => callback()),
-  onShowReportIssue: (callback) => ipcRenderer.on('show-report-issue', () => callback()),
+  onShowReportIssue: (callback) => ipcRenderer.on('show-report-issue', (event, target) => callback(target)),
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   openFileOrFolder: () => ipcRenderer.invoke('open-file-or-folder'),
 
