@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const renderer = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
 
 test('sidebar header keeps action icons in explicit groups', () => {
@@ -43,4 +44,10 @@ test('sidebar header layout prevents sort controls from overflowing action icons
   assert.match(styles, /\.sidebar-header-meta\s*{[\s\S]*?justify-content:\s*space-between;/);
   assert.match(styles, /\.sidebar-header-buttons\s*{[\s\S]*?flex-wrap:\s*wrap;/);
   assert.match(styles, /\.sidebar-status-pill-label\s*{[\s\S]*?text-overflow:\s*ellipsis;/);
+});
+
+test('top bar tab wrapper can receive right-click context menu events', () => {
+  assert.match(renderer, /tabBarWrapper\.addEventListener\('contextmenu'/);
+  assert.match(renderer, /showActiveTabContextMenu\(e\)/);
+  assert.match(styles, /\.tab-bar-wrapper\s*{[\s\S]*?-webkit-app-region:\s*no-drag;/);
 });

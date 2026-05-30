@@ -616,6 +616,7 @@ body.platform-win32 .titlebar-drag-spacer {
 
 /* Tab Bar Wrapper */
 .tab-bar-wrapper {
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   flex: 1;
