@@ -800,6 +800,20 @@ function createTabBackground(fileName, mdContent, filePath, mtime = null, source
   return createTab(fileName, mdContent, filePath, false, mtime, sourceUrl);
 }
 
+function isDisposableStartupTab(tab) {
+  return !!(
+    tab &&
+    tab.isStartupPlaceholder &&
+    !tab.filePath &&
+    tab.content === null &&
+    !tab.isModified
+  );
+}
+
+function hasUserActiveTabDuringRestore(tab) {
+  return !!(tab && !isDisposableStartupTab(tab));
+}
+
 // Tab drag-to-reorder
 let draggedTab = null;
 
@@ -1311,6 +1325,7 @@ function updateTab(tabId, fileName, mdContent, filePath, mtime = null, sourceUrl
     tab.scrollPos = 0;
     tab.isModified = false;
     tab.externalChangePending = false;
+    delete tab.isStartupPlaceholder;
 
     updateTabDisplay(tabId, fileName, filePath, sourceUrl);
     updateTabUI(tabId);
@@ -5555,8 +5570,13 @@ async function loadRecentFiles() {
   }
 }
 
-// Initialize with one empty tab
-createTab();
+// Initialize with one empty tab. Session restore may replace this tab, but only
+// this startup placeholder is disposable; user-created blank tabs are not.
+const startupTabId = createTab();
+const startupTab = tabs.find(t => t.id === startupTabId);
+if (startupTab) {
+  startupTab.isStartupPlaceholder = true;
+}
 
 // Load recent files for welcome screen
 loadRecentFiles();
@@ -5691,6 +5711,8 @@ window.electronAPI.onGetSessionState(() => {
 // Handle session restore from main process
 window.electronAPI.onRestoreSession((data) => {
   if (!data) return;
+  const activeTabAtRestoreStart = tabs.find(t => t.id === activeTabId);
+  const shouldPreserveActiveTab = hasUserActiveTabDuringRestore(activeTabAtRestoreStart);
 
   // Restore sidebar visibility (fallback: show if a directory is restored)
   const shouldShowSidebar = (typeof data.sidebarVisible === 'boolean')
@@ -5720,7 +5742,7 @@ window.electronAPI.onRestoreSession((data) => {
   if (data.tabs && data.tabs.length > 0) {
     // Close the default empty tab
     const firstTab = tabs[0];
-    if (firstTab && !firstTab.filePath && !firstTab.content) {
+    if (isDisposableStartupTab(firstTab)) {
       closeTab(firstTab.id, true); // silent close
     }
 
@@ -5747,6 +5769,10 @@ window.electronAPI.onRestoreSession((data) => {
         setTimeout(() => focusByPath(filePath, attempts - 1), 100);
       }
     };
+
+    if (shouldPreserveActiveTab) {
+      return;
+    }
 
     if (activeTabData && activeTabData.filePath) {
       focusByPath(activeTabData.filePath);
