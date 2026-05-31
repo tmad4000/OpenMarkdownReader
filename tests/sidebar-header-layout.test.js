@@ -52,6 +52,14 @@ test('top bar tab wrapper can receive right-click context menu events', () => {
   assert.match(styles, /\.tab-bar-wrapper\s*{[\s\S]*?-webkit-app-region:\s*no-drag;/);
 });
 
+test('top bar gives tabs room before status controls', () => {
+  assert.match(styles, /\.titlebar-drag-spacer\s*{[\s\S]*?max-width:\s*48px;/);
+  assert.match(styles, /\.tab-bar-wrapper\s*{[\s\S]*?flex:\s*0 1 auto;/);
+  assert.match(styles, /\.tab-bar-wrapper\s*{[\s\S]*?max-width:\s*min\(52vw, 640px\);/);
+  assert.match(styles, /\.tab-bar\s*{[\s\S]*?max-width:\s*calc\(100% - 28px\);/);
+  assert.match(styles, /\.tab\s*{[\s\S]*?flex:\s*0 0 160px;/);
+});
+
 test('active tab is visually prominent and kept in view', () => {
   assert.match(renderer, /scrollIntoView\(\{[\s\S]*?block:\s*'nearest'[\s\S]*?inline:\s*'nearest'/);
   assert.match(styles, /\.tab\.active\s*{[\s\S]*?inset 0 2px 0 var\(--link-color\)/);

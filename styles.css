@@ -136,7 +136,7 @@ html, body {
   align-items: center;
   padding-left: 80px; /* Space for macOS traffic lights */
   padding-right: 12px;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Windows: no traffic lights, less left padding */
@@ -146,14 +146,15 @@ body.platform-win32 .titlebar {
 
 /* Windows: no need for large drag spacer either */
 body.platform-win32 .titlebar-drag-spacer {
-  flex: 1 0 20px;
-  min-width: 20px;
+  flex: 1 1 20px;
+  min-width: 12px;
 }
 
 /* Draggable spacer at end of tab bar */
 .titlebar-drag-spacer {
-  flex: 0 0 80px; /* Fixed draggable area */
-  min-width: 50px;
+  flex: 1 1 24px;
+  min-width: 12px;
+  max-width: 48px;
   height: 100%;
   -webkit-app-region: drag;
 }
@@ -619,8 +620,9 @@ body.platform-win32 .titlebar-drag-spacer {
   -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: min(52vw, 640px);
   height: 100%;
 }
 
@@ -630,8 +632,9 @@ body.platform-win32 .titlebar-drag-spacer {
   display: flex;
   align-items: center;
   height: 100%;
-  flex: 0 1 auto; /* Don't grow aggressively, but allow shrinking */
+  flex: 0 1 auto;
   min-width: 0; /* Allow shrinking */
+  max-width: calc(100% - 28px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none; /* Firefox */
@@ -656,9 +659,9 @@ body.platform-win32 .titlebar-drag-spacer {
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-  min-width: 80px;
+  min-width: 72px;
   max-width: 240px; /* Prevent huge tabs */
-  flex: 1 1 auto; /* Grow to fill space up to max-width */
+  flex: 0 0 160px;
   transition: background 80ms ease, border-color 80ms ease, box-shadow 80ms ease, color 80ms ease;
 }
 
