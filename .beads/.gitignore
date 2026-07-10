@@ -18,6 +18,12 @@ bd.sock
 db.sqlite
 bd.db
 
+# Embedded dolt runtime state (local working copies, not source of truth)
+backup/
+embeddeddolt/
+export-state.json
+last-touched
+
 # Merge artifacts (temporary files from 3-way merge)
 beads.base.jsonl
 beads.base.meta.json

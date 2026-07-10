@@ -6308,8 +6308,9 @@ richModeBtn.addEventListener('click', () => {
     richModeBtn.classList.remove('active');
     leaveRichMode();
     if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
-    if (editor && editor.focus) editor.focus();
   }
+  const tab = tabs.find(t => t.id === activeTabId);
+  focusActiveEditor(tab);
 });
 
 function updateRichToolbarUI() {
@@ -6337,6 +6338,21 @@ if (richToolbarBtn) {
 // ------------------------------------------
 // Overridden Functions to support EasyMDE
 // ------------------------------------------
+
+// Put keyboard focus in the active tab's editing surface so the next
+// keystroke lands in the document. In rich mode the underlying textarea is
+// hidden inside the EasyMDE wrapper — focusing it does nothing, so the
+// CodeMirror instance must be focused instead.
+function focusActiveEditor(tab) {
+  if (!tab) return;
+  // tab.easyMDE survives leaveRichMode (kept for undo history), so mode —
+  // not instance presence — decides which surface is visible.
+  if (settings.richEditorMode && tab.easyMDE) {
+    try { tab.easyMDE.codemirror.focus(); } catch {}
+  } else if (tab.editorEl) {
+    tab.editorEl.focus();
+  }
+}
 
 // Per-tab showEditor: make sure the active tab's editor (textarea or EasyMDE
 // wrapper) is the visible one, and seed content only if the editor doesn't
@@ -6373,8 +6389,9 @@ showEditor = function(content) {
     richModeBtn.classList.remove('active');
     if (richToolbarBtn) richToolbarBtn.classList.add('hidden');
     if (tab.easyMDE) leaveRichMode();
-    if (tab.editorEl) tab.editorEl.focus();
   }
+
+  focusActiveEditor(tab);
 };
 
 // Per-tab hideEditor: capture in-flight content into tab.content and hide
