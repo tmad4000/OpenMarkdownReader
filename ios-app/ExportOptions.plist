@@ -14,7 +14,7 @@
         <string>OpenMarkdownReader iOS AppStore</string>
     </dict>
     <key>signingCertificate</key>
-    <string>Apple Distribution</string>
+    <string>300FAAFC4D696C4B886638DECE3E1319C3D0082E</string>
     <key>uploadSymbols</key>
     <true/>
     <key>destination</key>

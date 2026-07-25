@@ -1,7 +1,7 @@
 {
   "name": "openmarkdownreader-mobile",
-  "version": "1.0.0",
-  "description": "OpenMarkdownReader for iOS - Beautiful markdown rendering",
+  "version": "1.1.0",
+  "description": "OpenMarkdownReader for iOS - local folders and remote Markdown rendering",
   "main": "renderer-mobile.js",
   "scripts": {
     "build": "npx cap sync ios",
@@ -26,5 +26,8 @@
     "@capacitor/ios": "^8.2.0",
     "@capacitor/share": "^8.0.1",
     "@capawesome/capacitor-file-picker": "^8.0.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }
