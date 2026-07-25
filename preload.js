@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save operations
   saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+  saveRemoteFile: (sourceUrl, content, validators = {}) => ipcRenderer.invoke('save-remote-file', sourceUrl, content, validators),
   renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', oldPath, newName),
   saveFileAs: (content, defaultName) => ipcRenderer.invoke('save-file-as', content, defaultName),
   getFileMtime: (filePath) => ipcRenderer.invoke('get-file-mtime', filePath),
@@ -28,6 +29,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSaveAs: (callback) => ipcRenderer.on('save-as', () => callback()),
   onSaveAll: (callback) => ipcRenderer.on('save-all', () => callback()),
   showSaveDialog: (fileName) => ipcRenderer.invoke('show-save-dialog', fileName),
+  showRemoteReadOnlySaveDialog: (fileName, sourceUrl) => ipcRenderer.invoke('show-remote-read-only-save-dialog', fileName, sourceUrl),
+  showRemoteSaveConflictDialog: (fileName, sourceUrl) => ipcRenderer.invoke('show-remote-save-conflict-dialog', fileName, sourceUrl),
 
   // Print/Export
   exportPDF: (defaultName) => ipcRenderer.invoke('export-pdf', defaultName),

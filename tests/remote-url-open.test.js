@@ -21,7 +21,7 @@ test('Cmd+P URL entry offers remote files and folders in the app', () => {
 test('main process fetches remote URLs and emits file-loaded metadata', () => {
   assert.match(preload, /openRemoteUrl: \(url, options = \{\}\) => ipcRenderer\.invoke\('open-remote-url', url, options\)/);
   assert.match(main, /ipcMain\.handle\('open-remote-url'/);
-  assert.match(main, /fetchRemoteTextFile\(remoteUrl\)/);
+  assert.match(main, /fetchRemoteTextFile\(remoteUrl, \{/);
   assert.match(main, /sourceUrl: remoteFile\.sourceUrl/);
   assert.match(main, /isRemote: true/);
   assert.match(main, /filePath: null/);

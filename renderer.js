@@ -226,6 +226,7 @@ let navIsNavigating = false; // Flag to prevent adding to history during back/fo
 let currentDirectory = null;
 let currentDirectoryKind = null; // 'local' | 'remote'
 let currentRemoteDirectoryName = null;
+let currentRemoteWritable = false;
 let directoryFiles = [];
 let selectedSidebarFolderPath = null;
 let pendingNewTreeItemId = 0;
@@ -722,6 +723,9 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     filePath,
     sourceUrl,
     isRemote: !!sourceUrl,
+    remoteWritable: false,
+    remoteEtag: null,
+    remoteLastModified: null,
     content: mdContent,
     lastKnownMtime: mtime,
     scrollPos: 0,
@@ -1254,21 +1258,12 @@ async function closeTab(tabId, silent = false) {
       if (tab.isEditing) {
         tab.content = editor.value;
       }
-      if (tab.filePath) {
-        const saveResult = await writeTabToDisk(tab);
-        if (!saveResult || !saveResult.success) {
-          return; // Save cancelled or failed
-        }
+      const saveResult = await saveTabInPlace(tab);
+      if (!saveResult || !saveResult.success) return;
+      if (!saveResult.copySaved) {
         tab.isModified = false;
-        if (tab.isEditing) {
-          tab.originalContent = tab.content;
-        }
+        if (tab.isEditing) tab.originalContent = tab.content;
         updateTabUI(tab.id);
-      } else {
-        const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-        if (!saveResult) {
-          return; // Save was cancelled, don't close
-        }
       }
     }
     // 'discard' falls through to close the tab
@@ -1285,6 +1280,9 @@ async function closeTab(tabId, silent = false) {
       fileName: tab.fileName,
       filePath: tab.filePath,
       sourceUrl: tab.sourceUrl || null,
+      remoteWritable: tab.remoteWritable,
+      remoteEtag: tab.remoteEtag,
+      remoteLastModified: tab.remoteLastModified,
       content: tab.content,
       scrollPos: tab.scrollPos
     });
@@ -1575,6 +1573,102 @@ async function writeTabToDisk(tab, { fromAutoSave = false } = {}) {
   return result || { success: false, error: 'save-failed' };
 }
 
+function applyRemoteMetadata(tab, data = {}) {
+  if (!tab) return;
+  if (!tab.sourceUrl) {
+    tab.remoteWritable = false;
+    tab.remoteEtag = null;
+    tab.remoteLastModified = null;
+    return;
+  }
+  tab.remoteWritable = data.remoteWritable === true;
+  tab.remoteEtag = data.remoteEtag || null;
+  tab.remoteLastModified = data.remoteLastModified || null;
+}
+
+async function saveRemoteCopy(tab) {
+  const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+  if (!result) return { success: false, cancelled: true };
+  showToast(`Saved a local copy of "${tab.fileName}"`, 'success', 2800);
+  return { success: true, copySaved: true, filePath: result.filePath };
+}
+
+async function promptForReadOnlyRemoteCopy(tab) {
+  const choice = await window.electronAPI.showRemoteReadOnlySaveDialog(tab.fileName, tab.sourceUrl);
+  if (choice !== 'copy') return { success: false, cancelled: true, readOnly: true };
+  return saveRemoteCopy(tab);
+}
+
+async function writeRemoteTab(tab, { fromAutoSave = false } = {}) {
+  if (!tab || !tab.sourceUrl) {
+    return { success: false, error: 'missing-remote-url' };
+  }
+
+  if (!tab.remoteWritable) {
+    if (fromAutoSave) return { success: false, readOnly: true };
+    return promptForReadOnlyRemoteCopy(tab);
+  }
+
+  const result = await window.electronAPI.saveRemoteFile(tab.sourceUrl, tab.content, {
+    etag: tab.remoteEtag,
+    lastModified: tab.remoteLastModified
+  });
+
+  if (result && result.success) {
+    tab.remoteEtag = result.etag || null;
+    tab.remoteLastModified = result.lastModified || null;
+    tab.lastKnownMtime = result.mtime || Date.now();
+    tab.externalChangePending = false;
+    return result;
+  }
+
+  if (result && result.readOnly) {
+    tab.remoteWritable = false;
+    if (fromAutoSave) return result;
+    return promptForReadOnlyRemoteCopy(tab);
+  }
+
+  if (result && result.conflict) {
+    tab.externalChangePending = true;
+    if (fromAutoSave) return result;
+    const choice = await window.electronAPI.showRemoteSaveConflictDialog(tab.fileName, tab.sourceUrl);
+    if (choice === 'copy') return saveRemoteCopy(tab);
+    if (choice === 'reload') {
+      await window.electronAPI.openRemoteUrl(tab.sourceUrl, {
+        reuseTab: tab.id,
+        forceEdit: tab.isEditing,
+        remoteWritable: tab.remoteWritable
+      });
+      return { success: false, cancelled: true, reloaded: true };
+    }
+    return { success: false, cancelled: true, conflict: true };
+  }
+
+  const error = result && result.unauthorized
+    ? 'The remote server refused this save. Check its access settings.'
+    : `Could not save remote file: ${result && result.error ? result.error : 'Unknown error'}`;
+  if (!fromAutoSave) showToast(error, 'error', 5000);
+  return result || { success: false, error: 'remote-save-failed' };
+}
+
+async function saveTabInPlace(tab, options = {}) {
+  if (tab.filePath) return writeTabToDisk(tab, options);
+  if (tab.sourceUrl) return writeRemoteTab(tab, options);
+
+  const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
+  if (!result) return { success: false, cancelled: true };
+  tab.filePath = result.filePath;
+  tab.fileName = result.fileName;
+  tab.sourceUrl = null;
+  tab.isRemote = false;
+  applyRemoteMetadata(tab);
+  tab.lastKnownMtime = result.mtime;
+  tab.externalChangePending = false;
+  updateTabDisplay(tab.id, tab.fileName, tab.filePath);
+  syncActiveSidebarFileHighlight();
+  return { success: true, adoptedLocalPath: true, ...result };
+}
+
 // Save file
 async function saveFile() {
   const tab = tabs.find(t => t.id === activeTabId);
@@ -1584,37 +1678,12 @@ async function saveFile() {
     tab.content = easyMDE ? easyMDE.value() : editor.value;
   }
 
-  if (tab.filePath) {
-    const result = await writeTabToDisk(tab);
-    if (result && result.success) {
-      tab.isModified = false;
-      // Update original content to match saved content, so 'Revert' goes back to this save
-      if (tab.isEditing) {
-        tab.originalContent = tab.content;
-      }
-      updateTabUI(activeTabId);
-      document.title = `${tab.fileName} - ${APP_NAME}`;
-    }
-  } else {
-    // No file path, use save as
-    const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-    if (result) {
-      tab.filePath = result.filePath;
-      tab.fileName = result.fileName;
-      tab.sourceUrl = null;
-      tab.isRemote = false;
-      tab.lastKnownMtime = result.mtime;
-      tab.isModified = false;
-      tab.externalChangePending = false;
-      // Update original content here too
-      if (tab.isEditing) {
-        tab.originalContent = tab.content;
-      }
-      updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
-      updateTabUI(activeTabId);
-      syncActiveSidebarFileHighlight();
-      document.title = `${tab.fileName} - ${APP_NAME}`;
-    }
+  const result = await saveTabInPlace(tab);
+  if (result && result.success && !result.copySaved) {
+    tab.isModified = false;
+    if (tab.isEditing) tab.originalContent = tab.content;
+    updateTabUI(activeTabId);
+    document.title = `${tab.fileName} - ${APP_NAME}`;
   }
 }
 
@@ -1625,6 +1694,11 @@ async function saveFileAs() {
 
   if (tab.isEditing) {
     tab.content = easyMDE ? easyMDE.value() : editor.value;
+  }
+
+  if (tab.sourceUrl) {
+    await saveRemoteCopy(tab);
+    return;
   }
 
   const previousPath = tab.filePath;
@@ -1844,8 +1918,11 @@ function updateSidebarWorkspaceControls() {
   sidebar.classList.toggle('remote-workspace', remote);
   sidebarNewFileBtn.disabled = remote;
   sidebarNewFolderBtn.disabled = remote;
-  sidebarNewFileBtn.title = remote ? 'Remote folders are read-only' : 'New File';
-  sidebarNewFolderBtn.title = remote ? 'Remote folders are read-only' : 'New Folder';
+  const remoteCreateHint = currentRemoteWritable
+    ? 'Creating remote files is not supported yet'
+    : 'Remote folder is read-only';
+  sidebarNewFileBtn.title = remote ? remoteCreateHint : 'New File';
+  sidebarNewFolderBtn.title = remote ? remoteCreateHint : 'New Folder';
 
   if (remote && settings.sidebarViewMode !== 'tree') {
     settings.sidebarViewMode = 'tree';
@@ -1890,8 +1967,11 @@ function updateSidebarPath(dirPath) {
       const segments = parsed.pathname.split('/').filter(Boolean);
       folderName = currentRemoteDirectoryName || decodeURIComponent(segments.at(-1) || host);
     } catch {}
-    sidebarSourceBadge.textContent = 'WEB';
-    sidebarSourceBadge.title = host ? `Remote folder on ${host}` : 'Remote folder';
+    sidebarSourceBadge.textContent = currentRemoteWritable ? 'WEB ↕' : 'WEB';
+    const accessLabel = currentRemoteWritable ? 'saves back to remote' : 'read-only';
+    sidebarSourceBadge.title = host
+      ? `Remote folder on ${host} • ${accessLabel}`
+      : `Remote folder • ${accessLabel}`;
     sidebarSourceBadge.classList.remove('hidden');
     sidebarPathText.textContent = host && folderName !== host ? `${folderName} · ${host}` : folderName;
     sidebarPathText.title = dirPath;
@@ -2265,6 +2345,7 @@ window.electronAPI.onDirectoryLoaded((data) => {
   console.log('Directory loaded:', data);
   currentDirectoryKind = 'local';
   currentRemoteDirectoryName = null;
+  currentRemoteWritable = false;
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
   expandedFolders.clear();
@@ -2321,6 +2402,7 @@ window.electronAPI.onRemoteDirectoryLoaded((data) => {
   stopSidebarLiveWatcher();
   currentDirectoryKind = 'remote';
   currentRemoteDirectoryName = data.name || null;
+  currentRemoteWritable = data.writable === true;
   currentDirectory = data.dirUrl;
   directoryFiles = Array.isArray(data.files) ? data.files : [];
   expandedFolders.clear();
@@ -2334,7 +2416,8 @@ window.electronAPI.onRemoteDirectoryLoaded((data) => {
   allFilesCachePromise = null;
   setSidebarVisibility(true);
   renderFileTree();
-  showToast(`Browsing ${currentRemoteDirectoryName || 'remote folder'} (read-only)`, 'success', 2800);
+  const accessLabel = currentRemoteWritable ? 'remote saves enabled' : 'read-only';
+  showToast(`Browsing ${currentRemoteDirectoryName || 'remote folder'} (${accessLabel})`, 'success', 2800);
 });
 
 // Track expanded folders
@@ -2937,6 +3020,7 @@ function renderFileTreeItems(items, container, depth) {
             options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
           }
           if (remoteItem) {
+            options.remoteWritable = item.writable === true || currentRemoteWritable;
             window.electronAPI.openRemoteUrl(item.path, options).then((result) => {
               if (!result || !result.success) {
                 showToast(`Could not open remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
@@ -3398,6 +3482,7 @@ window.electronAPI.onFileLoaded((data) => {
       tab.content = data.content;
       tab.sourceUrl = sourceUrl;
       tab.isRemote = !!sourceUrl;
+      applyRemoteMetadata(tab, data);
       tab.lastKnownMtime = data.mtime || null;
       tab.isModified = false;
       tab.externalChangePending = false;
@@ -3468,6 +3553,7 @@ window.electronAPI.onFileLoaded((data) => {
         switchToTab(existingRemoteTab.id);
       }
       if (!existingRemoteTab.isModified) {
+        applyRemoteMetadata(existingRemoteTab, data);
         existingRemoteTab.content = data.content;
         existingRemoteTab.lastKnownMtime = data.mtime || null;
         existingRemoteTab.externalChangePending = false;
@@ -3493,6 +3579,7 @@ window.electronAPI.onFileLoaded((data) => {
   // If forcing new tab or opening in background, always create new tab
   if (forceNewTab || openInBackground) {
     const newTabId = createTabBackground(data.fileName, data.content, data.filePath, data.mtime, sourceUrl);
+    applyRemoteMetadata(tabs.find(t => t.id === newTabId), data);
     
     // Set edit mode if requested
     if (data.forceEdit) {
@@ -3518,6 +3605,7 @@ window.electronAPI.onFileLoaded((data) => {
       window.electronAPI.unwatchFile(activeTab.filePath);
     }
     updateTab(activeTabId, data.fileName, data.content, data.filePath, data.mtime, sourceUrl);
+    applyRemoteMetadata(activeTab, data);
     
     if (data.forceEdit) {
       activeTab.isEditing = true;
@@ -3534,6 +3622,7 @@ window.electronAPI.onFileLoaded((data) => {
     }
   } else {
     const newTabId = createTab(data.fileName, data.content, data.filePath, true, data.mtime, sourceUrl);
+    applyRemoteMetadata(tabs.find(t => t.id === newTabId), data);
     if (data.forceEdit) {
       const tab = tabs.find(t => t.id === newTabId);
       if (tab) {
@@ -3614,6 +3703,11 @@ window.electronAPI.onReopenClosedTab(() => {
     const tabId = createTab(closedTab.fileName, closedTab.content, null, true, null, closedTab.sourceUrl);
     const tab = tabs.find(t => t.id === tabId);
     if (tab) {
+      applyRemoteMetadata(tab, {
+        remoteWritable: closedTab.remoteWritable,
+        remoteEtag: closedTab.remoteEtag,
+        remoteLastModified: closedTab.remoteLastModified
+      });
       tab.scrollPos = closedTab.scrollPos || 0;
       updateTabUI(tabId);
     }
@@ -3863,7 +3957,8 @@ window.electronAPI.onRefreshFile(async () => {
     }
     const result = await window.electronAPI.openRemoteUrl(tab.sourceUrl, {
       reuseTab: activeTabId,
-      forceEdit: tab.isEditing
+      forceEdit: tab.isEditing,
+      remoteWritable: tab.remoteWritable
     });
     if (!result || !result.success) {
       showToast(`Could not refresh remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
@@ -3941,30 +4036,11 @@ async function saveAllFiles() {
         tab.content = easyMDE ? easyMDE.value() : editor.value;
       }
 
-      if (tab.filePath) {
-        const result = await writeTabToDisk(tab);
-        if (result && result.success) {
-          tab.isModified = false;
-          if (tab.isEditing) {
-            tab.originalContent = tab.content;
-          }
-          updateTabUI(tab.id);
-        }
-      } else {
-        // No file path, need Save As dialog
-        const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-        if (result) {
-          tab.filePath = result.filePath;
-          tab.fileName = result.fileName;
-          tab.sourceUrl = null;
-          tab.isRemote = false;
-          tab.lastKnownMtime = result.mtime;
-          tab.isModified = false;
-          tab.externalChangePending = false;
-          tab.originalContent = tab.content;
-          updateTabDisplay(tab.id, tab.fileName, tab.filePath);
-          updateTabUI(tab.id);
-        }
+      const result = await saveTabInPlace(tab);
+      if (result && result.success && !result.copySaved) {
+        tab.isModified = false;
+        if (tab.isEditing) tab.originalContent = tab.content;
+        updateTabUI(tab.id);
       }
     }
   }
@@ -5791,12 +5867,12 @@ window.electronAPI.onCheckUnsaved(async () => {
   if (settings.autoSave) {
     clearTimeout(autoSaveTimer); // Cancel any pending auto-save
     const savePromises = tabs
-      .filter(tab => tab.isModified && tab.filePath)
+      .filter(tab => tab.isModified && (tab.filePath || (tab.sourceUrl && tab.remoteWritable)))
       .map(async tab => {
         if (tab.isEditing && tab.id === activeTabId) {
           tab.content = easyMDE ? easyMDE.value() : editor.value;
         }
-        const result = await writeTabToDisk(tab, { fromAutoSave: true });
+        const result = await saveTabInPlace(tab, { fromAutoSave: true });
         if (result && result.success) {
           tab.isModified = false;
           if (tab.isEditing) {
@@ -5833,6 +5909,7 @@ window.electronAPI.onCheckUnsaved(async () => {
     directory: currentDirectory,
     directoryKind: currentDirectoryKind,
     remoteDirectoryName: currentRemoteDirectoryName,
+    remoteDirectoryWritable: currentRemoteWritable,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
     sidebarWidth: settings.sidebarWidth,
@@ -5860,39 +5937,26 @@ window.electronAPI.onReviewUnsavedTab(async (tabInfo) => {
   }
 
   try {
-    if (tab.filePath) {
-      const saveResult = await writeTabToDisk(tab);
-      if (!saveResult || !saveResult.success) {
-        window.electronAPI.reportReviewDecision({
-          success: false,
-          tabId: tab.id,
-          cancelled: !!(saveResult && saveResult.cancelled)
-        });
-        return;
-      }
+    const saveResult = await saveTabInPlace(tab);
+    if (!saveResult || !saveResult.success) {
+      window.electronAPI.reportReviewDecision({
+        success: false,
+        tabId: tab.id,
+        cancelled: !!(saveResult && saveResult.cancelled)
+      });
+      return;
+    }
+    if (!saveResult.copySaved) {
       tab.isModified = false;
       tab.originalContent = tab.content;
       updateTabUI(tab.id);
       window.electronAPI.reportReviewDecision({ success: true, tabId: tab.id });
     } else {
-      // No file path, need Save As dialog
-      const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-      if (result) {
-        tab.filePath = result.filePath;
-        tab.fileName = result.fileName;
-        tab.sourceUrl = null;
-        tab.isRemote = false;
-        tab.lastKnownMtime = result.mtime;
-        tab.isModified = false;
-        tab.externalChangePending = false;
-        tab.originalContent = tab.content;
-        updateTabDisplay(tab.id, tab.fileName, tab.filePath);
-        updateTabUI(tab.id);
-        window.electronAPI.reportReviewDecision({ success: true, tabId: tab.id, saved: true });
-      } else {
-        // User cancelled save as dialog
-        window.electronAPI.reportReviewDecision({ success: false, tabId: tab.id, cancelled: true });
-      }
+      window.electronAPI.reportReviewDecision({
+        success: true,
+        tabId: tab.id,
+        savedCopy: true
+      });
     }
   } catch (error) {
     window.electronAPI.reportReviewDecision({ success: false, tabId: tab.id, error: error.message });
@@ -5910,6 +5974,7 @@ window.electronAPI.onGetSessionState(() => {
     directory: currentDirectory,
     directoryKind: currentDirectoryKind,
     remoteDirectoryName: currentRemoteDirectoryName,
+    remoteDirectoryWritable: currentRemoteWritable,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
     sidebarWidth: settings.sidebarWidth,
@@ -5947,6 +6012,7 @@ window.electronAPI.onRestoreSession((data) => {
     } else {
       currentDirectoryKind = 'local';
       currentRemoteDirectoryName = null;
+      currentRemoteWritable = false;
       currentDirectory = data.directory;
       window.electronAPI.getDirectoryContents(data.directory).then(files => {
         directoryFiles = files;
@@ -6404,6 +6470,7 @@ markdownBody.addEventListener('click', (e) => {
     if (new URL(remoteTargetUrl).pathname.endsWith('/')) {
       window.electronAPI.openRemoteFolder(remoteTargetUrl);
     } else {
+      options.remoteWritable = tab.remoteWritable;
       window.electronAPI.openRemoteUrl(remoteTargetUrl, options).then((result) => {
         if (!result || !result.success) {
           showToast(`Could not open remote link: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
@@ -6531,6 +6598,7 @@ function openLinkFromEditor(href, e) {
     if (new URL(remoteTargetUrl).pathname.endsWith('/')) {
       window.electronAPI.openRemoteFolder(remoteTargetUrl);
     } else {
+      options.remoteWritable = tab.remoteWritable;
       window.electronAPI.openRemoteUrl(remoteTargetUrl, options);
     }
     return;
@@ -6805,34 +6873,12 @@ saveFile = async function(options = {}) {
     tab.content = easyMDE ? easyMDE.value() : editor.value;
   }
 
-  if (tab.filePath) {
-    const { fromAutoSave = false } = options;
-    const result = await writeTabToDisk(tab, { fromAutoSave });
-    if (result && result.success) {
-      tab.isModified = false;
-      if (tab.isEditing) {
-        tab.originalContent = tab.content;
-      }
-      updateTabUI(activeTabId);
-      document.title = `${tab.fileName} - ${APP_NAME}`;
-    }
-  } else {
-    const result = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-    if (result) {
-        tab.filePath = result.filePath;
-        tab.fileName = result.fileName;
-        tab.sourceUrl = null;
-        tab.isRemote = false;
-        tab.lastKnownMtime = result.mtime;
-        tab.isModified = false;
-        tab.externalChangePending = false;
-        if (tab.isEditing) tab.originalContent = tab.content;
-
-        updateTabDisplay(activeTabId, tab.fileName, tab.filePath);
-        updateTabUI(activeTabId);
-        syncActiveSidebarFileHighlight();
-        document.title = `${tab.fileName} - ${APP_NAME}`;
-    }
+  const result = await saveTabInPlace(tab, options);
+  if (result && result.success && !result.copySaved) {
+    tab.isModified = false;
+    if (tab.isEditing) tab.originalContent = tab.content;
+    updateTabUI(activeTabId);
+    document.title = `${tab.fileName} - ${APP_NAME}`;
   }
 };
 
@@ -6853,17 +6899,12 @@ closeTab = async function(tabId, silent = false) {
             tab.content = editor.value; 
         }
       }
-      if (tab.filePath) {
-        const saveResult = await writeTabToDisk(tab);
-        if (!saveResult || !saveResult.success) return;
+      const saveResult = await saveTabInPlace(tab);
+      if (!saveResult || !saveResult.success) return;
+      if (!saveResult.copySaved) {
         tab.isModified = false;
-        if (tab.isEditing) {
-          tab.originalContent = tab.content;
-        }
+        if (tab.isEditing) tab.originalContent = tab.content;
         updateTabUI(tab.id);
-      } else {
-        const saveResult = await window.electronAPI.saveFileAs(tab.content, tab.fileName);
-        if (!saveResult) return;
       }
     }
   }
@@ -6879,6 +6920,9 @@ closeTab = async function(tabId, silent = false) {
       fileName: tab.fileName,
       filePath: tab.filePath,
       sourceUrl: tab.sourceUrl || null,
+      remoteWritable: tab.remoteWritable,
+      remoteEtag: tab.remoteEtag,
+      remoteLastModified: tab.remoteLastModified,
       content: tab.content,
       scrollPos: tab.scrollPos
     });
@@ -6923,14 +6967,14 @@ function triggerAutoSave() {
   if (!settings.autoSave) return;
   
   const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.filePath) return;
+  if (!tab || (!tab.filePath && !(tab.sourceUrl && tab.remoteWritable))) return;
   
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     if (tab.id === activeTabId) {
         saveFile({ fromAutoSave: true }); 
     } else {
-        writeTabToDisk(tab, { fromAutoSave: true }).then((result) => {
+        saveTabInPlace(tab, { fromAutoSave: true }).then((result) => {
             if (result && result.success) {
                 tab.isModified = false;
                 if (tab.isEditing) {
@@ -7610,6 +7654,7 @@ window.electronAPI.onGetAppState?.(() => {
       directory: currentDirectory,
       directoryKind: currentDirectoryKind,
       remoteDirectoryName: currentRemoteDirectoryName,
+      remoteDirectoryWritable: currentRemoteWritable,
       width: settings.sidebarWidth,
       viewMode: settings.sidebarViewMode,
       sortMode: settings.sidebarSortMode

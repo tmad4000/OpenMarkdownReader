@@ -112,6 +112,10 @@ function buildRemoteEntry(rawEntry, baseUrl, options = {}) {
   if (!name || name === '..' || name === '.' || name.startsWith('.')) return null;
 
   const classification = classifyRemoteEntry(name, typeHint);
+  const explicitWritable = raw.writable === true
+    || (raw.capabilities && raw.capabilities.write === true);
+  const writable = explicitWritable
+    || (options.defaultWritable === true && resolved.origin === base.origin);
   if (classification.type === 'folder' && !resolved.pathname.endsWith('/')) {
     resolved.pathname = `${resolved.pathname}/`;
   }
@@ -121,13 +125,17 @@ function buildRemoteEntry(rawEntry, baseUrl, options = {}) {
     path: resolved.toString(),
     url: resolved.toString(),
     isRemote: true,
+    writable,
     ...classification,
     mtime: normalizeMtime(raw.mtime || raw.modified || raw.lastModified)
   };
 
   if (classification.type === 'folder' && Array.isArray(raw.children)) {
     entry.children = raw.children
-      .map(child => buildRemoteEntry(child, entry.url, { enforceChild: false }))
+      .map(child => buildRemoteEntry(child, entry.url, {
+        enforceChild: false,
+        defaultWritable: writable
+      }))
       .filter(Boolean);
     entry.isEmpty = entry.children.length === 0;
   }
@@ -169,10 +177,19 @@ function parseJsonDirectoryListing(body, sourceUrl) {
     throw new Error('Remote folder JSON must be an array or contain an entries array');
   }
 
+  const writable = !Array.isArray(payload) && (
+    payload.writable === true
+    || (payload.capabilities && payload.capabilities.write === true)
+  );
+
   return {
     name: !Array.isArray(payload) && payload.name ? String(payload.name) : null,
+    writable,
     entries: rawEntries
-      .map(entry => buildRemoteEntry(entry, sourceUrl, { enforceChild: false }))
+      .map(entry => buildRemoteEntry(entry, sourceUrl, {
+        enforceChild: false,
+        defaultWritable: writable
+      }))
       .filter(Boolean)
   };
 }
@@ -182,12 +199,14 @@ function parseRemoteDirectoryListing({ body, contentType = '', sourceUrl }) {
   const trimmed = String(body || '').trim();
   let entries;
   let name = null;
+  let writable = false;
   let format;
 
   if (mime === 'application/json' || trimmed.startsWith('{') || trimmed.startsWith('[')) {
     const parsed = parseJsonDirectoryListing(trimmed, sourceUrl);
     entries = parsed.entries;
     name = parsed.name;
+    writable = parsed.writable;
     format = 'json';
   } else {
     entries = parseHtmlDirectoryListing(trimmed, sourceUrl);
@@ -208,6 +227,7 @@ function parseRemoteDirectoryListing({ body, contentType = '', sourceUrl }) {
     name: name || remoteDirectoryName(normalizedSource),
     sourceUrl: normalizedSource,
     format,
+    writable,
     entries
   };
 }

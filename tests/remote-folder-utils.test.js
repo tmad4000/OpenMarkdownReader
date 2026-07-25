@@ -43,6 +43,7 @@ test('parses JSON manifests with nested and cross-origin entries', () => {
     contentType: 'application/json',
     body: JSON.stringify({
       name: 'Project Notes',
+      capabilities: { write: true },
       entries: [
         {
           name: 'Guide',
@@ -63,8 +64,12 @@ test('parses JSON manifests with nested and cross-origin entries', () => {
 
   assert.equal(listing.name, 'Project Notes');
   assert.equal(listing.format, 'json');
+  assert.equal(listing.writable, true);
+  assert.equal(listing.entries[0].writable, true);
+  assert.equal(listing.entries[0].children[0].writable, true);
   assert.equal(listing.entries[0].children[0].url, 'https://docs.example.com/project/guide/start.md');
   assert.equal(listing.entries[1].url, 'https://cdn.example.com/releases/latest.md');
+  assert.equal(listing.entries[1].writable, false);
   assert.ok(listing.entries[1].mtime > 0);
 });
 

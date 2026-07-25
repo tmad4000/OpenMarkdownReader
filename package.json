@@ -1,11 +1,12 @@
 {
   "name": "open-markdown-reader",
   "productName": "OpenMarkdownReader",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "A beautiful, open-source Markdown file reader and editor for Mac",
   "main": "main.js",
   "scripts": {
     "start": "node scripts/generate-edition.js && node scripts/generate-build-info.js && electron .",
+    "serve:remote": "node scripts/serve-remote-folder.js",
     "start:dashboard": "OMR_PROFILE=dashboard node scripts/generate-edition.js && node scripts/generate-build-info.js && electron .",
     "test": "node --test",
     "build": "node scripts/generate-edition.js && node scripts/generate-build-info.js && electron-builder",

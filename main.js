@@ -1910,7 +1910,36 @@ function isTextLikeRemoteResponse(remoteUrl, contentType = '') {
   return !mime;
 }
 
-function fetchRemoteTextFile(remoteUrl, redirectCount = 0) {
+function remoteResponseIsWritable(headers = {}) {
+  const advertised = String(headers['x-openmarkdownreader-writable'] || '').toLowerCase();
+  if (advertised === 'true' || advertised === '1' || advertised === 'yes') return true;
+  return String(headers.allow || '')
+    .split(',')
+    .some(method => method.trim().toUpperCase() === 'PUT');
+}
+
+function setRemoteEntriesWritable(entries, writable, sourceUrl) {
+  let sourceOrigin = null;
+  try {
+    sourceOrigin = new URL(sourceUrl).origin;
+  } catch {}
+  for (const entry of entries || []) {
+    let sameOrigin = false;
+    try {
+      sameOrigin = !!sourceOrigin && new URL(entry.url).origin === sourceOrigin;
+    } catch {}
+    if (writable && sameOrigin) entry.writable = true;
+    if (entry.type === 'folder' && Array.isArray(entry.children)) {
+      setRemoteEntriesWritable(
+        entry.children,
+        (writable && sameOrigin) || entry.writable === true,
+        sourceUrl
+      );
+    }
+  }
+}
+
+function fetchRemoteTextFile(remoteUrl, options = {}, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     let parsed;
     try {
@@ -1941,7 +1970,7 @@ function fetchRemoteTextFile(remoteUrl, redirectCount = 0) {
           reject(new Error('Too many redirects'));
           return;
         }
-        fetchRemoteTextFile(new URL(location, parsed).toString(), redirectCount + 1)
+        fetchRemoteTextFile(new URL(location, parsed).toString(), options, redirectCount + 1)
           .then(resolve, reject);
         return;
       }
@@ -1981,12 +2010,16 @@ function fetchRemoteTextFile(remoteUrl, redirectCount = 0) {
       res.on('end', () => {
         if (rejectedForSize) return;
         const finalUrl = res.responseUrl || parsed.toString();
-        const mtime = res.headers['last-modified'] ? Date.parse(res.headers['last-modified']) : null;
+        const lastModified = res.headers['last-modified'] || null;
+        const mtime = lastModified ? Date.parse(lastModified) : null;
         resolve({
           content: Buffer.concat(chunks).toString('utf8'),
           fileName: getRemoteUrlFileName(finalUrl),
           sourceUrl: finalUrl,
-          mtime: Number.isFinite(mtime) ? mtime : null
+          mtime: Number.isFinite(mtime) ? mtime : null,
+          etag: res.headers.etag || null,
+          lastModified,
+          writable: options.advertisedWritable === true || remoteResponseIsWritable(res.headers)
         });
       });
     });
@@ -2062,11 +2095,14 @@ function fetchRemoteDirectory(remoteUrl, redirectCount = 0) {
       res.on('end', () => {
         if (rejectedForSize) return;
         try {
-          resolve(parseRemoteDirectoryListing({
+          const directory = parseRemoteDirectoryListing({
             body: Buffer.concat(chunks).toString('utf8'),
             contentType: res.headers['content-type'] || '',
             sourceUrl: parsed.toString()
-          }));
+          });
+          directory.writable = directory.writable || remoteResponseIsWritable(res.headers);
+          setRemoteEntriesWritable(directory.entries, directory.writable, directory.sourceUrl);
+          resolve(directory);
         } catch (err) {
           reject(err);
         }
@@ -2077,6 +2113,91 @@ function fetchRemoteDirectory(remoteUrl, redirectCount = 0) {
       req.destroy(new Error('Timed out opening remote folder'));
     });
     req.on('error', reject);
+  });
+}
+
+function saveRemoteTextFile(remoteUrl, content, validators = {}, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch {
+      reject(new Error('Invalid URL'));
+      return;
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      reject(new Error('Only http and https URLs can be saved'));
+      return;
+    }
+
+    const body = Buffer.from(String(content), 'utf8');
+    const headers = {
+      'User-Agent': `${edition.productName || 'OpenMarkdownReader'}/${buildInfo.version || 'dev'}`,
+      'Content-Type': 'text/markdown; charset=utf-8',
+      'Content-Length': String(body.length)
+    };
+    if (validators.etag) {
+      headers['If-Match'] = validators.etag;
+    } else if (validators.lastModified) {
+      headers['If-Unmodified-Since'] = validators.lastModified;
+    }
+
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.request(parsed, { method: 'PUT', headers }, (res) => {
+      const status = res.statusCode || 0;
+      const location = res.headers.location;
+
+      if (status >= 300 && status < 400 && location) {
+        res.resume();
+        if (redirectCount >= 5) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        const redirectedUrl = new URL(location, parsed);
+        if (redirectedUrl.origin !== parsed.origin) {
+          reject(new Error('Remote save refused a cross-origin redirect'));
+          return;
+        }
+        saveRemoteTextFile(redirectedUrl.toString(), content, validators, redirectCount + 1)
+          .then(resolve, reject);
+        return;
+      }
+
+      res.resume();
+      if (status === 409 || status === 412) {
+        resolve({ success: false, conflict: true, status });
+        return;
+      }
+      if (status === 401 || status === 403) {
+        resolve({ success: false, unauthorized: true, status });
+        return;
+      }
+      if (status === 405 || status === 501) {
+        resolve({ success: false, readOnly: true, status });
+        return;
+      }
+      if (status < 200 || status >= 300) {
+        resolve({ success: false, error: `Remote server returned HTTP ${status}`, status });
+        return;
+      }
+
+      const lastModified = res.headers['last-modified'] || null;
+      const mtime = lastModified ? Date.parse(lastModified) : null;
+      resolve({
+        success: true,
+        sourceUrl: parsed.toString(),
+        etag: res.headers.etag || null,
+        lastModified,
+        mtime: Number.isFinite(mtime) ? mtime : null
+      });
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy(new Error('Timed out saving remote file'));
+    });
+    req.on('error', reject);
+    req.end(body);
   });
 }
 
@@ -2978,6 +3099,36 @@ ipcMain.handle('show-save-dialog', async (event, fileName) => {
   return 'cancel';
 });
 
+ipcMain.handle('show-remote-read-only-save-dialog', async (event, fileName, sourceUrl) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showMessageBox(win, {
+    type: 'info',
+    buttons: ['Save a Copy…', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Remote File Is Read-Only',
+    message: `"${fileName}" cannot be saved back to this remote source.`,
+    detail: `${sourceUrl}\n\nYou can save a local copy without changing the remote tab.`
+  });
+  return result.response === 0 ? 'copy' : 'cancel';
+});
+
+ipcMain.handle('show-remote-save-conflict-dialog', async (event, fileName, sourceUrl) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Save a Copy…', 'Reload Remote', 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    title: 'Remote File Changed',
+    message: `"${fileName}" changed on the remote machine since you opened it.`,
+    detail: `${sourceUrl}\n\nOpenMarkdownReader did not overwrite the newer remote version.`
+  });
+  if (result.response === 0) return 'copy';
+  if (result.response === 1) return 'reload';
+  return 'cancel';
+});
+
 // Toggle maximize/restore window (macOS zoom behavior)
 ipcMain.handle('toggle-maximize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -3291,13 +3442,18 @@ ipcMain.handle('open-remote-url', async (event, remoteUrl, options = {}) => {
   }
 
   try {
-    const remoteFile = await fetchRemoteTextFile(remoteUrl);
+    const remoteFile = await fetchRemoteTextFile(remoteUrl, {
+      advertisedWritable: options.remoteWritable === true
+    });
     win.webContents.send('file-loaded', {
       content: remoteFile.content,
       fileName: remoteFile.fileName,
       filePath: null,
       sourceUrl: remoteFile.sourceUrl,
       isRemote: true,
+      remoteWritable: remoteFile.writable,
+      remoteEtag: remoteFile.etag,
+      remoteLastModified: remoteFile.lastModified,
       mtime: remoteFile.mtime,
       openInBackground: options.background || false,
       forceNewTab: options.newTab || false,
@@ -3311,16 +3467,22 @@ ipcMain.handle('open-remote-url', async (event, remoteUrl, options = {}) => {
       sourceUrl: remoteFile.sourceUrl,
       fileName: remoteFile.fileName
     });
-    return { success: true, sourceUrl: remoteFile.sourceUrl, fileName: remoteFile.fileName };
+    return {
+      success: true,
+      sourceUrl: remoteFile.sourceUrl,
+      fileName: remoteFile.fileName,
+      writable: remoteFile.writable
+    };
   } catch (err) {
     console.warn(`openRemoteUrl: ${err.message}`);
     return { success: false, error: err.message };
   }
 });
 
-// Open an HTTP(S) directory listing as a read-only sidebar workspace.
+// Open an HTTP(S) directory listing as a sidebar workspace.
 // Supports common HTML auto-index pages (including Python's http.server)
-// and JSON manifests shaped as { name?, entries: [...] }.
+// and JSON manifests shaped as { name?, capabilities?, entries: [...] }.
+// Listings are read-only unless the response explicitly advertises PUT support.
 ipcMain.handle('open-remote-folder', async (event, remoteUrl) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) {
@@ -3334,18 +3496,21 @@ ipcMain.handle('open-remote-folder', async (event, remoteUrl) => {
       name: remoteDirectory.name,
       files: remoteDirectory.entries,
       format: remoteDirectory.format,
-      readOnly: true
+      readOnly: !remoteDirectory.writable,
+      writable: remoteDirectory.writable
     });
     agentServer.emitEvent('remote-directory-opened', {
       sourceUrl: remoteDirectory.sourceUrl,
       name: remoteDirectory.name,
-      entryCount: remoteDirectory.entries.length
+      entryCount: remoteDirectory.entries.length,
+      writable: remoteDirectory.writable
     });
     return {
       success: true,
       sourceUrl: remoteDirectory.sourceUrl,
       name: remoteDirectory.name,
-      entryCount: remoteDirectory.entries.length
+      entryCount: remoteDirectory.entries.length,
+      writable: remoteDirectory.writable
     };
   } catch (err) {
     console.warn(`openRemoteFolder: ${err.message}`);
@@ -3366,11 +3531,29 @@ ipcMain.handle('get-remote-directory-contents', async (event, remoteUrl) => {
       sourceUrl: remoteDirectory.sourceUrl,
       name: remoteDirectory.name,
       files: remoteDirectory.entries,
-      format: remoteDirectory.format
+      format: remoteDirectory.format,
+      writable: remoteDirectory.writable,
+      readOnly: !remoteDirectory.writable
     };
   } catch (err) {
     console.warn(`getRemoteDirectoryContents: ${err.message}`);
     return { success: false, error: err.message, files: [] };
+  }
+});
+
+ipcMain.handle('save-remote-file', async (event, remoteUrl, content, validators = {}) => {
+  try {
+    const result = await saveRemoteTextFile(remoteUrl, content, validators);
+    if (result.success) {
+      agentServer.emitEvent('remote-file-saved', {
+        sourceUrl: result.sourceUrl,
+        fileName: getRemoteUrlFileName(result.sourceUrl)
+      });
+    }
+    return result;
+  } catch (err) {
+    console.warn(`saveRemoteFile: ${err.message}`);
+    return { success: false, error: err.message };
   }
 });
 

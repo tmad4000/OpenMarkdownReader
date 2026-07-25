@@ -14,7 +14,7 @@ A beautiful, open-source Markdown file reader and editor for Mac built with Elec
 - Multi-tab and multi-window support
 - Edit mode with live preview toggle (⌘E)
 - File browser sidebar with folder navigation
-- Read-only remote folder browsing over HTTP(S), including Tailscale URLs
+- Remote folder browsing and guarded remote saves over HTTP(S), including Tailscale URLs
 - Adjustable content width
 - GFM (GitHub Flavored Markdown) support including:
   - Tables
@@ -35,6 +35,7 @@ npm start
 - `⌘W` - Close tab
 - `⌘E` - Toggle edit mode
 - `⌘S` - Save
+- `⇧⌘S` - Save As / save a local copy of a remote file
 - `⌘B` - Toggle sidebar
 - `Escape` - Cancel/revert edits
 - `Ctrl+Tab` - Next tab
@@ -52,11 +53,16 @@ npm start
 
 OpenMarkdownReader can turn common HTML directory indexes (including
 `python3 -m http.server`, Apache, and nginx auto-index pages) into a lazy,
-read-only sidebar tree. It also accepts a JSON manifest:
+read-only sidebar tree. Sources that advertise HTTP `PUT` support can also
+save edits back to the remote machine with `⌘S`. Remote saves use `ETag` or
+`Last-Modified` guards so a newer remote version is never silently overwritten.
+
+The app also accepts a JSON manifest:
 
 ```json
 {
   "name": "Project Notes",
+  "capabilities": { "write": true },
   "entries": [
     { "name": "README.md", "path": "README.md" },
     { "name": "Research", "type": "folder", "path": "research/" }
@@ -64,10 +70,22 @@ read-only sidebar tree. It also accepts a JSON manifest:
 }
 ```
 
-For a private machine, serve the folder on localhost and expose it with
-Tailscale Serve. Paste the resulting HTTPS folder URL into the globe-button
-dialog. Quick Open (`⌘P`) also offers both **Open Remote File** and
-**Browse Remote Folder** when you paste a URL.
+For a writable private share, run the bundled companion server on the machine
+that owns the files:
+
+```bash
+npm run serve:remote -- "/path/to/notes" --port 8847
+tailscale serve --bg --https=8847 http://127.0.0.1:8847
+```
+
+The server binds to localhost by default; Tailscale supplies the private
+network access. Add `--read-only` if you only want browsing. Paste the
+resulting HTTPS folder URL into the globe-button dialog. Quick Open (`⌘P`)
+also offers both **Open Remote File** and **Browse Remote Folder**.
+
+For remote files, `⌘S` saves back only when write support is advertised.
+Read-only sources offer **Save a Copy…** instead. `⇧⌘S` always saves a local
+copy while keeping the tab associated with its remote URL.
 
 ## Supported File Types
 
