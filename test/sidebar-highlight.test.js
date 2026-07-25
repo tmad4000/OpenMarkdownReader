@@ -33,6 +33,7 @@ function createMockFileTree(paths) {
 
 test('normalizePath normalizes separators and duplicate slashes', () => {
   assert.equal(normalizePath('  C:\\notes\\\\today.md  '), 'C:/notes/today.md');
+  assert.equal(normalizePath('HTTPS://example.com//notes/today.md'), 'https://example.com/notes/today.md');
 });
 
 test('isActiveSidebarFilePath matches equivalent normalized paths', () => {
@@ -43,10 +44,12 @@ test('isActiveSidebarFilePath matches equivalent normalized paths', () => {
 test('findActiveTabFilePath returns active tab file path', () => {
   const tabs = [
     { id: 1, filePath: '/tmp/one.md' },
-    { id: 2, filePath: '/tmp/two.md' }
+    { id: 2, filePath: '/tmp/two.md' },
+    { id: 3, filePath: null, sourceUrl: 'https://example.com/remote.md' }
   ];
   assert.equal(findActiveTabFilePath(tabs, 2), '/tmp/two.md');
-  assert.equal(findActiveTabFilePath(tabs, 3), '');
+  assert.equal(findActiveTabFilePath(tabs, 3), 'https://example.com/remote.md');
+  assert.equal(findActiveTabFilePath(tabs, 4), '');
 });
 
 test('applyActiveSidebarFileHighlight toggles active class for matching file only', () => {

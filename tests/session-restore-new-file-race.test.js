@@ -22,5 +22,5 @@ test('session restore preserves user-created New File tab focus', () => {
   assert.match(restoreBody, /const shouldPreserveActiveTab = hasUserActiveTabDuringRestore\(activeTabAtRestoreStart\);/);
   assert.match(restoreBody, /if \(isDisposableStartupTab\(firstTab\)\)/);
   assert.doesNotMatch(restoreBody, /!firstTab\.content/);
-  assert.match(restoreBody, /if \(shouldPreserveActiveTab\) \{\s*return;\s*\}\s*if \(activeTabData/);
+  assert.match(restoreBody, /if \(shouldPreserveActiveTab\) \{\s*return;\s*\}\s*const activeSourcePath/);
 });

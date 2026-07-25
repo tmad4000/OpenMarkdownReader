@@ -6,6 +6,7 @@ const https = require('https');
 const http = require('http');
 const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
+const { parseRemoteDirectoryListing } = require('./remote-folder-utils');
 const agentServer = require('./agent-server');
 
 // Edition descriptor — generated at build/dev start by scripts/generate-edition.js.
@@ -1842,6 +1843,7 @@ const textFileExtensions = [
 ];
 
 const MAX_REMOTE_FILE_BYTES = 15 * 1024 * 1024;
+const MAX_REMOTE_DIRECTORY_BYTES = 2 * 1024 * 1024;
 const REMOTE_TEXT_CONTENT_TYPES = new Set([
   'application/json',
   'application/javascript',
@@ -1996,6 +1998,88 @@ function fetchRemoteTextFile(remoteUrl, redirectCount = 0) {
   });
 }
 
+function fetchRemoteDirectory(remoteUrl, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch {
+      reject(new Error('Invalid URL'));
+      return;
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      reject(new Error('Only http and https URLs can be opened'));
+      return;
+    }
+
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.get(parsed, {
+      headers: {
+        'User-Agent': `${edition.productName || 'OpenMarkdownReader'}/${buildInfo.version || 'dev'}`,
+        'Accept': 'application/json,text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.1'
+      }
+    }, (res) => {
+      const status = res.statusCode || 0;
+      const location = res.headers.location;
+
+      if (status >= 300 && status < 400 && location) {
+        res.resume();
+        if (redirectCount >= 5) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        fetchRemoteDirectory(new URL(location, parsed).toString(), redirectCount + 1)
+          .then(resolve, reject);
+        return;
+      }
+
+      if (status < 200 || status >= 300) {
+        res.resume();
+        reject(new Error(`Remote server returned HTTP ${status}`));
+        return;
+      }
+
+      const chunks = [];
+      let totalBytes = 0;
+      let rejectedForSize = false;
+
+      res.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_REMOTE_DIRECTORY_BYTES) {
+          rejectedForSize = true;
+          reject(new Error('Remote folder listing is larger than 2 MB'));
+          res.destroy();
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      res.on('error', (err) => {
+        if (!rejectedForSize) reject(err);
+      });
+
+      res.on('end', () => {
+        if (rejectedForSize) return;
+        try {
+          resolve(parseRemoteDirectoryListing({
+            body: Buffer.concat(chunks).toString('utf8'),
+            contentType: res.headers['content-type'] || '',
+            sourceUrl: parsed.toString()
+          }));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy(new Error('Timed out opening remote folder'));
+    });
+    req.on('error', reject);
+  });
+}
+
 async function openFileOrFolder(targetWindow = null) {
   const win = targetWindow || getFocusedWindow();
 
@@ -2123,13 +2207,19 @@ function restoreSession() {
     .map(windowData => {
       const tabs = Array.isArray(windowData.tabs) ? windowData.tabs : [];
       const validTabs = tabs.filter(t => {
+        if (t && t.sourceUrl) return true;
         if (!t || !t.filePath) return true; // untitled/empty tabs are fine
         try { return fs.existsSync(t.filePath); } catch { return false; }
       });
       if (validTabs.length !== tabs.length) prunedAny = true;
 
       let directory = windowData.directory;
-      if (directory && directory !== '/' && !fs.existsSync(directory)) {
+      if (
+        directory &&
+        windowData.directoryKind !== 'remote' &&
+        directory !== '/' &&
+        !fs.existsSync(directory)
+      ) {
         prunedAny = true;
         directory = undefined;
       }
@@ -3228,9 +3318,60 @@ ipcMain.handle('open-remote-url', async (event, remoteUrl, options = {}) => {
   }
 });
 
+// Open an HTTP(S) directory listing as a read-only sidebar workspace.
+// Supports common HTML auto-index pages (including Python's http.server)
+// and JSON manifests shaped as { name?, entries: [...] }.
+ipcMain.handle('open-remote-folder', async (event, remoteUrl) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) {
+    return { success: false, error: 'No active window' };
+  }
+
+  try {
+    const remoteDirectory = await fetchRemoteDirectory(remoteUrl);
+    win.webContents.send('remote-directory-loaded', {
+      dirUrl: remoteDirectory.sourceUrl,
+      name: remoteDirectory.name,
+      files: remoteDirectory.entries,
+      format: remoteDirectory.format,
+      readOnly: true
+    });
+    agentServer.emitEvent('remote-directory-opened', {
+      sourceUrl: remoteDirectory.sourceUrl,
+      name: remoteDirectory.name,
+      entryCount: remoteDirectory.entries.length
+    });
+    return {
+      success: true,
+      sourceUrl: remoteDirectory.sourceUrl,
+      name: remoteDirectory.name,
+      entryCount: remoteDirectory.entries.length
+    };
+  } catch (err) {
+    console.warn(`openRemoteFolder: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
 // Get directory contents (for expanding folders in sidebar)
 ipcMain.handle('get-directory-contents', async (event, dirPath) => {
   return getDirectoryContents(dirPath);
+});
+
+ipcMain.handle('get-remote-directory-contents', async (event, remoteUrl) => {
+  try {
+    const remoteDirectory = await fetchRemoteDirectory(remoteUrl);
+    return {
+      success: true,
+      sourceUrl: remoteDirectory.sourceUrl,
+      name: remoteDirectory.name,
+      files: remoteDirectory.entries,
+      format: remoteDirectory.format
+    };
+  } catch (err) {
+    console.warn(`getRemoteDirectoryContents: ${err.message}`);
+    return { success: false, error: err.message, files: [] };
+  }
 });
 
 // Get all files (and folders) recursively (for command palette search).

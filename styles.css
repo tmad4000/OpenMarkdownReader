@@ -387,6 +387,15 @@ body.platform-win32 .titlebar-drag-spacer {
   outline: none;
 }
 
+.sidebar-header-menu-item:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.sidebar-header-menu-item:disabled:hover {
+  background: transparent;
+}
+
 .sidebar-header-menu-check {
   width: 12px;
   color: var(--link-color);
@@ -414,6 +423,16 @@ body.platform-win32 .titlebar-drag-spacer {
 .sidebar-btn:hover {
   background: var(--border-color);
   color: var(--text-color);
+}
+
+.sidebar-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.sidebar-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .sidebar-header-buttons {
@@ -444,6 +463,7 @@ body.platform-win32 .titlebar-drag-spacer {
 .sidebar-path {
   display: flex;
   align-items: center;
+  gap: 7px;
   padding: 6px 12px;
   background: var(--hover-bg);
   border-bottom: 1px solid var(--border-color);
@@ -469,6 +489,37 @@ body.platform-win32 .titlebar-drag-spacer {
 .sidebar-path-text:hover {
   background: var(--hover-bg);
   color: var(--text-color);
+}
+
+.sidebar-source-badge {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--link-color) 42%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--link-color) 13%, transparent);
+  color: var(--link-color);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.sidebar-source-badge.hidden {
+  display: none;
+}
+
+.sidebar.remote-workspace {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--link-color) 5%, transparent), transparent 150px),
+    var(--code-bg);
+}
+
+.sidebar.remote-workspace .sidebar-path {
+  background: color-mix(in srgb, var(--link-color) 9%, var(--hover-bg));
+}
+
+.sidebar.remote-workspace .file-tree-item.remote .folder-icon {
+  color: color-mix(in srgb, var(--link-color) 82%, #2aa198);
 }
 
 .file-tree {
@@ -2335,6 +2386,24 @@ mark.find-match.active {
   text-align: center;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.remote-folder-prompt {
+  display: grid;
+  gap: 7px;
+  padding: 28px 24px;
+}
+
+.remote-folder-prompt strong {
+  color: var(--text-color);
+  font-size: 15px;
+}
+
+.remote-folder-prompt span {
+  max-width: 390px;
+  margin: 0 auto;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .command-palette-hint {

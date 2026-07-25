@@ -224,6 +224,8 @@ let navIsNavigating = false; // Flag to prevent adding to history during back/fo
 
 // Directory state
 let currentDirectory = null;
+let currentDirectoryKind = null; // 'local' | 'remote'
+let currentRemoteDirectoryName = null;
 let directoryFiles = [];
 let selectedSidebarFolderPath = null;
 let pendingNewTreeItemId = 0;
@@ -439,6 +441,7 @@ const sidebarToggle = document.getElementById('sidebar-toggle');
 const navBackBtn = document.getElementById('nav-back-btn');
 const navForwardBtn = document.getElementById('nav-forward-btn');
 const openFolderBtn = document.getElementById('open-folder-btn');
+const openRemoteFolderBtn = document.getElementById('open-remote-folder-btn');
 const sidebarNewFileBtn = document.getElementById('sidebar-new-file-btn');
 const sidebarNewFolderBtn = document.getElementById('sidebar-new-folder-btn');
 const sidebarViewStatus = document.getElementById('sidebar-view-status');
@@ -452,6 +455,7 @@ const sidebarSortMenu = document.getElementById('sidebar-sort-menu');
 const sidebarSortMenuItems = Array.from(document.querySelectorAll('.sidebar-sort-menu-item[data-sort-mode]'));
 const sidebarCollapseAllBtn = document.getElementById('sidebar-collapse-all-btn');
 const sidebarPath = document.getElementById('sidebar-path');
+const sidebarSourceBadge = document.getElementById('sidebar-source-badge');
 const devRestartBtn = document.getElementById('dev-restart-btn');
 const sidebarPathText = document.getElementById('sidebar-path-text');
 const fileTree = document.getElementById('file-tree');
@@ -654,7 +658,7 @@ function getActiveSidebarFilePath() {
   }
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  return activeTab && activeTab.filePath ? activeTab.filePath : '';
+  return activeTab ? (activeTab.filePath || activeTab.sourceUrl || '') : '';
 }
 
 function isActiveSidebarFilePath(itemPath, activeFilePath) {
@@ -1661,6 +1665,10 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openFolder();
 });
 
+openRemoteFolderBtn.addEventListener('click', () => {
+  showRemoteFolderPalette();
+});
+
 function closeSidebarHeaderMenu(menu, trigger) {
   if (!menu || !trigger) return;
   menu.classList.add('hidden');
@@ -1717,6 +1725,7 @@ if (sidebarViewStatus) {
 sidebarViewMenuItems.forEach((item) => {
   item.addEventListener('click', (event) => {
     event.stopPropagation();
+    if (item.disabled) return;
     setSidebarViewMode(item.dataset.viewMode);
     closeSidebarHeaderMenus();
   });
@@ -1826,11 +1835,68 @@ if (window.electronAPI && window.electronAPI.onShowToast) {
   window.electronAPI.onShowToast((message, type) => showToast(message, type));
 }
 
+function isRemoteWorkspace() {
+  return currentDirectoryKind === 'remote';
+}
+
+function updateSidebarWorkspaceControls() {
+  const remote = isRemoteWorkspace();
+  sidebar.classList.toggle('remote-workspace', remote);
+  sidebarNewFileBtn.disabled = remote;
+  sidebarNewFolderBtn.disabled = remote;
+  sidebarNewFileBtn.title = remote ? 'Remote folders are read-only' : 'New File';
+  sidebarNewFolderBtn.title = remote ? 'Remote folders are read-only' : 'New Folder';
+
+  if (remote && settings.sidebarViewMode !== 'tree') {
+    settings.sidebarViewMode = 'tree';
+    updateSidebarViewUI();
+  }
+
+  sidebarViewMenuItems.forEach((item) => {
+    const disabled = remote && item.dataset.viewMode !== 'tree';
+    item.disabled = disabled;
+    item.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    item.title = disabled ? 'Timeline views are unavailable for remote folders' : '';
+  });
+}
+
+async function getDirectoryContentsForSidebar(location) {
+  if (isRemoteWorkspace()) {
+    const result = await window.electronAPI.getRemoteDirectoryContents(location);
+    if (!result || !result.success) {
+      throw new Error(result && result.error ? result.error : 'Could not load remote folder');
+    }
+    return result.files || [];
+  }
+  return window.electronAPI.getDirectoryContents(location);
+}
+
 // Update sidebar path display
 function updateSidebarPath(dirPath) {
   if (!dirPath) {
     sidebarPath.classList.add('hidden');
+    sidebarSourceBadge.classList.add('hidden');
+    sidebar.classList.remove('remote-workspace');
     stopSidebarLiveWatcher();
+    return;
+  }
+
+  if (isRemoteWorkspace()) {
+    let folderName = currentRemoteDirectoryName || dirPath;
+    let host = '';
+    try {
+      const parsed = new URL(dirPath);
+      host = parsed.hostname;
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      folderName = currentRemoteDirectoryName || decodeURIComponent(segments.at(-1) || host);
+    } catch {}
+    sidebarSourceBadge.textContent = 'WEB';
+    sidebarSourceBadge.title = host ? `Remote folder on ${host}` : 'Remote folder';
+    sidebarSourceBadge.classList.remove('hidden');
+    sidebarPathText.textContent = host && folderName !== host ? `${folderName} · ${host}` : folderName;
+    sidebarPathText.title = dirPath;
+    sidebarPath.classList.remove('hidden');
+    updateSidebarWorkspaceControls();
     return;
   }
 
@@ -1838,9 +1904,11 @@ function updateSidebarPath(dirPath) {
   const homePath = dirPath.replace(/^\/Users\/[^/]+/, '~');
   const folderName = dirPath.split('/').pop();
 
+  sidebarSourceBadge.classList.add('hidden');
   sidebarPathText.textContent = folderName;
-  sidebarPathText.title = dirPath; // Full path on hover
+  sidebarPathText.title = homePath || dirPath; // Full path on hover
   sidebarPath.classList.remove('hidden');
+  updateSidebarWorkspaceControls();
 }
 
 function stopSidebarLiveWatcher() {
@@ -1858,6 +1926,7 @@ function normalizeDirectoryForIndex(dirPath) {
 }
 
 function canRecursivelyIndexDirectory(dirPath) {
+  if (isRemoteWorkspace()) return false;
   const normalized = normalizeDirectoryForIndex(dirPath);
   if (!normalized) return false;
   if (normalized === (window.electronAPI.pathSep || '/')) return false;
@@ -1887,7 +1956,7 @@ async function hydrateExpandedSidebarFolders(items) {
   await Promise.all((items || []).map(async (item) => {
     if (!item || item.type !== 'folder' || !expandedFolders.has(item.path)) return;
 
-    const children = await window.electronAPI.getDirectoryContents(item.path);
+    const children = await getDirectoryContentsForSidebar(item.path);
     sortDirectoryFiles(children);
     item.children = children;
     item.isEmpty = children.length === 0;
@@ -1947,6 +2016,7 @@ function setSelectedSidebarFolder(folderPath) {
 }
 
 function getSelectedFolderTargetDirectory() {
+  if (isRemoteWorkspace()) return null;
   if (!currentDirectory) return null;
   if (!selectedSidebarFolderPath) return currentDirectory;
   if (
@@ -1982,7 +2052,7 @@ async function ensureFolderLoadedForNewItem(dirPath) {
   const folderEl = findFolderElementByPath(dirPath);
   if (!Array.isArray(folderItem.children)) {
     try {
-      const contents = await window.electronAPI.getDirectoryContents(dirPath);
+      const contents = await getDirectoryContentsForSidebar(dirPath);
       sortDirectoryFiles(contents);
       folderItem.children = contents;
     } catch (err) {
@@ -1999,6 +2069,11 @@ async function ensureFolderLoadedForNewItem(dirPath) {
 // Click on path to open in Finder
 sidebarPathText.addEventListener('click', () => {
   if (currentDirectory) {
+    if (isRemoteWorkspace()) {
+      window.electronAPI.copyToClipboard(currentDirectory);
+      showToast('Remote folder URL copied', 'success', 2200);
+      return;
+    }
     setSelectedSidebarFolder(currentDirectory);
     window.electronAPI.openInFinder(currentDirectory);
   }
@@ -2008,6 +2083,11 @@ sidebarPathText.addEventListener('click', () => {
 sidebarPathText.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (currentDirectory) {
+    if (isRemoteWorkspace()) {
+      window.electronAPI.copyToClipboard(currentDirectory);
+      showToast('Remote folder URL copied', 'success', 2200);
+      return;
+    }
     setSelectedSidebarFolder(currentDirectory);
     window.electronAPI.showFolderContextMenu(currentDirectory);
   }
@@ -2015,7 +2095,7 @@ sidebarPathText.addEventListener('contextmenu', (e) => {
 
 // New folder from sidebar
 sidebarNewFolderBtn.addEventListener('click', () => {
-  if (currentDirectory) {
+  if (currentDirectory && !isRemoteWorkspace()) {
     createNewFolderInDirectory(currentDirectory);
   }
 });
@@ -2110,7 +2190,7 @@ function startNewFolderRename(el, tempItem, dirPath, defaultName) {
 
 // New file from sidebar
 sidebarNewFileBtn.addEventListener('click', async () => {
-  if (currentDirectory) {
+  if (currentDirectory && !isRemoteWorkspace()) {
     const targetDirectory = getSelectedFolderTargetDirectory();
     if (targetDirectory) {
       await createNewFileInDirectory(targetDirectory);
@@ -2183,8 +2263,11 @@ async function createNewFileInDirectory(dirPath) {
 // Listen for directory loaded
 window.electronAPI.onDirectoryLoaded((data) => {
   console.log('Directory loaded:', data);
+  currentDirectoryKind = 'local';
+  currentRemoteDirectoryName = null;
   currentDirectory = data.dirPath;
   directoryFiles = data.files;
+  expandedFolders.clear();
 
   try {
     // Apply current sort
@@ -2231,6 +2314,27 @@ window.electronAPI.onDirectoryLoaded((data) => {
   setSidebarVisibility(true);
   renderFileTree();
   startSidebarLiveWatcher();
+});
+
+window.electronAPI.onRemoteDirectoryLoaded((data) => {
+  console.log('Remote directory loaded:', data);
+  stopSidebarLiveWatcher();
+  currentDirectoryKind = 'remote';
+  currentRemoteDirectoryName = data.name || null;
+  currentDirectory = data.dirUrl;
+  directoryFiles = Array.isArray(data.files) ? data.files : [];
+  expandedFolders.clear();
+  selectedSidebarFolderPath = null;
+  settings.sidebarViewMode = 'tree';
+
+  sortDirectoryFiles(directoryFiles);
+  updateSidebarPath(currentDirectory);
+  updateSidebarViewUI();
+  setAllFilesCache([]);
+  allFilesCachePromise = null;
+  setSidebarVisibility(true);
+  renderFileTree();
+  showToast(`Browsing ${currentRemoteDirectoryName || 'remote folder'} (read-only)`, 'success', 2800);
 });
 
 // Track expanded folders
@@ -2719,12 +2823,13 @@ function renderFileTreeItems(items, container, depth) {
     const el = document.createElement('div');
     el.style.setProperty('--depth', depth);
     const labelTitle = item.path || item.name;
+    const remoteItem = isRemoteWorkspace() || item.isRemote === true;
 
     if (item.type === 'folder') {
       const isExpanded = expandedFolders.has(item.path);
       const isSelected = !!selectedSidebarFolderPath && item.path === selectedSidebarFolderPath;
       const isEmpty = item.isEmpty === true;
-      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}${isEmpty ? ' empty' : ''}`;
+      el.className = `file-tree-item file-tree-folder ${isExpanded ? 'expanded' : ''}${isSelected ? ' selected' : ''}${item.isNew ? ' new-folder' : ''}${isEmpty ? ' empty' : ''}${remoteItem ? ' remote' : ''}`;
       el.dataset.path = item.path;
       el.title = isEmpty ? `${labelTitle} (empty)` : labelTitle;
       el.innerHTML = `
@@ -2742,6 +2847,7 @@ function renderFileTreeItems(items, container, depth) {
         await toggleFolder(item.path, el);
       });
       el.addEventListener('dragover', (e) => {
+        if (remoteItem) return;
         if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -2751,6 +2857,7 @@ function renderFileTreeItems(items, container, depth) {
         el.classList.remove('drop-target');
       });
       el.addEventListener('drop', async (e) => {
+        if (remoteItem) return;
         if (!draggedSidebarFilePath || settings.sidebarViewMode !== 'tree') return;
         e.preventDefault();
         e.stopPropagation();
@@ -2763,6 +2870,11 @@ function renderFileTreeItems(items, container, depth) {
         e.preventDefault();
         e.stopPropagation();
         if (item.path) {
+          if (remoteItem) {
+            window.electronAPI.copyToClipboard(item.path);
+            showToast('Remote folder URL copied', 'success', 2200);
+            return;
+          }
           setSelectedSidebarFolder(item.path);
           window.electronAPI.showSidebarFolderItemContextMenu(item.path);
         }
@@ -2779,7 +2891,7 @@ function renderFileTreeItems(items, container, depth) {
     } else {
       // File - show text files normally, other files muted
       const isTextFile = item.isMarkdown || item.isTextFile || isTextFileByName(item.name);
-      el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}${item.isNew ? ' new-file' : ''}`;
+      el.className = `file-tree-item file-tree-file ${isTextFile ? '' : 'non-markdown'}${item.isNew ? ' new-file' : ''}${remoteItem ? ' remote' : ''}`;
       if (item.path) el.dataset.path = item.path;
       if (item.tempId) el.dataset.tempId = item.tempId;
       if (item.path && isActiveSidebarFilePath(item.path, getActiveSidebarFilePath())) {
@@ -2795,8 +2907,12 @@ function renderFileTreeItems(items, container, depth) {
       `;
       // All files are clickable, non-text just shown with muted style
       if (!item.isNew) {
-        el.draggable = true;
+        el.draggable = !remoteItem;
         el.addEventListener('dragstart', (e) => {
+          if (remoteItem) {
+            e.preventDefault();
+            return;
+          }
           if (!item.path || settings.sidebarViewMode !== 'tree') {
             e.preventDefault();
             return;
@@ -2820,20 +2936,35 @@ function renderFileTreeItems(items, container, depth) {
             options.newTab = true;
             options.background = !e.shiftKey; // Cmd+click = background, Cmd+Shift+click = focus
           }
-          window.electronAPI.openFileByPath(item.path, options);
+          if (remoteItem) {
+            window.electronAPI.openRemoteUrl(item.path, options).then((result) => {
+              if (!result || !result.success) {
+                showToast(`Could not open remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+              }
+            });
+          } else {
+            window.electronAPI.openFileByPath(item.path, options);
+          }
         });
         el.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           e.stopPropagation();
           if (item.path) {
-            window.electronAPI.showFileContextMenu(item.path);
+            if (remoteItem) {
+              window.electronAPI.copyToClipboard(item.path);
+              showToast('Remote file URL copied', 'success', 2200);
+            } else {
+              window.electronAPI.showFileContextMenu(item.path);
+            }
           }
         });
         // Double-click to rename
-        el.querySelector('.file-tree-label').addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          startSidebarRename(el, item);
-        });
+        if (!remoteItem) {
+          el.querySelector('.file-tree-label').addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            startSidebarRename(el, item);
+          });
+        }
       }
       container.appendChild(el);
     }
@@ -2855,13 +2986,26 @@ async function toggleFolder(folderPath, element) {
     expandedFolders.add(folderPath);
     element.classList.add('expanded');
 
-    const contents = await window.electronAPI.getDirectoryContents(folderPath);
+    const existingFolderItem = findItemByPath(directoryFiles, folderPath);
+    let contents;
+    if (existingFolderItem && Array.isArray(existingFolderItem.children)) {
+      contents = existingFolderItem.children;
+    } else {
+      try {
+        contents = await getDirectoryContentsForSidebar(folderPath);
+      } catch (err) {
+        expandedFolders.delete(folderPath);
+        element.classList.remove('expanded');
+        showToast(`Could not load folder: ${err.message}`, 'error', 5000);
+        return;
+      }
+    }
 
     // Apply current sort
     sortDirectoryFiles(contents);
 
     // Store children in our data structure
-    const folderItem = findItemByPath(directoryFiles, folderPath);
+    const folderItem = existingFolderItem || findItemByPath(directoryFiles, folderPath);
     if (folderItem) {
       folderItem.children = contents;
       // Sync isEmpty state with what we just discovered (external filesystem
@@ -3711,7 +3855,21 @@ window.electronAPI.onRevealActiveFileInFinder?.(() => {
 
 window.electronAPI.onRefreshFile(async () => {
   const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.filePath) return;
+  if (!tab || (!tab.filePath && !tab.sourceUrl)) return;
+
+  if (tab.sourceUrl) {
+    if (tab.isModified && !confirm(`Refresh "${tab.fileName}" from the web and discard local changes?`)) {
+      return;
+    }
+    const result = await window.electronAPI.openRemoteUrl(tab.sourceUrl, {
+      reuseTab: activeTabId,
+      forceEdit: tab.isEditing
+    });
+    if (!result || !result.success) {
+      showToast(`Could not refresh remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+    }
+    return;
+  }
 
   // If there are unsaved changes, confirm first
   if (tab.isModified) {
@@ -4527,6 +4685,32 @@ function renderFrontmatterBlock(yaml) {
     `</details>`;
 }
 
+function getActiveRemoteSourceUrl() {
+  const tab = tabs.find(t => t.id === activeTabId);
+  return tab && tab.sourceUrl ? tab.sourceUrl : null;
+}
+
+function resolveRemoteRelativeUrl(href, sourceUrl = getActiveRemoteSourceUrl()) {
+  if (!href || !sourceUrl || href.startsWith('#')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) return null;
+  try {
+    return new URL(href, sourceUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolveRemoteMarkdownAssets() {
+  const sourceUrl = getActiveRemoteSourceUrl();
+  if (!sourceUrl || !markdownBody) return;
+
+  markdownBody.querySelectorAll('img[src], source[src]').forEach((element) => {
+    const source = element.getAttribute('src');
+    const resolved = resolveRemoteRelativeUrl(source, sourceUrl);
+    if (resolved) element.setAttribute('src', resolved);
+  });
+}
+
 function renderMarkdown(mdContent) {
   try {
     // Hide CSV view if it was showing
@@ -4539,6 +4723,7 @@ function renderMarkdown(mdContent) {
     const frontmatterHtml = frontmatter !== null ? renderFrontmatterBlock(frontmatter) : '';
     const html = frontmatterHtml + marked.parse(body);
     markdownBody.innerHTML = html;
+    resolveRemoteMarkdownAssets();
 
     buildCollapsibleSections();
     wrapTablesForScroll();
@@ -5194,7 +5379,7 @@ function updateCommandPaletteResults() {
 
   // 0. Add URL/File option if detected
   if (isUrl) {
-    allItems.push({
+    const openRemoteFileItem = {
       name: `Open Remote File: ${inputVal}`,
       path: inputVal,
       type: 'url',
@@ -5207,7 +5392,26 @@ function updateCommandPaletteResults() {
           showToast(`Could not open remote file: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
         }
       }
-    });
+    };
+    const browseRemoteFolderItem = {
+      name: `Browse Remote Folder: ${inputVal}`,
+      path: inputVal,
+      type: 'url',
+      isCommand: true,
+      icon: '◉',
+      description: 'Open a read-only web folder in the sidebar',
+      action: async () => {
+        const result = await window.electronAPI.openRemoteFolder(inputVal);
+        if (!result || !result.success) {
+          showToast(`Could not browse remote folder: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+        }
+      }
+    };
+    if (/\/(?:[?#].*)?$/.test(inputVal)) {
+      allItems.push(browseRemoteFolderItem, openRemoteFileItem);
+    } else {
+      allItems.push(openRemoteFileItem, browseRemoteFolderItem);
+    }
   } else if (isPath) {
     allItems.push({
       name: `Open File: ${inputVal}`,
@@ -5623,9 +5827,12 @@ window.electronAPI.onCheckUnsaved(async () => {
   const sessionData = {
     tabs: tabs.map(t => ({
       filePath: t.filePath,
+      sourceUrl: t.sourceUrl,
       fileName: t.fileName
-    })).filter(t => t.filePath),
+    })).filter(t => t.filePath || t.sourceUrl),
     directory: currentDirectory,
+    directoryKind: currentDirectoryKind,
+    remoteDirectoryName: currentRemoteDirectoryName,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
     sidebarWidth: settings.sidebarWidth,
@@ -5697,9 +5904,12 @@ window.electronAPI.onGetSessionState(() => {
   const sessionData = {
     tabs: tabs.map(t => ({
       filePath: t.filePath,
+      sourceUrl: t.sourceUrl,
       fileName: t.fileName
-    })).filter(t => t.filePath), // Only save tabs with files
+    })).filter(t => t.filePath || t.sourceUrl),
     directory: currentDirectory,
+    directoryKind: currentDirectoryKind,
+    remoteDirectoryName: currentRemoteDirectoryName,
     activeTabIndex: tabs.findIndex(t => t.id === activeTabId),
     sidebarVisible: settings.sidebarVisible,
     sidebarWidth: settings.sidebarWidth,
@@ -5728,14 +5938,24 @@ window.electronAPI.onRestoreSession((data) => {
 
   // Restore directory/sidebar
   if (data.directory) {
-    currentDirectory = data.directory;
-    window.electronAPI.getDirectoryContents(data.directory).then(files => {
-      directoryFiles = files;
-      sortDirectoryFiles(directoryFiles);
-      updateSidebarPath(currentDirectory);
-      renderFileTree();
-      startSidebarLiveWatcher();
-    }).catch(console.error);
+    if (data.directoryKind === 'remote') {
+      window.electronAPI.openRemoteFolder(data.directory).then((result) => {
+        if (!result || !result.success) {
+          showToast(`Could not restore remote folder: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+        }
+      });
+    } else {
+      currentDirectoryKind = 'local';
+      currentRemoteDirectoryName = null;
+      currentDirectory = data.directory;
+      window.electronAPI.getDirectoryContents(data.directory).then(files => {
+        directoryFiles = files;
+        sortDirectoryFiles(directoryFiles);
+        updateSidebarPath(currentDirectory);
+        renderFileTree();
+        startSidebarLiveWatcher();
+      }).catch(console.error);
+    }
   }
 
   // Restore tabs
@@ -5750,6 +5970,8 @@ window.electronAPI.onRestoreSession((data) => {
     data.tabs.forEach((tabData) => {
       if (tabData.filePath) {
         window.electronAPI.openFileByPath(tabData.filePath, { newTab: true, background: true });
+      } else if (tabData.sourceUrl) {
+        window.electronAPI.openRemoteUrl(tabData.sourceUrl, { newTab: true, background: true });
       }
     });
 
@@ -5759,14 +5981,14 @@ window.electronAPI.onRestoreSession((data) => {
       ? data.tabs[activeIndex]
       : null;
 
-    const focusByPath = (filePath, attempts = 10) => {
-      const target = tabs.find(t => t.filePath === filePath);
+    const focusByPath = (sourcePath, attempts = 10) => {
+      const target = tabs.find(t => t.filePath === sourcePath || t.sourceUrl === sourcePath);
       if (target) {
         switchToTab(target.id);
         return;
       }
       if (attempts > 0) {
-        setTimeout(() => focusByPath(filePath, attempts - 1), 100);
+        setTimeout(() => focusByPath(sourcePath, attempts - 1), 100);
       }
     };
 
@@ -5774,10 +5996,12 @@ window.electronAPI.onRestoreSession((data) => {
       return;
     }
 
-    if (activeTabData && activeTabData.filePath) {
-      focusByPath(activeTabData.filePath);
-    } else if (data.tabs[0] && data.tabs[0].filePath) {
-      focusByPath(data.tabs[0].filePath);
+    const activeSourcePath = activeTabData && (activeTabData.filePath || activeTabData.sourceUrl);
+    const firstSourcePath = data.tabs[0] && (data.tabs[0].filePath || data.tabs[0].sourceUrl);
+    if (activeSourcePath) {
+      focusByPath(activeSourcePath);
+    } else if (firstSourcePath) {
+      focusByPath(firstSourcePath);
     }
   }
 });
@@ -6168,6 +6392,27 @@ markdownBody.addEventListener('click', (e) => {
 
   // Relative file links - try to open the file
   const tab = tabs.find(t => t.id === activeTabId);
+  const remoteTargetUrl = tab && tab.sourceUrl
+    ? resolveRemoteRelativeUrl(href, tab.sourceUrl)
+    : null;
+  if (remoteTargetUrl) {
+    const options = {};
+    if (e.metaKey || (!isMac && e.ctrlKey)) {
+      options.newTab = true;
+      options.background = !e.shiftKey;
+    }
+    if (new URL(remoteTargetUrl).pathname.endsWith('/')) {
+      window.electronAPI.openRemoteFolder(remoteTargetUrl);
+    } else {
+      window.electronAPI.openRemoteUrl(remoteTargetUrl, options).then((result) => {
+        if (!result || !result.success) {
+          showToast(`Could not open remote link: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+        }
+      });
+    }
+    return;
+  }
+
   if (tab && tab.filePath) {
     const wikiHeading = link.getAttribute('data-wiki-heading');
     if (wikiHeading && href === tab.filePath) {
@@ -6275,6 +6520,22 @@ function openLinkFromEditor(href, e) {
   }
 
   const tab = tabs.find(t => t.id === activeTabId);
+  const remoteTargetUrl = tab && tab.sourceUrl
+    ? resolveRemoteRelativeUrl(href, tab.sourceUrl)
+    : null;
+  if (remoteTargetUrl) {
+    const options = {
+      newTab: true,
+      background: !e.shiftKey
+    };
+    if (new URL(remoteTargetUrl).pathname.endsWith('/')) {
+      window.electronAPI.openRemoteFolder(remoteTargetUrl);
+    } else {
+      window.electronAPI.openRemoteUrl(remoteTargetUrl, options);
+    }
+    return;
+  }
+
   if (tab && tab.filePath) {
     const currentDir = tab.filePath.substring(0, tab.filePath.lastIndexOf('/'));
     const targetPath = href.startsWith('/') ? href : `${currentDir}/${href}`;
@@ -6656,7 +6917,7 @@ closeTab = async function(tabId, silent = false) {
 
 settings.autoSave = false;
 let autoSaveTimer = null;
-let commandPaletteMode = 'files'; // 'files' or 'recent'
+let commandPaletteMode = 'files'; // 'files' | 'recent' | 'remote-folder'
 
 function triggerAutoSave() {
   if (!settings.autoSave) return;
@@ -6832,10 +7093,69 @@ const originalUpdateCommandPaletteResults = updateCommandPaletteResults;
 updateCommandPaletteResults = function() {
     if (commandPaletteMode === 'recent') {
         updateCommandPaletteResultsForRecent();
+    } else if (commandPaletteMode === 'remote-folder') {
+        updateRemoteFolderPaletteResults();
     } else {
         originalUpdateCommandPaletteResults();
     }
 };
+
+function showRemoteFolderPalette() {
+  commandPaletteMode = 'remote-folder';
+  commandPalette.classList.remove('hidden');
+  commandPaletteInput.value = '';
+  commandPaletteInput.focus();
+  commandPaletteInput.placeholder = 'Paste an http(s) folder URL…';
+  commandPaletteSelectedIndex = 0;
+  commandPaletteFiles = [];
+  updateRemoteFolderPaletteResults();
+}
+
+function updateRemoteFolderPaletteResults() {
+  const inputVal = commandPaletteInput.value.trim();
+  const isUrl = /^https?:\/\//i.test(inputVal);
+
+  if (!isUrl) {
+    commandPaletteFiles = [];
+    commandPaletteResults.innerHTML = `
+      <div class="command-palette-empty remote-folder-prompt">
+        <strong>Browse a web folder</strong>
+        <span>Paste a directory URL from Tailscale, Python http.server, Apache, nginx, or an OMR JSON manifest.</span>
+      </div>
+    `;
+    return;
+  }
+
+  commandPaletteFiles = [{
+    name: `Browse ${inputVal}`,
+    path: inputVal,
+    type: 'url',
+    isCommand: true,
+    icon: '◉',
+    description: 'Open as a read-only remote workspace',
+    action: async () => {
+      const result = await window.electronAPI.openRemoteFolder(inputVal);
+      if (!result || !result.success) {
+        showToast(`Could not browse remote folder: ${result && result.error ? result.error : 'Unknown error'}`, 'error', 5000);
+      }
+    }
+  }];
+
+  commandPaletteResults.innerHTML = `
+    <div class="command-palette-item selected" data-index="0">
+      <div class="command-palette-item-icon">◉</div>
+      <div class="command-palette-item-info">
+        <div class="command-palette-item-name">
+          Browse remote folder <span class="command-palette-badge">Read-only</span>
+        </div>
+        <div class="command-palette-item-path">${escapeHtml(inputVal)}</div>
+      </div>
+    </div>
+  `;
+  commandPaletteResults.querySelector('.command-palette-item').addEventListener('click', (event) => {
+    selectCommandPaletteItem(0, event);
+  });
+}
 
 function showRecentPalette() {
   commandPaletteMode = 'recent';
@@ -6937,6 +7257,10 @@ let globalSearchMatches = []; // Flat list of all matches for keyboard nav
 function showGlobalSearch() {
   if (!currentDirectory) {
     showToast('Open a folder first to search across files', 'warning');
+    return;
+  }
+  if (isRemoteWorkspace()) {
+    showToast('Full-text search is not available for remote folders yet', 'warning', 3200);
     return;
   }
   globalSearch.classList.remove('hidden');
@@ -7270,6 +7594,7 @@ window.electronAPI.onGetAppState?.(() => {
       id: t.id,
       index: i,
       filePath: t.filePath || null,
+      sourceUrl: t.sourceUrl || null,
       fileName: t.fileName || 'Untitled',
       isActive: t.id === activeTabId,
       isModified: !!t.isModified,
@@ -7283,6 +7608,8 @@ window.electronAPI.onGetAppState?.(() => {
     sidebar: {
       visible: settings.sidebarVisible,
       directory: currentDirectory,
+      directoryKind: currentDirectoryKind,
+      remoteDirectoryName: currentRemoteDirectoryName,
       width: settings.sidebarWidth,
       viewMode: settings.sidebarViewMode,
       sortMode: settings.sidebarSortMode

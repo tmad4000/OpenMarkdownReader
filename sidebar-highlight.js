@@ -3,7 +3,12 @@
 
   function normalizePath(inputPath) {
     if (typeof inputPath !== 'string') return '';
-    return inputPath.trim().replace(/\\/g, '/').replace(/\/+/g, '/');
+    const normalized = inputPath.trim().replace(/\\/g, '/');
+    const schemeMatch = normalized.match(/^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i);
+    if (schemeMatch) {
+      return schemeMatch[1].toLowerCase() + schemeMatch[2].replace(/\/+/g, '/');
+    }
+    return normalized.replace(/\/+/g, '/');
   }
 
   function isActiveSidebarFilePath(itemPath, activeFilePath) {
@@ -15,7 +20,9 @@
   function findActiveTabFilePath(tabs, activeTabId) {
     if (!Array.isArray(tabs)) return '';
     const activeTab = tabs.find((tab) => tab && tab.id === activeTabId);
-    return activeTab && typeof activeTab.filePath === 'string' ? activeTab.filePath : '';
+    if (!activeTab) return '';
+    if (typeof activeTab.filePath === 'string' && activeTab.filePath) return activeTab.filePath;
+    return typeof activeTab.sourceUrl === 'string' ? activeTab.sourceUrl : '';
   }
 
   function applyActiveSidebarFileHighlight(fileTreeElement, activeFilePath) {

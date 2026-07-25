@@ -14,6 +14,7 @@ A beautiful, open-source Markdown file reader and editor for Mac built with Elec
 - Multi-tab and multi-window support
 - Edit mode with live preview toggle (⌘E)
 - File browser sidebar with folder navigation
+- Read-only remote folder browsing over HTTP(S), including Tailscale URLs
 - Adjustable content width
 - GFM (GitHub Flavored Markdown) support including:
   - Tables
@@ -45,6 +46,28 @@ npm start
 2. **Drag and drop**: Drop a `.md` file onto the window
 3. **Edit**: Press `⌘E` to toggle edit mode
 4. **Browse folders**: Click the sidebar toggle and open a folder
+5. **Browse a remote folder**: Click the globe button in the sidebar and paste an HTTP(S) directory URL
+
+### Remote folders
+
+OpenMarkdownReader can turn common HTML directory indexes (including
+`python3 -m http.server`, Apache, and nginx auto-index pages) into a lazy,
+read-only sidebar tree. It also accepts a JSON manifest:
+
+```json
+{
+  "name": "Project Notes",
+  "entries": [
+    { "name": "README.md", "path": "README.md" },
+    { "name": "Research", "type": "folder", "path": "research/" }
+  ]
+}
+```
+
+For a private machine, serve the folder on localhost and expose it with
+Tailscale Serve. Paste the resulting HTTPS folder URL into the globe-button
+dialog. Quick Open (`⌘P`) also offers both **Open Remote File** and
+**Browse Remote Folder** when you paste a URL.
 
 ## Supported File Types
 

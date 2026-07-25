@@ -21,6 +21,6 @@ test('sidebar live refresh reloads children for expanded folders', () => {
   const hydrateFunction = renderer.match(/async function hydrateExpandedSidebarFolders[\s\S]*?\n}\n\nasync function refreshSidebarFromFilesystem/);
   assert.ok(hydrateFunction, 'hydrateExpandedSidebarFolders should exist');
   assert.match(hydrateFunction[0], /expandedFolders\.has\(item\.path\)/);
-  assert.match(hydrateFunction[0], /getDirectoryContents\(item\.path\)/);
+  assert.match(hydrateFunction[0], /getDirectoryContentsForSidebar\(item\.path\)/);
   assert.match(hydrateFunction[0], /item\.children = children/);
 });

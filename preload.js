@@ -56,12 +56,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolderInNewWindow: (folderPath) => ipcRenderer.invoke('open-folder-in-new-window', folderPath),
   openFileByPath: (filePath, options = {}) => ipcRenderer.invoke('open-file-by-path', filePath, options),
   openRemoteUrl: (url, options = {}) => ipcRenderer.invoke('open-remote-url', url, options),
+  openRemoteFolder: (url) => ipcRenderer.invoke('open-remote-folder', url),
   getDirectoryContents: (dirPath) => ipcRenderer.invoke('get-directory-contents', dirPath),
+  getRemoteDirectoryContents: (url) => ipcRenderer.invoke('get-remote-directory-contents', url),
   getAllFilesRecursive: (dirPath) => ipcRenderer.invoke('get-all-files-recursive', dirPath),
   createFileInDirectory: (dirPath, fileName) => ipcRenderer.invoke('create-file-in-directory', dirPath, fileName),
   createFolderInDirectory: (dirPath, folderName) => ipcRenderer.invoke('create-folder-in-directory', dirPath, folderName),
   moveFileToDirectory: (sourcePath, targetDirPath) => ipcRenderer.invoke('move-file-to-directory', sourcePath, targetDirPath),
   onDirectoryLoaded: (callback) => ipcRenderer.on('directory-loaded', (event, data) => callback(data)),
+  onRemoteDirectoryLoaded: (callback) => ipcRenderer.on('remote-directory-loaded', (event, data) => callback(data)),
   onToggleSidebar: (callback) => ipcRenderer.on('toggle-sidebar', () => callback()),
 
   // Window controls
