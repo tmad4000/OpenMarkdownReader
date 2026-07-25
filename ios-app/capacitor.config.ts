@@ -12,6 +12,10 @@ const config: CapacitorConfig = {
     preferredContentMode: 'mobile'
   },
   plugins: {
+    CapacitorHttp: {
+      // Use native URLSession so private/Tailscale HTTPS URLs do not depend on CORS.
+      enabled: true
+    },
     App: {
       // Allow opening .md files via share sheet
     },

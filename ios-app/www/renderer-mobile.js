@@ -10,6 +10,7 @@
   const missing = [];
   if (typeof marked === 'undefined') missing.push('marked (Markdown parser)');
   if (typeof hljs === 'undefined') missing.push('highlight.js (syntax highlighter)');
+  if (typeof OpenMarkdownMobileUtils === 'undefined') missing.push('mobile utilities');
   if (missing.length > 0) {
     document.body.innerHTML = `
       <div style="padding: 40px; font-family: -apple-system, sans-serif; color: #c00; max-width: 600px; margin: 40px auto;">
@@ -24,14 +25,24 @@
 // ---- State ----
 let currentMarkdown = '';
 let currentFileName = '';
+let currentFilePath = null;
+let currentSourceUrl = null;
+let currentSourceType = null;
+let currentFolderRoot = null;
+let currentFolderPath = null;
+let folderPathStack = [];
 let isEditMode = false;
 let easyMDE = null;
 let fontSize = 17;
+const MAX_REMOTE_FILE_BYTES = 15 * 1024 * 1024;
+const MobileUtils = window.OpenMarkdownMobileUtils;
 
 // ---- DOM Elements ----
 const toolbar = document.getElementById('toolbar');
 const fileTitle = document.getElementById('file-title');
+const sourceBadge = document.getElementById('source-badge');
 const backBtn = document.getElementById('back-btn');
+const reloadBtn = document.getElementById('reload-btn');
 const tocBtn = document.getElementById('toc-btn');
 const editBtn = document.getElementById('edit-btn');
 const shareActionBtn = document.getElementById('share-action-btn');
@@ -45,6 +56,10 @@ const settingsBackdrop = document.getElementById('settings-backdrop');
 const settingsClose = document.getElementById('settings-close');
 const welcome = document.getElementById('welcome');
 const openFileBtn = document.getElementById('open-file-btn');
+const openFolderBtn = document.getElementById('open-folder-btn');
+const remoteUrlForm = document.getElementById('remote-url-form');
+const remoteUrlInput = document.getElementById('remote-url-input');
+const remoteUrlSubmit = document.getElementById('remote-url-submit');
 const pasteArea = document.getElementById('paste-area');
 const renderPasteBtn = document.getElementById('render-paste-btn');
 const contentEl = document.getElementById('content');
@@ -61,6 +76,13 @@ const fontDecrease = document.getElementById('font-decrease');
 const fontIncrease = document.getElementById('font-increase');
 const fontSizeDisplay = document.getElementById('font-size-display');
 const toastContainer = document.getElementById('toast-container');
+const folderBrowser = document.getElementById('folder-browser');
+const folderBrowserBackdrop = document.getElementById('folder-browser-backdrop');
+const folderBrowserTitle = document.getElementById('folder-browser-title');
+const folderBrowserPath = document.getElementById('folder-browser-path');
+const folderBrowserList = document.getElementById('folder-browser-list');
+const folderBrowserClose = document.getElementById('folder-browser-close');
+const folderUpBtn = document.getElementById('folder-up-btn');
 
 // ---- Utilities ----
 function escapeHtml(text) {
@@ -99,6 +121,64 @@ function dismissToast(toast) {
   if (!toast || !toast.parentElement) return;
   toast.classList.add('dismissing');
   setTimeout(() => toast.remove(), 200);
+}
+
+function sourceLabel() {
+  if (currentSourceType === 'remote' && currentSourceUrl) {
+    try {
+      return new URL(currentSourceUrl).hostname;
+    } catch {
+      return 'Remote';
+    }
+  }
+  if (currentSourceType === 'folder') return 'Folder';
+  if (currentSourceType === 'file') return 'File';
+  if (currentSourceType === 'pasted') return 'Pasted';
+  return '';
+}
+
+function updateSourceUI() {
+  const label = sourceLabel();
+  sourceBadge.textContent = label;
+  sourceBadge.classList.toggle('hidden', !label);
+  reloadBtn.classList.toggle('hidden', currentSourceType !== 'remote' || !currentSourceUrl);
+}
+
+function showDocument({ content, fileName, filePath = null, sourceUrl = null, sourceType = 'file' }) {
+  currentMarkdown = content;
+  currentFileName = fileName || 'Untitled.md';
+  currentFilePath = filePath;
+  currentSourceUrl = sourceUrl;
+  currentSourceType = sourceType;
+  fileTitle.textContent = currentFileName;
+  backBtn.classList.remove('hidden');
+  updateSourceUI();
+  closeFolderBrowser();
+  renderMarkdown(currentMarkdown);
+}
+
+function resolveRemoteAssets() {
+  if (!currentSourceUrl) return;
+  markdownBody.querySelectorAll('img[src]').forEach((image) => {
+    const source = image.getAttribute('src');
+    if (!source || source.startsWith('data:')) return;
+    image.src = MobileUtils.resolveRemoteUrl(source, currentSourceUrl);
+  });
+}
+
+async function openExternalUrl(url) {
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+    await window.Capacitor.Plugins.Browser.open({ url });
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+function formatFileSize(size) {
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ---- Marked Configuration (matches desktop exactly) ----
@@ -257,6 +337,7 @@ function renderMarkdown(mdContent) {
     const html = frontmatterHtml + marked.parse(body);
     markdownBody.innerHTML = html;
 
+    resolveRemoteAssets();
     wrapTablesForScroll();
 
     // Syntax highlighting
@@ -414,7 +495,28 @@ function enterEditMode() {
   }
 }
 
-function exitEditMode() {
+async function saveCurrentLocalFile() {
+  if (!currentFilePath || !['file', 'folder'].includes(currentSourceType)) return false;
+  const Filesystem = window.Capacitor && window.Capacitor.Plugins
+    ? window.Capacitor.Plugins.Filesystem
+    : null;
+  if (!Filesystem) return false;
+
+  try {
+    await Filesystem.writeFile({
+      path: currentFilePath,
+      data: MobileUtils.encodeBase64Utf8(currentMarkdown)
+    });
+    showToast('Saved to Files');
+    return true;
+  } catch (error) {
+    console.error('[Mobile] File save error:', error);
+    showToast('Changes kept in the app, but iOS could not write back to this file', 'warning', 5000);
+    return false;
+  }
+}
+
+async function exitEditMode() {
   isEditMode = false;
   editorContainer.classList.add('hidden');
   contentEl.classList.remove('hidden');
@@ -426,43 +528,65 @@ function exitEditMode() {
 
   // Re-render with updated content
   renderMarkdown(currentMarkdown);
+  await saveCurrentLocalFile();
 }
 
-function toggleEditMode() {
+async function toggleEditMode() {
   if (isEditMode) {
-    exitEditMode();
+    await exitEditMode();
   } else {
     enterEditMode();
   }
 }
 
 // ---- File Opening via Capacitor ----
+async function readNativeTextFile(filePath) {
+  const Filesystem = window.Capacitor && window.Capacitor.Plugins
+    ? window.Capacitor.Plugins.Filesystem
+    : null;
+  if (!Filesystem) throw new Error('Filesystem is unavailable');
+  const contents = await Filesystem.readFile({ path: filePath });
+  return MobileUtils.decodeBase64Utf8(contents.data);
+}
+
+async function loadPickedFile(file, sourceType = 'file') {
+  const filePath = file.path || file.uri || null;
+  let content = '';
+  if (file.data) {
+    content = MobileUtils.decodeBase64Utf8(file.data);
+  } else if (filePath) {
+    content = await readNativeTextFile(filePath);
+  } else {
+    throw new Error('The selected file did not provide readable data');
+  }
+
+  showDocument({
+    content,
+    fileName: file.name || filePath.split('/').pop() || 'Untitled.md',
+    filePath,
+    sourceType
+  });
+}
+
 async function openFile() {
   try {
-    // Check if Capacitor is available
     if (window.Capacitor && window.Capacitor.Plugins) {
       const { FilePicker } = window.Capacitor.Plugins;
       if (FilePicker) {
         const result = await FilePicker.pickFiles({
-          types: ['text/markdown', 'text/plain', 'text/x-markdown'],
-          multiple: false,
-          readData: true
+          types: [
+            'text/markdown',
+            'text/plain',
+            'text/x-markdown',
+            'application/json',
+            'application/xml',
+            'application/yaml'
+          ],
+          limit: 1,
+          readData: false
         });
         if (result && result.files && result.files.length > 0) {
-          const file = result.files[0];
-          currentFileName = file.name || 'Untitled.md';
-          // Data comes as base64, decode it
-          if (file.data) {
-            currentMarkdown = atob(file.data);
-          } else if (file.path) {
-            // If we have a path, read via Filesystem
-            const { Filesystem } = window.Capacitor.Plugins;
-            const contents = await Filesystem.readFile({ path: file.path });
-            currentMarkdown = atob(contents.data);
-          }
-          fileTitle.textContent = currentFileName;
-          backBtn.classList.remove('hidden');
-          renderMarkdown(currentMarkdown);
+          await loadPickedFile(result.files[0]);
           return;
         }
       }
@@ -472,24 +596,161 @@ async function openFile() {
     openFileViaInput();
   } catch (err) {
     console.error('[Mobile] File open error:', err);
-    // Fallback to HTML file input
-    openFileViaInput();
+    showToast('Could not open that file', 'error');
+  }
+}
+
+function openFolderBrowser() {
+  folderBrowser.classList.remove('hidden');
+  folderBrowserBackdrop.classList.remove('hidden');
+}
+
+function closeFolderBrowser() {
+  folderBrowser.classList.add('hidden');
+  folderBrowserBackdrop.classList.add('hidden');
+}
+
+async function showFolder(folderPath, pushCurrent = false) {
+  const Filesystem = window.Capacitor && window.Capacitor.Plugins
+    ? window.Capacitor.Plugins.Filesystem
+    : null;
+  if (!Filesystem) throw new Error('Filesystem is unavailable');
+
+  if (pushCurrent && currentFolderPath) folderPathStack.push(currentFolderPath);
+  currentFolderPath = folderPath;
+  folderBrowserTitle.textContent = folderPath.split('/').filter(Boolean).pop() || 'Folder';
+  folderBrowserPath.textContent = folderPath;
+  folderUpBtn.classList.toggle('hidden', folderPathStack.length === 0);
+  folderBrowserList.innerHTML = '<div class="folder-browser-empty">Loading…</div>';
+  openFolderBrowser();
+
+  const result = await Filesystem.readdir({ path: folderPath });
+  const entries = (result.files || [])
+    .filter((entry) => entry.type === 'directory' || MobileUtils.isSupportedFileName(entry.name))
+    .sort((left, right) => {
+      if (left.type !== right.type) return left.type === 'directory' ? -1 : 1;
+      return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+    });
+
+  folderBrowserList.innerHTML = '';
+  if (entries.length === 0) {
+    folderBrowserList.innerHTML = '<div class="folder-browser-empty">No readable Markdown or text files here.</div>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'folder-browser-item';
+    const icon = entry.type === 'directory' ? '▸' : '◫';
+    button.innerHTML = `
+      <span class="folder-browser-item-icon">${icon}</span>
+      <span class="folder-browser-item-name"></span>
+      <span class="folder-browser-item-meta">${entry.type === 'file' ? formatFileSize(entry.size) : ''}</span>
+    `;
+    button.querySelector('.folder-browser-item-name').textContent = entry.name;
+    button.addEventListener('click', async () => {
+      try {
+        if (entry.type === 'directory') {
+          await showFolder(entry.uri, true);
+        } else {
+          await loadPickedFile({ name: entry.name, path: entry.uri }, 'folder');
+        }
+      } catch (error) {
+        console.error('[Mobile] Folder entry error:', error);
+        showToast('Could not open that item', 'error');
+      }
+    });
+    folderBrowserList.appendChild(button);
+  });
+}
+
+async function openFolder() {
+  try {
+    const FilePicker = window.Capacitor && window.Capacitor.Plugins
+      ? window.Capacitor.Plugins.FilePicker
+      : null;
+    if (!FilePicker || typeof FilePicker.pickDirectory !== 'function') {
+      showToast('Folder browsing requires the iOS app', 'warning');
+      return;
+    }
+    const result = await FilePicker.pickDirectory();
+    if (!result || !result.path) return;
+    currentFolderRoot = result.path;
+    currentFolderPath = null;
+    folderPathStack = [];
+    await showFolder(currentFolderRoot);
+  } catch (error) {
+    if (String(error && error.message || '').toLowerCase().includes('cancel')) return;
+    console.error('[Mobile] Folder open error:', error);
+    showToast('Could not browse that folder', 'error');
+  }
+}
+
+async function openRemoteUrl(value, { reload = false } = {}) {
+  let remoteUrl;
+  try {
+    remoteUrl = MobileUtils.normalizeRemoteUrl(value);
+  } catch (error) {
+    showToast(error.message, 'warning');
+    remoteUrlInput.focus();
+    return;
+  }
+
+  remoteUrlSubmit.disabled = true;
+  remoteUrlSubmit.textContent = reload ? 'Reloading…' : 'Opening…';
+  try {
+    const response = await fetch(remoteUrl, {
+      headers: {
+        Accept: 'text/markdown,text/plain,text/*,application/json,application/xml,application/yaml,*/*;q=0.2'
+      }
+    });
+    if (!response.ok) throw new Error(`Remote server returned HTTP ${response.status}`);
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!MobileUtils.isTextLikeContentType(contentType)
+      && !MobileUtils.isSupportedFileName(new URL(response.url || remoteUrl).pathname)) {
+      throw new Error(`Remote file does not look like text (${contentType || 'unknown type'})`);
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_REMOTE_FILE_BYTES) throw new Error('Remote file is larger than 15 MB');
+    const content = await response.text();
+    if (new Blob([content]).size > MAX_REMOTE_FILE_BYTES) {
+      throw new Error('Remote file is larger than 15 MB');
+    }
+
+    const finalUrl = response.url || remoteUrl;
+    showDocument({
+      content,
+      fileName: MobileUtils.remoteFileName(finalUrl),
+      sourceUrl: finalUrl,
+      sourceType: 'remote'
+    });
+    remoteUrlInput.value = finalUrl;
+    if (reload) showToast('Remote file refreshed');
+  } catch (error) {
+    console.error('[Mobile] Remote open error:', error);
+    showToast(`Could not open remote file: ${error.message}`, 'error', 5000);
+  } finally {
+    remoteUrlSubmit.disabled = false;
+    remoteUrlSubmit.textContent = 'Open';
   }
 }
 
 function openFileViaInput() {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.md,.markdown,.txt,.text,.mdx,.mdown';
+  input.accept = '.md,.markdown,.txt,.text,.mdx,.mdown,.json,.jsonl,.yaml,.yml,.xml,.csv,.log';
   input.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    currentFileName = file.name;
     const text = await file.text();
-    currentMarkdown = text;
-    fileTitle.textContent = currentFileName;
-    backBtn.classList.remove('hidden');
-    renderMarkdown(currentMarkdown);
+    showDocument({
+      content: text,
+      fileName: file.name,
+      sourceType: 'file'
+    });
   });
   input.click();
 }
@@ -536,6 +797,7 @@ async function shareContent() {
 
 // ---- Go Back to Welcome ----
 function goBack() {
+  const returnToFolder = currentSourceType === 'folder' && !!currentFolderPath;
   // Destroy EasyMDE if active
   if (easyMDE) {
     easyMDE.toTextArea();
@@ -545,8 +807,13 @@ function goBack() {
 
   currentMarkdown = '';
   currentFileName = '';
+  currentFilePath = null;
+  currentSourceUrl = null;
+  currentSourceType = null;
   fileTitle.textContent = 'OpenMarkdownReader';
   backBtn.classList.add('hidden');
+  reloadBtn.classList.add('hidden');
+  sourceBadge.classList.add('hidden');
   tocBtn.classList.add('hidden');
   editBtn.classList.add('hidden');
   editBtn.classList.remove('active');
@@ -558,12 +825,17 @@ function goBack() {
   welcome.classList.remove('hidden');
   pasteArea.value = '';
   renderPasteBtn.classList.add('hidden');
+  updateSourceUI();
+  if (returnToFolder) openFolderBrowser();
 }
 
 // ---- Event Listeners ----
 
 // Toolbar
 backBtn.addEventListener('click', goBack);
+reloadBtn.addEventListener('click', () => {
+  if (currentSourceUrl) openRemoteUrl(currentSourceUrl, { reload: true });
+});
 tocBtn.addEventListener('click', openTOC);
 editBtn.addEventListener('click', toggleEditMode);
 shareActionBtn.addEventListener('click', shareContent);
@@ -584,8 +856,27 @@ document.querySelectorAll('.settings-seg-btn[data-theme]').forEach((btn) => {
 fontDecrease.addEventListener('click', () => applyFontSize(fontSize - 1));
 fontIncrease.addEventListener('click', () => applyFontSize(fontSize + 1));
 
+// Folder browser
+folderBrowserClose.addEventListener('click', closeFolderBrowser);
+folderBrowserBackdrop.addEventListener('click', closeFolderBrowser);
+folderUpBtn.addEventListener('click', async () => {
+  const previousPath = folderPathStack.pop();
+  if (!previousPath) return;
+  try {
+    await showFolder(previousPath);
+  } catch (error) {
+    console.error('[Mobile] Parent folder error:', error);
+    showToast('Could not return to that folder', 'error');
+  }
+});
+
 // Welcome
 openFileBtn.addEventListener('click', openFile);
+openFolderBtn.addEventListener('click', openFolder);
+remoteUrlForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  openRemoteUrl(remoteUrlInput.value);
+});
 
 pasteArea.addEventListener('input', () => {
   renderPasteBtn.classList.toggle('hidden', !pasteArea.value.trim());
@@ -594,11 +885,11 @@ pasteArea.addEventListener('input', () => {
 renderPasteBtn.addEventListener('click', () => {
   const text = pasteArea.value.trim();
   if (!text) return;
-  currentMarkdown = text;
-  currentFileName = 'Pasted Content';
-  fileTitle.textContent = currentFileName;
-  backBtn.classList.remove('hidden');
-  renderMarkdown(currentMarkdown);
+  showDocument({
+    content: text,
+    fileName: 'Pasted Content',
+    sourceType: 'pasted'
+  });
 });
 
 // Bottom bar
@@ -607,7 +898,7 @@ bottomCopyBtn.addEventListener('click', copyMarkdown);
 bottomShareBtn.addEventListener('click', shareContent);
 
 // Handle links in rendered markdown
-markdownBody.addEventListener('click', (e) => {
+markdownBody.addEventListener('click', async (e) => {
   const link = e.target.closest('a');
   if (!link) return;
 
@@ -624,15 +915,16 @@ markdownBody.addEventListener('click', (e) => {
     return;
   }
 
-  if (href.startsWith('http://') || href.startsWith('https://')) {
-    e.preventDefault();
-    // Open external links in system browser
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-      window.Capacitor.Plugins.Browser.open({ url: href });
-    } else {
-      window.open(href, '_blank');
-    }
-    return;
+  const resolvedHref = currentSourceUrl
+    ? MobileUtils.resolveRemoteUrl(href, currentSourceUrl)
+    : href;
+  if (!/^https?:\/\//i.test(resolvedHref)) return;
+
+  e.preventDefault();
+  if (MobileUtils.isMarkdownLikeUrl(resolvedHref)) {
+    await openRemoteUrl(resolvedHref);
+  } else {
+    await openExternalUrl(resolvedHref);
   }
 });
 
@@ -649,27 +941,34 @@ markdownBody.addEventListener('click', (e) => {
 
 // ---- Handle receiving shared files (via App URL scheme / share sheet) ----
 document.addEventListener('DOMContentLoaded', () => {
-  // Listen for Capacitor App URL open events
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-    window.Capacitor.Plugins.App.addListener('appUrlOpen', async (data) => {
-      console.log('[Mobile] App URL opened:', data.url);
-      // Handle file:// URLs
-      if (data.url.startsWith('file://')) {
-        try {
-          const { Filesystem } = window.Capacitor.Plugins;
-          const path = data.url.replace('file://', '');
-          const contents = await Filesystem.readFile({ path });
-          currentMarkdown = atob(contents.data);
-          currentFileName = path.split('/').pop() || 'Shared File';
-          fileTitle.textContent = currentFileName;
-          backBtn.classList.remove('hidden');
-          renderMarkdown(currentMarkdown);
-        } catch (err) {
-          console.error('[Mobile] Failed to open shared file:', err);
-          showToast('Failed to open file', 'error');
+    const handleAppUrl = async (value) => {
+      if (!value) return;
+      console.log('[Mobile] App URL opened:', value);
+      try {
+        if (/^https?:\/\//i.test(value)) {
+          remoteUrlInput.value = value;
+          await openRemoteUrl(value);
+          return;
         }
+        if (value.startsWith('file://')) {
+          await loadPickedFile({
+            name: decodeURIComponent(value.split('/').pop() || 'Shared File'),
+            path: value
+          });
+        }
+      } catch (error) {
+        console.error('[Mobile] Failed to open incoming URL:', error);
+        showToast('Failed to open file', 'error');
       }
-    });
+    };
+
+    window.Capacitor.Plugins.App.addListener('appUrlOpen', (data) => handleAppUrl(data.url));
+    if (typeof window.Capacitor.Plugins.App.getLaunchUrl === 'function') {
+      window.Capacitor.Plugins.App.getLaunchUrl()
+        .then((result) => handleAppUrl(result && result.url))
+        .catch((error) => console.warn('[Mobile] Launch URL unavailable:', error));
+    }
   }
 });
 
