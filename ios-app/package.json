@@ -19,7 +19,6 @@
   "dependencies": {
     "@capacitor/app": "^8.0.1",
     "@capacitor/browser": "^8.0.2",
-    "@capacitor/cli": "^8.2.0",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.2.0",
     "@capacitor/filesystem": "^8.1.2",
@@ -28,6 +27,7 @@
     "@capawesome/capacitor-file-picker": "^8.0.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.2.0",
     "typescript": "5.9.3"
   }
 }
