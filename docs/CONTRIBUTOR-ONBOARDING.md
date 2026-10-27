@@ -24,6 +24,7 @@ The dev build shows an orange `DEV b<n>` badge in the title bar. The number bump
 | `index.html` | Main HTML structure. |
 | `styles.css` | All styling, including EasyMDE/CodeMirror overrides. |
 | `agent-server.js` | Unix socket server for agent/CLI control. |
+| `publish-service.js` | Share-to-web (globalbr.ai): Ideaflow ID sign-in, publish/update/unpublish, encrypted token + publish-record storage. Main process only. |
 | `cli-client.js` | Node.js socket client used by `omr --cmd <command>`. |
 | `cli.sh` | The `omr` shell wrapper installed to `/opt/homebrew/bin`. |
 | `scripts/build-mas.sh` | Mac App Store / TestFlight build pipeline. |

@@ -93,7 +93,9 @@ function sendRequest(req) {
     process.exit(1);
   });
 
-  // Timeout for non-watch commands
+  // Timeout for non-watch commands (network-backed publish commands get longer)
+  const NETWORK_COMMANDS = ['publish', 'unpublish', 'publish-sign-out'];
+  const timeoutMs = NETWORK_COMMANDS.includes(parsed.command) ? 45000 : 5000;
   if (!isWatch) {
     setTimeout(() => {
       if (!responded) {
@@ -101,6 +103,6 @@ function sendRequest(req) {
         socket.destroy();
         process.exit(1);
       }
-    }, 5000);
+    }, timeoutMs);
   }
 }

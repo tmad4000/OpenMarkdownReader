@@ -100,6 +100,9 @@
     <!-- Share Popover -->
     <div id="share-popover" class="share-popover hidden">
       <div class="share-popover-content">
+        <!-- Inline error (network / server / storage) -->
+        <p id="share-error" class="share-error hidden" role="alert"></p>
+
         <!-- Unpublished state -->
         <div id="share-unpublished" class="share-state">
           <div class="share-header">
@@ -108,15 +111,40 @@
             </svg>
             <span>Publish to Web</span>
           </div>
-          <p class="share-description">Share this document as an unlisted page on globalbr.ai. Anyone with the link can view it.</p>
-          <p class="share-warning">⚠️ Links are permanent and cannot be deleted.</p>
-          <button id="share-publish-btn" class="share-action-btn share-publish">
-            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-              <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
-              <path d="M4.22 6.28a.75.75 0 001.06 0L7.25 4.31v5.94a.75.75 0 001.5 0V4.31l1.97 1.97a.75.75 0 001.06-1.06l-3.25-3.25a.75.75 0 00-1.06 0L4.22 5.22a.75.75 0 000 1.06z"/>
-            </svg>
-            Publish
-          </button>
+          <p class="share-description">Publish as an unlisted page you can update or unpublish anytime.</p>
+
+          <!-- Signed out: sign in is primary, anonymous is a quiet link -->
+          <div id="share-signed-out-actions">
+            <button id="share-sign-in-btn" class="share-action-btn share-publish">Sign in with Ideaflow ID</button>
+            <button id="share-anon-link" class="share-text-link" type="button" title="Anyone with the link can view it. You can unpublish from this Mac, and anyone can request removal.">Publish without an account</button>
+          </div>
+
+          <!-- Signed in -->
+          <div id="share-signed-in-actions" class="hidden">
+            <button id="share-publish-btn" class="share-action-btn share-publish">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
+                <path d="M4.22 6.28a.75.75 0 001.06 0L7.25 4.31v5.94a.75.75 0 001.5 0V4.31l1.97 1.97a.75.75 0 001.06-1.06l-3.25-3.25a.75.75 0 00-1.06 0L4.22 5.22a.75.75 0 000 1.06z"/>
+              </svg>
+              Publish
+            </button>
+          </div>
+
+          <!-- Waiting for browser sign-in -->
+          <div id="share-signing-in" class="hidden">
+            <div class="share-waiting">
+              <div class="share-spinner"></div>
+              <span>Finish signing in in your browser…</span>
+            </div>
+            <button id="share-cancel-sign-in" class="share-text-link" type="button">Cancel</button>
+          </div>
+
+          <!-- Anonymous publish confirm step -->
+          <div id="share-anon-confirm" class="hidden">
+            <p class="share-note">Anyone with the link can view it. You can unpublish from this Mac, and anyone can request removal.</p>
+            <button id="share-anon-publish-btn" class="share-action-btn share-secondary">Publish anonymously</button>
+            <button id="share-anon-cancel" class="share-text-link" type="button">Back</button>
+          </div>
         </div>
 
         <!-- Published state -->
@@ -126,7 +154,7 @@
               <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
               <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z"/>
             </svg>
-            <span>Published as Unlisted</span>
+            <span id="share-published-label">Published (unlisted) · your account</span>
           </div>
           <div class="share-url-row">
             <input type="text" id="share-url-input" class="share-url-input" readonly>
@@ -144,14 +172,35 @@
             </svg>
             Open in Browser
           </button>
+          <div id="share-manage-row" class="share-manage-row">
+            <button id="share-update-btn" class="share-small-btn" type="button" title="Re-upload the current content to the same link">Update</button>
+            <button id="share-unpublish-btn" class="share-small-btn share-danger" type="button">Unpublish</button>
+          </div>
+          <div id="share-unpublish-confirm" class="share-confirm hidden">
+            <span>Unpublish? The link will stop working.</span>
+            <div class="share-confirm-actions">
+              <button id="share-unpublish-cancel" class="share-text-link" type="button">Cancel</button>
+              <button id="share-unpublish-confirm-btn" class="share-small-btn share-danger" type="button">Unpublish</button>
+            </div>
+          </div>
+          <p id="share-published-note" class="share-note hidden"></p>
+          <button id="share-published-sign-in" class="share-text-link hidden" type="button">Sign in with Ideaflow ID</button>
         </div>
 
         <!-- Publishing state -->
         <div id="share-publishing" class="share-state hidden">
           <div class="share-header">
             <div class="share-spinner"></div>
-            <span>Publishing...</span>
+            <span id="share-publishing-text">Publishing…</span>
           </div>
+        </div>
+
+        <p id="share-storage-note" class="share-note hidden"></p>
+
+        <!-- Account footer (signed in) -->
+        <div id="share-account-footer" class="share-account-footer hidden">
+          <span id="share-account-email" class="share-account-email"></span>
+          <button id="share-sign-out-btn" class="share-text-link" type="button">Sign out</button>
         </div>
       </div>
     </div>

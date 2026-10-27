@@ -59,6 +59,12 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "  omr --cmd daily-note [scratch|ref] Create/open daily note"
   echo "  omr --cmd focus                   Focus the app window"
   echo "  omr --cmd new-window              Create new window"
+  echo "  omr --cmd publish [path] [--anonymous]  Publish to globalbr.ai (unlisted)"
+  echo "  omr --cmd get-publish-url [path]  Published URL for a file/active tab"
+  echo "  omr --cmd unpublish [path]        Remove the published page"
+  echo "  omr --cmd publish-status [path]   Sign-in + publish state (JSON)"
+  echo "  omr --cmd publish-sign-in         Sign in with Ideaflow ID (browser)"
+  echo "  omr --cmd publish-sign-out        Sign out of Ideaflow ID"
   echo "  omr --cmd watch                   Stream events (NDJSON)"
   echo ""
   echo "Examples:"
@@ -103,7 +109,10 @@ if [[ "${1:-}" == "--cmd" ]]; then
     case "$1" in
       --*)
         KEY="${1#--}"
-        VALUE="${2:-true}"
+        # Bare boolean flags must not swallow the following positional arg
+        BOOL_FLAG=false
+        if [[ "$KEY" == "anonymous" ]]; then BOOL_FLAG=true; fi
+        if [[ "$BOOL_FLAG" == true ]]; then VALUE=true; else VALUE="${2:-true}"; fi
         if [[ "$FIRST_ARG" != true ]]; then ARGS_JSON+=","; fi
         FIRST_ARG=false
         # Try to detect booleans and numbers
@@ -116,7 +125,7 @@ if [[ "${1:-}" == "--cmd" ]]; then
           ESCAPED_VALUE=$(printf '%s' "$VALUE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()), end="")')
           ARGS_JSON+="\"$KEY\":$ESCAPED_VALUE"
         fi
-        shift 2 || shift
+        if [[ "$BOOL_FLAG" == true ]]; then shift; else shift 2 || shift; fi
         ;;
       *)
         POSITIONAL="$1"
@@ -139,7 +148,7 @@ if [[ "${1:-}" == "--cmd" ]]; then
           ARGS_JSON+="\"tab\":$ESCAPED"
         fi
         ;;
-      open)
+      open|publish|unpublish|get-publish-url|publish-status)
         # Resolve to absolute path
         if [[ "$POSITIONAL" == /* ]]; then
           ABS_PATH="$POSITIONAL"

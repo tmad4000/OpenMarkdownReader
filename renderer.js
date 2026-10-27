@@ -481,6 +481,30 @@ const sharePublishBtn = document.getElementById('share-publish-btn');
 const shareUrlInput = document.getElementById('share-url-input');
 const shareCopyBtn = document.getElementById('share-copy-btn');
 const shareOpenBtn = document.getElementById('share-open-btn');
+const shareErrorEl = document.getElementById('share-error');
+const shareSignedOutActions = document.getElementById('share-signed-out-actions');
+const shareSignedInActions = document.getElementById('share-signed-in-actions');
+const shareSigningIn = document.getElementById('share-signing-in');
+const shareAnonConfirm = document.getElementById('share-anon-confirm');
+const shareSignInBtn = document.getElementById('share-sign-in-btn');
+const shareAnonLink = document.getElementById('share-anon-link');
+const shareAnonPublishBtn = document.getElementById('share-anon-publish-btn');
+const shareAnonCancel = document.getElementById('share-anon-cancel');
+const shareCancelSignIn = document.getElementById('share-cancel-sign-in');
+const sharePublishedLabel = document.getElementById('share-published-label');
+const shareManageRow = document.getElementById('share-manage-row');
+const shareUpdateBtn = document.getElementById('share-update-btn');
+const shareUnpublishBtn = document.getElementById('share-unpublish-btn');
+const shareUnpublishConfirm = document.getElementById('share-unpublish-confirm');
+const shareUnpublishCancel = document.getElementById('share-unpublish-cancel');
+const shareUnpublishConfirmBtn = document.getElementById('share-unpublish-confirm-btn');
+const sharePublishedNote = document.getElementById('share-published-note');
+const sharePublishedSignIn = document.getElementById('share-published-sign-in');
+const sharePublishingText = document.getElementById('share-publishing-text');
+const shareStorageNote = document.getElementById('share-storage-note');
+const shareAccountFooter = document.getElementById('share-account-footer');
+const shareAccountEmail = document.getElementById('share-account-email');
+const shareSignOutBtn = document.getElementById('share-sign-out-btn');
 const commandPalette = document.getElementById('command-palette');
 const commandPaletteInput = document.getElementById('command-palette-input');
 const commandPaletteResults = document.getElementById('command-palette-results');
@@ -733,6 +757,7 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     isModified: false,
     externalChangePending: false,
     publishedUrl: null,  // URL if published to globalbr.ai
+    publishRecord: null, // sanitized publish record from main (publish-service.js)
     // Per-tab editor state — created lazily by ensureTabEditor / initRichEditor
     // when this tab first enters edit mode. Kept alive across tab switches and
     // preview toggles so undo history survives. See markdown-reader-a4h.
@@ -740,6 +765,8 @@ function createTab(fileName = 'New Tab', mdContent = null, filePath = null, swit
     easyMDE: null
   };
   tabs.push(tab);
+  // Restore published state for saved files (local lookup, no network)
+  if (filePath) refreshPublishStatus(tab);
 
   // Create tab element
   const tabEl = document.createElement('div');
@@ -3343,29 +3370,129 @@ saveBtn.addEventListener('click', () => {
   saveFile();
 });
 
-// Share popover functionality
-function updateSharePopoverState() {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab) return;
+// ─── Share to web ─────────────────────────────────────────────────────
+// All network calls, tokens, and removal keys live in the main process
+// (publish-service.js). The renderer only renders sanitized status.
 
-  // Update popover state based on publication status
-  if (tab.publishedUrl) {
-    shareUnpublished.classList.add('hidden');
-    sharePublished.classList.remove('hidden');
-    sharePublishing.classList.add('hidden');
-    shareUrlInput.value = tab.publishedUrl;
-  } else {
-    shareUnpublished.classList.remove('hidden');
-    sharePublished.classList.add('hidden');
-    sharePublishing.classList.add('hidden');
+const SHARE_WRONG_ACCOUNT_NOTE = 'Sign in with the Ideaflow ID that published this to update or unpublish it.';
+const SHARE_NO_DELETE_TOKEN_NOTE = "This link can't be removed from the app — request removal on the page.";
+let shareStatus = null;          // last publish:status result for the active tab
+let shareBusy = false;
+let shareShowAnonConfirm = false;
+let shareShowUnpublishConfirm = false;
+let shareErrorMessage = null;
+
+function getActiveShareTab() {
+  return tabs.find(t => t.id === activeTabId) || null;
+}
+
+function publishDocFor(tab) {
+  return { filePath: tab.filePath || null, tabId: tab.id };
+}
+
+function publishFileNameFor(tab) {
+  const name = (tab.fileName || 'untitled').trim() || 'untitled';
+  return /\.[^/.]+$/.test(name) ? name : `${name}.md`;
+}
+
+function applyPublishRecordToTab(tab, record) {
+  tab.publishRecord = record || null;
+  tab.publishedUrl = record ? record.url : null;
+  if (tab.id === activeTabId) {
+    shareBtn.classList.toggle('published', !!tab.publishedUrl);
+    shareBtn.title = tab.publishedUrl ? 'Document is live' : 'Share to web';
   }
 }
 
+async function refreshPublishStatus(tab = getActiveShareTab()) {
+  const api = window.electronAPI.publish;
+  if (!tab || !api) return null;
+  try {
+    const res = await api.status(publishDocFor(tab));
+    if (!res || !res.ok) return null;
+    applyPublishRecordToTab(tab, res.record);
+    if (tab.id === activeTabId) shareStatus = res;
+    return res;
+  } catch (err) {
+    console.warn('Could not read publish status:', err);
+    return null;
+  }
+}
+
+function setShareError(message) {
+  shareErrorMessage = message || null;
+  shareErrorEl.textContent = shareErrorMessage || '';
+  shareErrorEl.classList.toggle('hidden', !shareErrorMessage);
+}
+
+function setShareVisible(el, visible) {
+  if (el) el.classList.toggle('hidden', !visible);
+}
+
+function updateSharePopoverState() {
+  const tab = getActiveShareTab();
+  if (!tab) return;
+  const status = shareStatus || {};
+  const record = tab.publishRecord;
+
+  setShareError(shareErrorMessage);
+  setShareVisible(sharePublishing, shareBusy);
+  setShareVisible(shareUnpublished, !shareBusy && !record);
+  setShareVisible(sharePublished, !shareBusy && !!record);
+
+  if (record) {
+    shareUrlInput.value = record.url;
+    sharePublishedLabel.textContent = record.mode === 'account'
+      ? 'Published (unlisted) · your account'
+      : 'Published anonymously';
+    setShareVisible(shareUpdateBtn, !!record.canUpdate);
+    setShareVisible(shareUnpublishBtn, !!record.canUnpublish);
+    setShareVisible(shareManageRow, !shareShowUnpublishConfirm && (record.canUpdate || record.canUnpublish));
+    setShareVisible(shareUnpublishConfirm, shareShowUnpublishConfirm && record.canUnpublish);
+
+    let note = null;
+    if (record.mode === 'account' && record.needsSignIn) note = SHARE_WRONG_ACCOUNT_NOTE;
+    else if (record.mode === 'anonymous' && !record.canUnpublish) note = SHARE_NO_DELETE_TOKEN_NOTE;
+    else if (record.mode === 'anonymous') note = 'Anyone can also request removal on the page.';
+    sharePublishedNote.textContent = note || '';
+    setShareVisible(sharePublishedNote, !!note);
+    setShareVisible(sharePublishedSignIn, record.mode === 'account' && record.needsSignIn && !status.signedIn && !status.signInPending);
+  } else {
+    const pending = !!status.signInPending;
+    setShareVisible(shareSigningIn, pending);
+    setShareVisible(shareAnonConfirm, !pending && shareShowAnonConfirm);
+    setShareVisible(shareSignedInActions, !pending && !shareShowAnonConfirm && !!status.signedIn);
+    setShareVisible(shareSignedOutActions, !pending && !shareShowAnonConfirm && !status.signedIn);
+  }
+
+  const showStorageNote = status.secureStorage === false && !!status.secureStorageNote;
+  shareStorageNote.textContent = showStorageNote ? status.secureStorageNote : '';
+  setShareVisible(shareStorageNote, showStorageNote);
+
+  const signedIn = !!status.signedIn && !!status.user;
+  setShareVisible(shareAccountFooter, signedIn);
+  if (signedIn) {
+    const who = status.user.email || status.user.name || 'Ideaflow ID';
+    shareAccountEmail.textContent = `Signed in as ${who}`;
+    shareAccountEmail.title = who;
+  }
+}
+
+async function openSharePopover() {
+  shareShowAnonConfirm = false;
+  shareShowUnpublishConfirm = false;
+  setShareError(null);
+  updateSharePopoverState();
+  sharePopover.classList.remove('hidden');
+  const res = await refreshPublishStatus();
+  // A sign-in failure from the browser round trip is worth showing once
+  if (res && !res.signedIn && !res.signInPending && res.signInError) setShareError(res.signInError);
+  updateSharePopoverState();
+}
+
 function toggleSharePopover() {
-  const isHidden = sharePopover.classList.contains('hidden');
-  if (isHidden) {
-    updateSharePopoverState();
-    sharePopover.classList.remove('hidden');
+  if (sharePopover.classList.contains('hidden')) {
+    openSharePopover();
   } else {
     sharePopover.classList.add('hidden');
   }
@@ -3384,88 +3511,170 @@ shareBtn.addEventListener('click', (e) => {
   toggleSharePopover();
 });
 
-// Publish button in popover
-sharePublishBtn.addEventListener('click', async () => {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (!tab || !tab.content) return;
+function copyShareUrl(url) {
+  if (!url) return;
+  window.electronAPI.copyToClipboard(url);
+  shareCopyBtn.classList.add('copied');
+  setTimeout(() => shareCopyBtn.classList.remove('copied'), 1500);
+}
 
-  // Get current content (from editor if editing, otherwise from tab)
-  let content = tab.content;
-  if (tab.isEditing) {
-    content = easyMDE ? easyMDE.value() : editor.value;
-  }
-
-  const fileName = tab.fileName || 'untitled.md';
-
-  // Show publishing state
-  shareUnpublished.classList.add('hidden');
-  sharePublishing.classList.remove('hidden');
-
+// Run one network action with the spinner; always re-sync status afterwards.
+async function runShareAction(label, action) {
+  if (shareBusy) return;
+  const tab = getActiveShareTab();
+  if (!tab) return;
+  shareBusy = true;
+  setShareError(null);
+  sharePublishingText.textContent = label;
+  updateSharePopoverState();
   try {
-    const response = await fetch('https://globalbr.ai/api/files/anonymous', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content,
-        fileName,
-        contentType: 'text/markdown'
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+    const res = await action(tab);
+    if (res && !res.ok) {
+      const error = res.error || {};
+      console.warn('Share action failed:', error.code, error.message, error.detail || '');
+      setShareError(error.message || 'Something went wrong. Please try again.');
+      if (sharePopover.classList.contains('hidden')) showToast(error.message || 'Share failed', 'error', 6000);
     }
-
-    const result = await response.json();
-    const shareUrl = result.shareUrl || `https://globalbr.ai${result.url}`;
-
-    // Store the published URL in tab
-    tab.publishedUrl = shareUrl;
-
-    // Update UI
-    updateSharePopoverState();
-    updateTabUI(tab.id);
-
-    // Copy to clipboard automatically
-    navigator.clipboard.writeText(shareUrl);
-    shareCopyBtn.classList.add('copied');
-    setTimeout(() => shareCopyBtn.classList.remove('copied'), 1500);
-
-    // Show success toast
-    showToast('Published! URL copied to clipboard', 'success');
-
-    console.log('Published to:', shareUrl);
+    return res;
   } catch (err) {
-    console.error('Publish failed:', err);
-    // Show error state
-    sharePublishing.classList.add('hidden');
-    shareUnpublished.classList.remove('hidden');
-
-    if (err.message && err.message.includes('storage not configured')) {
-      showToast('File storage is not configured on the server. Check globalbr.ai/settings to set up storage.', 'error');
-    } else {
-      showToast('Failed to publish: ' + err.message, 'error');
-    }
+    console.error('Share action failed:', err);
+    setShareError(err.message || String(err));
+  } finally {
+    shareBusy = false;
+    await refreshPublishStatus(tab);
+    updateSharePopoverState();
   }
+}
+
+async function publishActiveTab(mode) {
+  const tab = getActiveShareTab();
+  if (!tab) return;
+  const content = getActiveTabWordCountContent(tab);
+  if (!content) {
+    setShareError('Nothing to publish — the document is empty.');
+    return;
+  }
+  const api = window.electronAPI.publish;
+  await runShareAction('Publishing…', async () => {
+    const res = mode === 'anonymous'
+      ? await api.anonymous(publishDocFor(tab), content, publishFileNameFor(tab))
+      : await api.owned(publishDocFor(tab), content, publishFileNameFor(tab));
+    if (res && res.ok && res.record) {
+      shareShowAnonConfirm = false;
+      applyPublishRecordToTab(tab, res.record);
+      copyShareUrl(res.record.url);
+      showToast('Published! URL copied to clipboard', 'success');
+      console.log('Published to:', res.record.url);
+    }
+    return res;
+  });
+}
+
+shareSignInBtn.addEventListener('click', async () => {
+  setShareError(null);
+  const res = await window.electronAPI.publish.signIn();
+  if (res && !res.ok) setShareError(res.error && res.error.message);
+  await refreshPublishStatus();
+  updateSharePopoverState();
+});
+sharePublishedSignIn.addEventListener('click', () => shareSignInBtn.click());
+
+shareCancelSignIn.addEventListener('click', async () => {
+  await window.electronAPI.publish.cancelSignIn();
+  await refreshPublishStatus();
+  updateSharePopoverState();
+});
+
+shareSignOutBtn.addEventListener('click', async () => {
+  shareShowUnpublishConfirm = false;
+  await window.electronAPI.publish.signOut();
+  setShareError(null);
+  await refreshPublishStatus();
+  updateSharePopoverState();
+});
+
+shareAnonLink.addEventListener('click', () => {
+  shareShowAnonConfirm = true;
+  setShareError(null);
+  updateSharePopoverState();
+});
+
+shareAnonCancel.addEventListener('click', () => {
+  shareShowAnonConfirm = false;
+  updateSharePopoverState();
+});
+
+shareAnonPublishBtn.addEventListener('click', () => publishActiveTab('anonymous'));
+
+// Publish button (signed in)
+sharePublishBtn.addEventListener('click', () => publishActiveTab('account'));
+
+shareUpdateBtn.addEventListener('click', async () => {
+  const tab = getActiveShareTab();
+  if (!tab) return;
+  const content = getActiveTabWordCountContent(tab);
+  if (!content) {
+    setShareError('Nothing to publish — the document is empty.');
+    return;
+  }
+  await runShareAction('Updating…', async () => {
+    const res = await window.electronAPI.publish.update(publishDocFor(tab), content);
+    if (res && res.ok) showToast('Published page updated', 'success', 2500);
+    return res;
+  });
+});
+
+shareUnpublishBtn.addEventListener('click', () => {
+  shareShowUnpublishConfirm = true;
+  updateSharePopoverState();
+});
+
+shareUnpublishCancel.addEventListener('click', () => {
+  shareShowUnpublishConfirm = false;
+  updateSharePopoverState();
+});
+
+shareUnpublishConfirmBtn.addEventListener('click', async () => {
+  shareShowUnpublishConfirm = false;
+  await runShareAction('Unpublishing…', async (tab) => {
+    const res = await window.electronAPI.publish.unpublish(publishDocFor(tab));
+    if (res && res.ok) {
+      applyPublishRecordToTab(tab, null);
+      showToast(res.alreadyGone ? 'That page was already removed' : 'Unpublished — the link no longer works', 'success', 3000);
+    }
+    return res;
+  });
 });
 
 // Copy button
 shareCopyBtn.addEventListener('click', () => {
-  const tab = tabs.find(t => t.id === activeTabId);
+  const tab = getActiveShareTab();
   if (!tab || !tab.publishedUrl) return;
-
-  navigator.clipboard.writeText(tab.publishedUrl);
-  shareCopyBtn.classList.add('copied');
-  setTimeout(() => shareCopyBtn.classList.remove('copied'), 1500);
+  copyShareUrl(tab.publishedUrl);
 });
 
 // Open in browser button
 shareOpenBtn.addEventListener('click', () => {
-  const tab = tabs.find(t => t.id === activeTabId);
+  const tab = getActiveShareTab();
   if (!tab || !tab.publishedUrl) return;
 
   window.electronAPI.openExternal(tab.publishedUrl);
+});
+
+// Main process says sign-in or publish state changed (popover, CLI, or
+// browser sign-in callback). Re-sync affected tabs; the small delay lets a
+// rename finish updating tab.filePath first.
+window.electronAPI.publish?.onStatusChanged((change = {}) => {
+  setTimeout(async () => {
+    const affected = tabs.filter(t => t.id === activeTabId || (change.docKey && t.filePath === change.docKey));
+    for (const tab of affected) await refreshPublishStatus(tab);
+    if (!sharePopover.classList.contains('hidden')) {
+      const status = shareStatus;
+      if (status && status.signedIn) setShareError(null);
+      else if (status && !status.signInPending && status.signInError) setShareError(status.signInError);
+      updateSharePopoverState();
+    }
+  }, 100);
 });
 
 // Listen for file loaded from main process
