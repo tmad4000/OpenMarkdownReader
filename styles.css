@@ -1153,13 +1153,131 @@ mark.find-match.active {
   margin-bottom: 12px;
 }
 
-.share-warning {
+.share-error {
   font-size: 12px;
-  color: #d29922;
-  background: rgba(210, 153, 34, 0.1);
+  line-height: 1.45;
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.08);
   padding: 8px 10px;
   border-radius: 6px;
-  margin-bottom: 12px;
+  margin: 0 0 12px;
+}
+
+.share-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+
+#share-published-note,
+#share-storage-note {
+  margin: 10px 0 0;
+}
+
+/* Low-emphasis text button (anonymous publish, cancel, sign out) */
+.share-text-link {
+  display: block;
+  margin: 10px auto 0;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.share-text-link:hover {
+  color: var(--text-color);
+  text-decoration-color: currentColor;
+}
+
+.share-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  height: 36px;
+}
+
+.share-manage-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.share-small-btn {
+  flex: 1;
+  height: 28px;
+  font-size: 12px;
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.share-small-btn:hover {
+  background: var(--code-bg);
+  color: var(--text-color);
+}
+
+.share-small-btn.share-danger:hover {
+  color: #cf222e;
+  border-color: rgba(207, 34, 46, 0.5);
+}
+
+.share-confirm {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+.share-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.share-confirm-actions .share-text-link {
+  margin: 0;
+}
+
+.share-confirm-actions .share-small-btn {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.share-account-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.share-account-email {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-account-footer .share-text-link {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 .share-action-btn {

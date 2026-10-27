@@ -30,7 +30,7 @@ Every feature in OpenMarkdownReader must be fully controllable via CLI and progr
 |---------|----------------------|
 | **Comments** (`markdown-reader-4yq`) | `omr --cmd add-comment`, `list-comments`, `delete-comment`, `export-comments` |
 | **History** (`markdown-reader-st8`) | `omr --cmd list-history`, `go-back`, `go-forward`, `get-history-entry` |
-| **Publish** | `omr --cmd publish`, `get-publish-url`, `unpublish` |
+| **Publish** (`markdown-reader-xwv`, shipped) | `omr --cmd publish [path] [--anonymous]`, `get-publish-url [path]`, `unpublish [path]`, `publish-status [path]`, `publish-sign-in`, `publish-sign-out` |
 | **Local-only mode** (`markdown-reader-xwc`) | `omr --cmd set network-mode offline`, `get network-mode` |
 
 ---
@@ -38,7 +38,32 @@ Every feature in OpenMarkdownReader must be fully controllable via CLI and progr
 ## Feature: One-Click Publish
 
 **Added:** 2026-01-14
-**Status:** Planned
+**Status:** Shipped on globalbr.ai (Noos) instead of the Cloudflare Worker plan below — see "Removable publish (2026-10-27)".
+
+### Removable publish (2026-10-27, `markdown-reader-xwv`)
+
+**User Story (Jacob):** "Log in with an Ideaflow ID and then you could unpublish stuff. Not in an obtrusive way, an option to publish so that anyone could request to have it unpublished, rather than permanent and impossible to unpublish."
+
+**Technical Decisions:**
+- Share popover, signed out: primary **Sign in with Ideaflow ID** ("Publish as an unlisted page you can update or unpublish anytime."), plus a low-emphasis **Publish without an account** link with an in-popover confirm: "Anyone with the link can view it. You can unpublish from this Mac, and anyone can request removal." No "permanent" warning.
+- Signed in: **Publish** creates an unlisted file owned by the account (`POST /api/files/create`, Bearer). Published state offers Copy, Open in Browser, **Update** (`PUT /api/files/:id/content`) and **Unpublish** (`DELETE /api/files/:id`, with confirm).
+- Anonymous publish (`POST /api/files/anonymous`) stores the server's `deleteToken`; **Unpublish** sends `DELETE /api/files/anonymous/:id` with `X-Delete-Token`. Older servers without `deleteToken` show "This link can't be removed from the app — request removal on the page."
+- Sign-in uses the Noos SSO code flow through the `openmarkdownreader://auth/callback` protocol (state verified, single pending request, 10-minute expiry) → `POST /api/auth/sso-exchange`; 401s trigger one `POST /api/auth/refresh` retry, then a signed-out state with a clear message.
+- **Constraint:** all network calls and secrets live in the main process (`publish-service.js`); the renderer uses `publish:*` IPC and never sees tokens. Tokens and delete tokens are encrypted at rest with Electron `safeStorage` in `userData` (mode 0600); without safeStorage they stay in memory only and the popover says so.
+- Publish records persist per absolute file path (untitled tabs: memory only) and follow renames/moves.
+- Errors distinguish "couldn't reach globalbr.ai (network or filter)", redirects/HTML block pages (interception), server errors, and storage-not-configured.
+- Local-first: nothing contacts globalbr.ai until the user clicks in the popover or runs a publish CLI command. `OMR_PUBLISH_BASE_URL` overrides the server for local testing.
+
+**CLI (agent parity):**
+
+| Command | Description |
+|---------|-------------|
+| `omr --cmd publish [path] [--anonymous]` | Publish the file (live buffer if open) or the active tab. Signed in → owned unlisted page (re-running updates it); `--anonymous` → anonymous link with a removal key kept on this Mac. |
+| `omr --cmd get-publish-url [path]` | `{url, record}` for a published document (no network). |
+| `omr --cmd unpublish [path]` | Remove the published page. |
+| `omr --cmd publish-status [path]` | Sign-in state, account email, secure-storage availability, publish record (no network). |
+| `omr --cmd publish-sign-in` | Open the Ideaflow ID sign-in page in the browser. |
+| `omr --cmd publish-sign-out` | Sign out and forget tokens. |
 
 ### Overview
 

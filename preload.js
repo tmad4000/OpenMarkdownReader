@@ -117,6 +117,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // External links
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Share to web (publish) — network + tokens live in the main process
+  publish: {
+    status: (doc) => ipcRenderer.invoke('publish:status', { doc }),
+    signIn: () => ipcRenderer.invoke('publish:signIn'),
+    cancelSignIn: () => ipcRenderer.invoke('publish:cancelSignIn'),
+    signOut: () => ipcRenderer.invoke('publish:signOut'),
+    anonymous: (doc, content, fileName) => ipcRenderer.invoke('publish:anonymous', { doc, content, fileName }),
+    owned: (doc, content, fileName) => ipcRenderer.invoke('publish:owned', { doc, content, fileName }),
+    update: (doc, content) => ipcRenderer.invoke('publish:update', { doc, content }),
+    unpublish: (doc) => ipcRenderer.invoke('publish:unpublish', { doc }),
+    onStatusChanged: (callback) => ipcRenderer.on('publish:status-changed', (event, change) => callback(change))
+  },
+
   // Tab context menu
   showTabContextMenu: (tabInfo) => ipcRenderer.invoke('show-tab-context-menu', tabInfo),
   showFolderContextMenu: (folderPath) => ipcRenderer.invoke('show-folder-context-menu', folderPath),

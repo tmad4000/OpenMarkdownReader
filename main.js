@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage, clipboard, crashReporter } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeImage, clipboard, crashReporter, net, safeStorage } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -8,6 +8,7 @@ const log = require('electron-log/main');
 const { openInFinder } = require('./finder-actions');
 const { parseRemoteDirectoryListing } = require('./remote-folder-utils');
 const agentServer = require('./agent-server');
+const { createPublishService, serializeError, PROTOCOL: PUBLISH_PROTOCOL } = require('./publish-service');
 
 // Edition descriptor — generated at build/dev start by scripts/generate-edition.js.
 // Falls back to the standard profile if the file isn't present (e.g., first run
@@ -263,6 +264,9 @@ function parseArgs(argv, baseDirectory = process.cwd()) {
       }
     } else if (arg === '--debug') {
       flags.debug = true;
+    } else if (isPublishAuthUrl(arg)) {
+      // openmarkdownreader:// sign-in callbacks are handled by handlePublishAuthUrl
+      continue;
     } else if (arg === '.') {
       flags.files.push(baseDirectory);
     } else if (!arg.startsWith('-')) {
@@ -280,6 +284,87 @@ function parseArgs(argv, baseDirectory = process.cwd()) {
   return flags;
 }
 
+// ─── Share to web (publish) ───────────────────────────────────────────
+// All publish network calls and tokens live in publish-service.js (main
+// process). The renderer talks to it only through the publish:* IPC channels.
+// Nothing contacts the server until the user acts in the share popover or CLI.
+
+let publishService = null;
+const pendingPublishAuthUrls = [];
+let publishProtocolRegistered = false;
+
+function isPublishAuthUrl(value) {
+  return typeof value === 'string' && value.toLowerCase().startsWith(`${PUBLISH_PROTOCOL}://`);
+}
+
+function getPublishService() {
+  if (!publishService) {
+    publishService = createPublishService({
+      // Electron's net.fetch uses Chromium's network stack (system proxy/certs)
+      fetch: (net && typeof net.fetch === 'function')
+        ? (url, opts) => net.fetch(url, opts)
+        : (url, opts) => fetch(url, opts),
+      storageDir: app.getPath('userData'),
+      safeStorage,
+      openExternal: (url) => shell.openExternal(url),
+      log,
+      onChange: (change) => {
+        windows.forEach(win => {
+          if (!win.isDestroyed()) win.webContents.send('publish:status-changed', change);
+        });
+      }
+    });
+  }
+  return publishService;
+}
+
+function registerPublishProtocolClient() {
+  if (publishProtocolRegistered) return;
+  try {
+    if (process.defaultApp && process.argv.length >= 2) {
+      // Dev (electron .): register the Electron binary + app path
+      app.setAsDefaultProtocolClient(PUBLISH_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+      app.setAsDefaultProtocolClient(PUBLISH_PROTOCOL);
+    }
+    publishProtocolRegistered = true;
+  } catch (err) {
+    log.warn('[publish] Could not register openmarkdownreader:// protocol:', err.message);
+  }
+}
+
+function notifyPublishToast(message, type) {
+  const win = getFocusedWindow();
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  win.webContents.send('show-toast', message, type);
+}
+
+function handlePublishAuthUrl(url) {
+  if (!app.isReady()) {
+    pendingPublishAuthUrls.push(url);
+    return;
+  }
+  getPublishService().handleAuthCallback(url)
+    .then(result => {
+      const who = result.user && (result.user.email || result.user.name);
+      notifyPublishToast(who ? `Signed in as ${who}` : 'Signed in with Ideaflow ID', 'success');
+    })
+    .catch(err => {
+      log.warn('[publish] Sign-in callback failed:', err.code, err.message);
+      notifyPublishToast(err.message, 'error');
+    });
+}
+
+// macOS delivers openmarkdownreader:// URLs here (may fire before ready)
+app.on('open-url', (event, url) => {
+  if (!isPublishAuthUrl(url)) return;
+  event.preventDefault();
+  handlePublishAuthUrl(url);
+});
+
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -287,6 +372,10 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (event, argv, workingDirectory) => {
+    // Windows/Linux deliver openmarkdownreader:// callbacks as argv here
+    const authUrl = (argv || []).find(isPublishAuthUrl);
+    if (authUrl) handlePublishAuthUrl(authUrl);
+
     // Someone tried to run a second instance, we should focus our window.
     const win = getFocusedWindow();
     if (win) {
@@ -2618,6 +2707,15 @@ app.whenReady().then(() => {
   // Start agent control server (Unix socket for CLI/agent access)
   agentServer.startServer();
   registerAgentCommands();
+
+  // Packaged standard builds claim openmarkdownreader:// at launch (no
+  // network). Dev/other editions register only when the user starts sign-in.
+  if (app.isPackaged && edition.profile === 'standard') {
+    registerPublishProtocolClient();
+  }
+  const launchAuthUrl = process.argv.find(isPublishAuthUrl);
+  if (launchAuthUrl) pendingPublishAuthUrls.push(launchAuthUrl);
+  pendingPublishAuthUrls.splice(0).forEach(handlePublishAuthUrl);
 });
 
 // Save session before quitting
@@ -3009,6 +3107,104 @@ function registerAgentCommands() {
 
   // ── Export ──
 
+  // ── Share to web (publish) ──
+  // Same main-process service as the share popover. Target is the given file
+  // path (live buffer if open in a tab, else read from disk) or the active tab.
+
+  async function resolvePublishTarget(args, { needContent }) {
+    const target = args.path || args.arg;
+    const win = getFocusedWindow();
+    if (target) {
+      const absPath = path.resolve(String(target));
+      if (win) {
+        const tabContent = await getRendererTabContent(win, absPath);
+        if (tabContent && !tabContent.error) {
+          return { docKey: absPath, content: tabContent.content, fileName: tabContent.fileName || path.basename(absPath) };
+        }
+      }
+      if (!needContent) return { docKey: absPath, fileName: path.basename(absPath) };
+      if (!fs.existsSync(absPath)) throw new Error(`File not found: ${absPath}`);
+      return { docKey: absPath, content: fs.readFileSync(absPath, 'utf8'), fileName: path.basename(absPath) };
+    }
+    if (!win) throw new Error('No window open. Pass a file path.');
+    const state = await getRendererAppState(win);
+    const active = state && state.tabs && state.tabs.find(t => t.isActive);
+    if (!active) throw new Error('No active tab. Pass a file path.');
+    const docKey = active.filePath && path.isAbsolute(active.filePath)
+      ? active.filePath
+      : `untitled:${win.webContents.id}:${active.id}`;
+    if (!needContent) return { docKey, fileName: active.fileName };
+    const tabContent = await getRendererTabContent(win, active.filePath || active.id);
+    if (!tabContent || tabContent.error) throw new Error('Could not read the active tab');
+    return { docKey, content: tabContent.content, fileName: active.fileName || 'untitled.md' };
+  }
+
+  function publishCommandError(err) {
+    const info = serializeError(err);
+    return new Error(info.code !== 'unknown' ? `${info.message} [${info.code}]` : info.message);
+  }
+
+  agentServer.registerCommand('publish-status', async (args) => {
+    let docKey = null;
+    if (args.path || args.arg || getFocusedWindow()) {
+      try {
+        docKey = (await resolvePublishTarget(args, { needContent: false })).docKey;
+      } catch {}
+    }
+    return getPublishService().getStatus(docKey);
+  });
+
+  agentServer.registerCommand('publish', async (args) => {
+    const svc = getPublishService();
+    const target = await resolvePublishTarget(args, { needContent: true });
+    try {
+      const existing = svc.getStatus(target.docKey).record;
+      if (existing) {
+        if (existing.mode === 'account' && existing.canUpdate) {
+          const result = await svc.updatePublished({ docKey: target.docKey, content: target.content });
+          return { ...result, url: result.record.url, updated: true };
+        }
+        return { record: existing, url: existing.url, alreadyPublished: true };
+      }
+      const anonymous = args.anonymous === true || args.anonymous === 'true';
+      if (!anonymous && !svc.getStatus().signedIn) {
+        throw new Error('Not signed in. Run `omr --cmd publish-sign-in` first, or pass --anonymous.');
+      }
+      const result = anonymous
+        ? await svc.publishAnonymous(target)
+        : await svc.publishOwned(target);
+      return { ...result, url: result.record.url };
+    } catch (err) {
+      throw publishCommandError(err);
+    }
+  });
+
+  agentServer.registerCommand('get-publish-url', async (args) => {
+    const target = await resolvePublishTarget(args, { needContent: false });
+    const record = getPublishService().getStatus(target.docKey).record;
+    if (!record) throw new Error('This document is not published.');
+    return { url: record.url, record };
+  });
+
+  agentServer.registerCommand('unpublish', async (args) => {
+    const target = await resolvePublishTarget(args, { needContent: false });
+    try {
+      return await getPublishService().unpublish({ docKey: target.docKey });
+    } catch (err) {
+      throw publishCommandError(err);
+    }
+  });
+
+  agentServer.registerCommand('publish-sign-in', async () => {
+    registerPublishProtocolClient();
+    const result = await getPublishService().signIn();
+    return { started: true, message: 'Finish signing in in your browser.', authorizeUrl: result.authorizeUrl };
+  });
+
+  agentServer.registerCommand('publish-sign-out', async () => {
+    return getPublishService().signOut();
+  });
+
   agentServer.registerCommand('export-pdf', async (args) => {
     const win = getFocusedWindow();
     if (!win) return { error: 'No window open' };
@@ -3192,7 +3388,11 @@ ipcMain.handle('create-folder-in-directory', async (event, dirPath, folderName) 
 
 // Move file into directory (sidebar drag and drop)
 ipcMain.handle('move-file-to-directory', async (event, sourcePath, targetDirPath) => {
-  return moveFileToDirectory(sourcePath, targetDirPath);
+  const result = moveFileToDirectory(sourcePath, targetDirPath);
+  if (result && result.success && result.newPath) {
+    getPublishService().moveRecord(sourcePath, result.newPath);
+  }
+  return result;
 });
 
 // Rename file
@@ -3207,6 +3407,7 @@ ipcMain.handle('rename-file', async (event, oldPath, newName) => {
     }
 
     fs.renameSync(oldPath, newPath);
+    getPublishService().moveRecord(oldPath, newPath);
     return { success: true, newPath };
   } catch (err) {
     return { success: false, error: err.message };
@@ -3685,6 +3886,60 @@ ipcMain.handle('open-external', async (event, url) => {
   return false;
 });
 
+// ─── Publish IPC (share to web) ───────────────────────────────────────
+// Renderer passes { doc: { filePath, tabId }, content, fileName }. Tokens and
+// delete tokens never cross this boundary — only sanitized status/records.
+
+function publishDocKey(event, doc = {}) {
+  if (doc && typeof doc.filePath === 'string' && path.isAbsolute(doc.filePath)) return doc.filePath;
+  if (doc && doc.tabId !== undefined && doc.tabId !== null) {
+    // Untitled/remote tabs: in-memory record scoped to this window
+    return `untitled:${event.sender.id}:${doc.tabId}`;
+  }
+  return null;
+}
+
+function handlePublishIpc(channel, fn) {
+  ipcMain.handle(channel, async (event, payload = {}) => {
+    try {
+      const result = await fn(event, payload || {});
+      return { ok: true, ...result };
+    } catch (err) {
+      log.warn(`[publish] ${channel} failed:`, err.code || '', err.message, err.detail || '');
+      return { ok: false, error: serializeError(err) };
+    }
+  });
+}
+
+handlePublishIpc('publish:status', async (event, { doc }) => {
+  return getPublishService().getStatus(publishDocKey(event, doc));
+});
+
+handlePublishIpc('publish:signIn', async () => {
+  registerPublishProtocolClient();
+  return getPublishService().signIn();
+});
+
+handlePublishIpc('publish:cancelSignIn', async () => getPublishService().cancelSignIn());
+
+handlePublishIpc('publish:signOut', async () => getPublishService().signOut());
+
+handlePublishIpc('publish:anonymous', async (event, { doc, content, fileName }) => {
+  return getPublishService().publishAnonymous({ docKey: publishDocKey(event, doc), content, fileName });
+});
+
+handlePublishIpc('publish:owned', async (event, { doc, content, fileName }) => {
+  return getPublishService().publishOwned({ docKey: publishDocKey(event, doc), content, fileName });
+});
+
+handlePublishIpc('publish:update', async (event, { doc, content }) => {
+  return getPublishService().updatePublished({ docKey: publishDocKey(event, doc), content });
+});
+
+handlePublishIpc('publish:unpublish', async (event, { doc }) => {
+  return getPublishService().unpublish({ docKey: publishDocKey(event, doc) });
+});
+
 // Toggle watch mode from renderer
 ipcMain.handle('toggle-watch-mode', async () => {
   const menu = Menu.getApplicationMenu();
@@ -3809,6 +4064,7 @@ ipcMain.handle('watch-file', async (event, filePath, options = {}) => {
               fileWatchStates.delete(key);
               fileWatchStates.set(newWatchKey, currentState);
               win.webContents.send('file-path-changed', { oldPath, newPath: movedPath });
+              getPublishService().moveRecord(oldPath, movedPath);
               scheduleUpdate(newWatchKey);
 
               setTimeout(() => {

@@ -50,6 +50,14 @@
         "to": "cli.sh"
       }
     ],
+    "protocols": [
+      {
+        "name": "OpenMarkdownReader Sign-In",
+        "schemes": [
+          "openmarkdownreader"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
