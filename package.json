@@ -15,7 +15,8 @@
     "build:mas": "node scripts/generate-edition.js && node scripts/generate-build-info.js && electron-builder --mac mas",
     "build:dashboard:mac": "OMR_PROFILE=dashboard node scripts/generate-edition.js && node scripts/generate-build-info.js && electron-builder --mac -c.appId=com.jacobcole.activeprojectsdashboard -c.productName=\"Active Projects Dashboard\" -c.mac.icon=build/icon-dashboard.icns",
     "install-dev": "./scripts/install-dev.sh",
-    "install-prod": "./scripts/install-prod.sh"
+    "install-prod": "./scripts/install-prod.sh",
+    "build:milkdown": "node scripts/build-milkdown.js"
   },
   "keywords": [
     "markdown",
@@ -38,8 +39,10 @@
     "marked": "^17.0.1"
   },
   "devDependencies": {
+    "@milkdown/kit": "7.22.3",
     "electron": "^41.0.2",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "esbuild": "0.25.12"
   },
   "build": {
     "appId": "com.jacobcole.openmarkdownreader",

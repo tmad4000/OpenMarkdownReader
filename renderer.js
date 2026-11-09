@@ -124,8 +124,20 @@ let settings = {
   terminalView: false, // Terminal display mode
   sidebarViewMode: 'tree', // 'tree' or 'recent'
   sidebarSortMode: 'name', // 'name' or 'date'
-  sidebarWidth: 240
+  sidebarWidth: 240,
+  // Rich editor engine (markdown-reader-r1r): 'milkdown' = true WYSIWYG
+  // (default), 'easymde' = markdown source with styling hints. Plain textarea
+  // mode is the rich/plain toggle (richEditorMode=false).
+  editorEngine: 'milkdown'
 };
+
+function milkdownAvailable() {
+  return typeof Milkdown !== 'undefined' && typeof Milkdown.createMilkdownEditor === 'function';
+}
+
+function activeRichEngine() {
+  return settings.editorEngine === 'milkdown' && milkdownAvailable() ? 'milkdown' : 'easymde';
+}
 
 // `easyMDE` points to the active tab's EasyMDE instance, or null if the active
 // tab isn't editing in rich mode. Each tab has its own EasyMDE in `tab.easyMDE`
@@ -1455,6 +1467,7 @@ function ensureTabEditor(tab) {
 function getTabEditorWrapper(tab) {
   if (!tab || !tab.editorEl) return null;
   if (tab.easyMDE) {
+    if (tab.easyMDE.isMilkdown) return tab.easyMDE.wrapperEl;
     return tab.editorEl.closest('.EasyMDEContainer') || tab.editorEl;
   }
   return tab.editorEl;
@@ -4260,6 +4273,8 @@ window.electronAPI.onSettingChanged(({ setting, value }) => {
   } else if (setting === 'compact-tables') {
     settings.compactTables = !!value;
     document.body.classList.toggle('compact-tables', !!value);
+  } else if (setting === 'editor-engine') {
+    applyEditorEngine(value);
   }
 });
 
@@ -6176,6 +6191,18 @@ function updateFindResults(options = {}) {
 
 function searchInEditor(query, options = {}) {
   const { preserveInputFocus = false } = options;
+  // Milkdown: search the rendered document (positions are ProseMirror
+  // ranges, not markdown source offsets).
+  if (easyMDE && easyMDE.isMilkdown) {
+    findState.matches = easyMDE.findRanges(query);
+    if (findState.matches.length > 0) {
+      findState.currentIndex = 0;
+      jumpToMatch(0, { preserveInputFocus });
+    } else {
+      findState.currentIndex = -1;
+    }
+    return;
+  }
   // Use EasyMDE's value if active, otherwise plain textarea
   const text = easyMDE ? easyMDE.value() : editor.value;
   const regex = new RegExp(escapeRegExp(query), 'gi');
@@ -6306,7 +6333,9 @@ function jumpToMatch(index, options = {}) {
   if (tab.isEditing) {
     const match = findState.matches[index];
 
-    if (easyMDE) {
+    if (easyMDE && easyMDE.isMilkdown) {
+      easyMDE.selectRange(match.from, match.to, { focus: !preserveInputFocus });
+    } else if (easyMDE) {
       // Convert character offset to CodeMirror {line, ch} position
       const cm = easyMDE.codemirror;
       const text = easyMDE.value();
@@ -6643,6 +6672,10 @@ richModeBtn.addEventListener('click', () => {
 
 function updateRichToolbarUI() {
   if (!editorContainer) return;
+  // Milkdown has no EasyMDE toolbar; hide the toggle button for it.
+  if (richToolbarBtn && settings.richEditorMode && activeRichEngine() === 'milkdown') {
+    richToolbarBtn.classList.add('hidden');
+  }
   const shouldShow = settings.richEditorMode && settings.richToolbarVisible;
   editorContainer.classList.toggle('hide-rich-toolbar', !shouldShow);
   if (richToolbarBtn) {
@@ -7005,6 +7038,15 @@ initRichEditor = function() {
   // Need a textarea to wrap
   const ta = ensureTabEditor(tab);
 
+  if (activeRichEngine() === 'milkdown') {
+    const adapter = createMilkdownAdapter(tab);
+    ta.style.display = 'none';
+    tab.easyMDE = adapter;
+    easyMDE = adapter;
+    updateRichToolbarUI();
+    return;
+  }
+
   const instance = new EasyMDE({
     element: ta,
     autoDownloadFontAwesome: false,
@@ -7059,6 +7101,13 @@ initRichEditor = function() {
 function leaveRichMode() {
   const tab = tabs.find(t => t.id === activeTabId);
   if (!tab || !tab.easyMDE) return;
+  if (tab.easyMDE.isMilkdown) {
+    try { tab.editorEl.value = tab.easyMDE.value(); } catch {}
+    tab.easyMDE.wrapperEl.style.display = 'none';
+    tab.editorEl.style.display = '';
+    easyMDE = null;
+    return;
+  }
   // Sync content from CodeMirror back to the underlying textarea so plain mode
   // sees the latest text.
   try {
@@ -7088,6 +7137,16 @@ function enterRichMode() {
     initRichEditor();
     return;
   }
+  if (tab.easyMDE.isMilkdown) {
+    tab.editorEl.style.display = 'none';
+    tab.easyMDE.wrapperEl.style.display = '';
+    try {
+      if (tab.easyMDE.value() !== tab.editorEl.value) tab.easyMDE.value(tab.editorEl.value);
+    } catch {}
+    easyMDE = tab.easyMDE;
+    setTimeout(() => { if (tab.easyMDE) tab.easyMDE.codemirror.focus(); }, 10);
+    return;
+  }
   // Reusing existing instance: move textarea back into wrapper, sync content
   const wrapper = tab.editorEl.closest('.EasyMDEContainer');
   if (wrapper) {
@@ -7112,6 +7171,153 @@ function enterRichMode() {
       tab.easyMDE.codemirror.focus();
     }
   }, 10);
+}
+
+// ─── Milkdown adapter (markdown-reader-r1r) ─────────────────────────
+// Wraps a Milkdown editor in the subset of the EasyMDE API this file uses
+// (`value()`, `value(x)`, `codemirror.{focus,refresh,getScrollInfo,scrollTo,
+// replaceSelection,getCursor,indexFromPos}`, `toTextArea()`), so the per-tab
+// lifecycle (tab.easyMDE / global easyMDE) works unchanged for both engines.
+// `isMilkdown` distinguishes it where DOM handling differs.
+//
+// Milkdown creation is async; until it is ready, value() reads/writes a
+// pending string so callers never see an empty document.
+function createMilkdownAdapter(tab) {
+  const wrapperEl = document.createElement('div');
+  // `markdown-body` gives the WYSIWYG surface the same typography as preview.
+  wrapperEl.className = 'milkdown-host markdown-body';
+  wrapperEl.dataset.tabId = String(tab.id);
+  editorContainer.appendChild(wrapperEl);
+
+  let handle = null;
+  let destroyed = false;
+  let pending = tab.editorEl ? tab.editorEl.value : (tab.content || '');
+
+  const onChange = () => {
+    const t = tabs.find(tt => tt.id === tab.id);
+    if (!t || !t.isEditing || t.id !== activeTabId) return;
+    if (!t.isModified) {
+      t.isModified = true;
+      updateTabUI(t.id);
+      document.title = `${t.fileName} * - ${APP_NAME}`;
+    }
+    updateDocumentWordCount(t);
+    triggerAutoSave();
+  };
+
+  // Cmd/Ctrl+click opens links and [[wikilinks]] (same as EasyMDE mode).
+  wrapperEl.addEventListener('click', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+    const wl = e.target.closest && e.target.closest('[data-wikilink]');
+    const a = e.target.closest && e.target.closest('a[href]');
+    let href = null;
+    if (wl) href = extractMarkdownLinkAt(`[[${wl.getAttribute('data-wikilink')}]]`, 2);
+    else if (a) href = a.getAttribute('href');
+    if (!href) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openLinkFromEditor(href, e);
+  }, true);
+
+  const adapter = {
+    isMilkdown: true,
+    wrapperEl,
+    get ready() { return !!handle; },
+    value(next) {
+      if (typeof next === 'string') {
+        if (handle) handle.setMarkdown(next); else pending = next;
+        return undefined;
+      }
+      return handle ? handle.getMarkdown() : pending;
+    },
+    codemirror: {
+      focus() { if (handle) handle.focus(); },
+      refresh() {},
+      getScrollInfo() {
+        return { top: wrapperEl.scrollTop, height: wrapperEl.scrollHeight, clientHeight: wrapperEl.clientHeight };
+      },
+      scrollTo(_x, y) { if (typeof y === 'number') wrapperEl.scrollTop = y; },
+      replaceSelection(text) { if (handle) handle.insertText(String(text)); },
+      getCursor() { return 0; },
+      indexFromPos() {
+        if (!handle) return 0;
+        try { return handle.view.state.selection.from; } catch { return 0; }
+      },
+    },
+    findRanges(query) { return handle ? handle.findRanges(query) : []; },
+    selectRange(from, to, opts) { if (handle) handle.selectRange(from, to, opts); },
+    toTextArea() {
+      destroyed = true;
+      if (handle) handle.destroy();
+      handle = null;
+      if (wrapperEl.parentNode) wrapperEl.parentNode.removeChild(wrapperEl);
+    },
+  };
+
+  Milkdown.createMilkdownEditor(wrapperEl, pending, { onChange }).then((h) => {
+    if (destroyed) { h.destroy(); return; }
+    handle = h;
+    // A value() set while we were initializing wins.
+    if (h.getMarkdown() !== pending) h.setMarkdown(pending);
+    if (tab.id === activeTabId && tab.easyMDE === adapter && tab.isEditing
+        && settings.richEditorMode && wrapperEl.style.display !== 'none') h.focus();
+  }).catch((err) => {
+    console.error('[milkdown] init failed, falling back to EasyMDE:', err);
+    if (window.electronAPI && window.electronAPI.logToMain) {
+      window.electronAPI.logToMain('error', `Milkdown init failed: ${err && err.message}`);
+    }
+    // Fall back for this tab: drop the adapter and build an EasyMDE instead.
+    if (tab.easyMDE === adapter) {
+      if (tab.editorEl) tab.editorEl.value = pending;
+      adapter.toTextArea();
+      tab.easyMDE = null;
+      if (easyMDE === adapter) easyMDE = null;
+      settings.editorEngine = 'easymde';
+      if (tab.id === activeTabId && settings.richEditorMode && tab.isEditing) enterRichMode();
+    }
+  });
+
+  return adapter;
+}
+
+// Switch rich engine. Every tab's rich instance of the other engine is
+// flushed to its textarea and released; the active tab re-enters rich mode
+// with the new engine. Undo history of the old engine is lost (expected).
+function applyEditorEngine(engine) {
+  const next = engine === 'easymde' ? 'easymde' : 'milkdown';
+  if (settings.editorEngine === next) return;
+  settings.editorEngine = next;
+  for (const t of tabs) {
+    if (!t.easyMDE) continue;
+    const isMd = !!t.easyMDE.isMilkdown;
+    if ((next === 'milkdown') === isMd) continue;
+    // In plain mode the textarea holds the latest text (leaveRichMode keeps
+    // the hidden rich instance alive but stale) — don't overwrite it.
+    const plainIsCurrent = !settings.richEditorMode
+      || (t.editorEl && t.editorEl.style.display !== 'none');
+    try {
+      const val = plainIsCurrent && t.editorEl ? t.editorEl.value : t.easyMDE.value();
+      if (t.editorEl) t.editorEl.value = val;
+      if (t.isEditing) t.content = val;
+    } catch {}
+    if (isMd) {
+      t.easyMDE.toTextArea();
+    } else {
+      // EasyMDE: move the textarea out, then drop the wrapper.
+      const wrapper = t.editorEl && t.editorEl.closest('.EasyMDEContainer');
+      try { t.easyMDE.toTextArea(); } catch {}
+      if (t.editorEl && t.editorEl.parentNode !== editorContainer) editorContainer.appendChild(t.editorEl);
+      if (wrapper && wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+    }
+    if (t.editorEl) t.editorEl.style.display = 'none';
+    t.easyMDE = null;
+  }
+  easyMDE = null;
+  const tab = tabs.find(t => t.id === activeTabId);
+  if (tab && tab.isEditing) {
+    setActiveEditor(tab);
+    if (settings.richEditorMode) enterRichMode();
+  }
 }
 
 window.electronAPI.onSetAutoSave((enabled) => {
@@ -7823,9 +8029,7 @@ window.electronAPI.onAgentCommand?.((cmd) => {
           // Whether the editor wrapper (textarea or EasyMDEContainer) is visible
           let wrapperVisible = null;
           if (t.editorEl) {
-            const wrapper = t.easyMDE
-              ? t.editorEl.closest('.EasyMDEContainer') || t.editorEl
-              : t.editorEl;
+            const wrapper = getTabEditorWrapper(t) || t.editorEl;
             wrapperVisible = wrapper.style.display !== 'none';
           }
           return {
@@ -7836,6 +8040,8 @@ window.electronAPI.onAgentCommand?.((cmd) => {
             isModified: t.isModified,
             hasEditorEl: !!t.editorEl,
             hasEasyMDE: !!t.easyMDE,
+            richEngine: t.easyMDE ? (t.easyMDE.isMilkdown ? 'milkdown' : 'easymde') : null,
+            milkdownReady: t.easyMDE && t.easyMDE.isMilkdown ? t.easyMDE.ready : null,
             editorElInDom: !!(t.editorEl && document.contains(t.editorEl)),
             liveValue,
             tabContent: t.content ? t.content.slice(0, 80) : null,
@@ -7848,8 +8054,9 @@ window.electronAPI.onAgentCommand?.((cmd) => {
       }
       case 'find': {
         // Open find bar and optionally set the query
-        if (typeof openFindBar === 'function') {
-          openFindBar();
+        // (was calling a non-existent openFindBar, so agent find never searched)
+        if (!findState.isOpen && typeof showFindBar === 'function') {
+          showFindBar();
         }
         if (cmd.query) {
           const findInput = document.getElementById('find-input');
@@ -7858,6 +8065,8 @@ window.electronAPI.onAgentCommand?.((cmd) => {
             findInput.dispatchEvent(new Event('input'));
           }
         }
+        result.matchCount = findState.matches.length;
+        result.currentIndex = findState.currentIndex;
         break;
       }
       default:

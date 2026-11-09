@@ -4433,3 +4433,78 @@ mark.find-match.active {
     widows: 3;
   }
 }
+
+/* ==========================================
+   Milkdown WYSIWYG editor (markdown-reader-r1r)
+   The host also carries .markdown-body so it inherits preview typography.
+   Milkdown's ProseMirror root has class "editor", which collides with the
+   plain-textarea .editor styles — reset those here.
+   ========================================== */
+.milkdown-host {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.milkdown-host .milkdown,
+.milkdown-host .ProseMirror.editor,
+.milkdown-host .ProseMirror {
+  height: auto;
+  min-height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.milkdown-host .ProseMirror:focus {
+  outline: none;
+  border: none;
+}
+
+.milkdown-host .ProseMirror > *:first-child {
+  margin-top: 0;
+}
+
+.milkdown-host .ProseMirror li > p {
+  margin: 0;
+}
+
+.milkdown-host .ProseMirror-selectednode {
+  outline: 2px solid var(--link-color, #0969da);
+  border-radius: 3px;
+}
+
+.milkdown-host .md-wikilink {
+  color: var(--link-color, #0969da);
+  border-bottom: 1px dashed currentColor;
+  cursor: text;
+}
+
+.milkdown-host .md-wikilink::before { content: '[['; opacity: 0.4; }
+.milkdown-host .md-wikilink::after { content: ']]'; opacity: 0.4; }
+
+.milkdown-host a { cursor: text; }
+
+.editor-font-mono .milkdown-host .ProseMirror {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"] {
+  list-style: none;
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"]::before {
+  content: '☐ ';
+}
+
+.milkdown-host .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+  content: '☑ ';
+}

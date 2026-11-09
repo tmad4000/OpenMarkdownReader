@@ -344,6 +344,7 @@ let config = {
   contentWidth: 900,
   contentPadding: 20,
   editorMonospace: false, // Use monospace font in editor
+  editorEngine: 'milkdown', // Rich editor engine: 'milkdown' (WYSIWYG) | 'easymde' (markdown source w/ styling). markdown-reader-r1r
   compactTables: false, // Compact table cells (nowrap + horizontal scroll)
   restoreSession: true, // Whether to restore previous session on launch
   session: null, // Saved session state: { windows: [{ tabs: [{filePath, fileName}], directory: dirPath }] }
@@ -1068,6 +1069,7 @@ function createWindow(filePath = null) {
     win.webContents.send('setting-changed', { setting: 'content-width', value: config.contentWidth });
     win.webContents.send('setting-changed', { setting: 'content-padding', value: config.contentPadding });
     win.webContents.send('setting-changed', { setting: 'editor-monospace', value: config.editorMonospace || false });
+    win.webContents.send('setting-changed', { setting: 'editor-engine', value: config.editorEngine || 'milkdown' });
     win.webContents.send('setting-changed', { setting: 'compact-tables', value: config.compactTables || false });
     win.webContents.send('setting-changed', { key: 'noos-widget', value: config.noosWidget === true });
 
@@ -1649,6 +1651,23 @@ function setupMenu() {
           }
         },
         {
+          label: 'Rich Editor Engine',
+          submenu: [
+            {
+              label: 'Milkdown (WYSIWYG)',
+              type: 'radio',
+              checked: (config.editorEngine || 'milkdown') === 'milkdown',
+              click: () => setEditorEngine('milkdown')
+            },
+            {
+              label: 'EasyMDE (Markdown Source)',
+              type: 'radio',
+              checked: config.editorEngine === 'easymde',
+              click: () => setEditorEngine('easymde')
+            }
+          ]
+        },
+        {
           label: 'Compact Tables',
           type: 'checkbox',
           checked: config.compactTables || false,
@@ -1814,6 +1833,13 @@ function setupMenu() {
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || [...windows][0];
+}
+
+function setEditorEngine(engine) {
+  config.editorEngine = engine === 'easymde' ? 'easymde' : 'milkdown';
+  saveConfig();
+  broadcastSetting('editor-engine', config.editorEngine);
+  setupMenu();
 }
 
 function broadcastSetting(setting, value) {
@@ -2728,6 +2754,7 @@ function registerAgentCommands() {
       contentWidth: config.contentWidth,
       contentPadding: config.contentPadding,
       editorMonospace: config.editorMonospace,
+      editorEngine: config.editorEngine || 'milkdown',
       compactTables: config.compactTables,
       restoreSession: config.restoreSession,
       watchMode: config.watchMode,
@@ -2926,6 +2953,10 @@ function registerAgentCommands() {
         saveConfig();
         broadcastSetting('editor-monospace', config.editorMonospace);
         return { editorMonospace: config.editorMonospace };
+      case 'editor-engine':
+      case 'editorEngine':
+        setEditorEngine(value);
+        return { editorEngine: config.editorEngine };
       case 'read-only':
       case 'readOnly': {
         const win = getFocusedWindow();
