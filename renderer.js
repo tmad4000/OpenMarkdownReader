@@ -6191,6 +6191,18 @@ function updateFindResults(options = {}) {
 
 function searchInEditor(query, options = {}) {
   const { preserveInputFocus = false } = options;
+  // Milkdown: search the rendered document (positions are ProseMirror
+  // ranges, not markdown source offsets).
+  if (easyMDE && easyMDE.isMilkdown) {
+    findState.matches = easyMDE.findRanges(query);
+    if (findState.matches.length > 0) {
+      findState.currentIndex = 0;
+      jumpToMatch(0, { preserveInputFocus });
+    } else {
+      findState.currentIndex = -1;
+    }
+    return;
+  }
   // Use EasyMDE's value if active, otherwise plain textarea
   const text = easyMDE ? easyMDE.value() : editor.value;
   const regex = new RegExp(escapeRegExp(query), 'gi');
@@ -6321,7 +6333,9 @@ function jumpToMatch(index, options = {}) {
   if (tab.isEditing) {
     const match = findState.matches[index];
 
-    if (easyMDE) {
+    if (easyMDE && easyMDE.isMilkdown) {
+      easyMDE.selectRange(match.from, match.to, { focus: !preserveInputFocus });
+    } else if (easyMDE) {
       // Convert character offset to CodeMirror {line, ch} position
       const cm = easyMDE.codemirror;
       const text = easyMDE.value();
@@ -7230,6 +7244,8 @@ function createMilkdownAdapter(tab) {
         try { return handle.view.state.selection.from; } catch { return 0; }
       },
     },
+    findRanges(query) { return handle ? handle.findRanges(query) : []; },
+    selectRange(from, to, opts) { if (handle) handle.selectRange(from, to, opts); },
     toTextArea() {
       destroyed = true;
       if (handle) handle.destroy();
@@ -7243,7 +7259,8 @@ function createMilkdownAdapter(tab) {
     handle = h;
     // A value() set while we were initializing wins.
     if (h.getMarkdown() !== pending) h.setMarkdown(pending);
-    if (tab.id === activeTabId && tab.easyMDE === adapter) h.focus();
+    if (tab.id === activeTabId && tab.easyMDE === adapter && tab.isEditing
+        && settings.richEditorMode && wrapperEl.style.display !== 'none') h.focus();
   }).catch((err) => {
     console.error('[milkdown] init failed, falling back to EasyMDE:', err);
     if (window.electronAPI && window.electronAPI.logToMain) {
@@ -7274,8 +7291,12 @@ function applyEditorEngine(engine) {
     if (!t.easyMDE) continue;
     const isMd = !!t.easyMDE.isMilkdown;
     if ((next === 'milkdown') === isMd) continue;
+    // In plain mode the textarea holds the latest text (leaveRichMode keeps
+    // the hidden rich instance alive but stale) — don't overwrite it.
+    const plainIsCurrent = !settings.richEditorMode
+      || (t.editorEl && t.editorEl.style.display !== 'none');
     try {
-      const val = t.easyMDE.value();
+      const val = plainIsCurrent && t.editorEl ? t.editorEl.value : t.easyMDE.value();
       if (t.editorEl) t.editorEl.value = val;
       if (t.isEditing) t.content = val;
     } catch {}
@@ -8033,8 +8054,9 @@ window.electronAPI.onAgentCommand?.((cmd) => {
       }
       case 'find': {
         // Open find bar and optionally set the query
-        if (typeof openFindBar === 'function') {
-          openFindBar();
+        // (was calling a non-existent openFindBar, so agent find never searched)
+        if (!findState.isOpen && typeof showFindBar === 'function') {
+          showFindBar();
         }
         if (cmd.query) {
           const findInput = document.getElementById('find-input');
@@ -8043,6 +8065,8 @@ window.electronAPI.onAgentCommand?.((cmd) => {
             findInput.dispatchEvent(new Event('input'));
           }
         }
+        result.matchCount = findState.matches.length;
+        result.currentIndex = findState.currentIndex;
         break;
       }
       default:

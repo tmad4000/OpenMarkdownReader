@@ -18,6 +18,7 @@ import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { $remark, $nodeSchema, $inputRule, callCommand } from '@milkdown/kit/utils';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
+import { TextSelection } from '@milkdown/kit/prose/state';
 
 const FRONTMATTER_RE = /^---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
 const WIKILINK_RE = /\[\[([^\[\]\n]+?)\]\]/g;
@@ -345,6 +346,41 @@ export async function createMilkdownEditor(container, initialMarkdown, opts = {}
     focus() { try { ctxGet(editorViewCtx).focus(); } catch {} },
     undo() { editor.action(callCommand(undoCommand.key)); },
     redo() { editor.action(callCommand(redoCommand.key)); },
+    // Case-insensitive text search over the rendered document. Returns
+    // ProseMirror ranges ({ from, to }); matches don't span textblocks.
+    findRanges(query) {
+      const out = [];
+      if (!query) return out;
+      const needle = query.toLowerCase();
+      ctxGet(editorViewCtx).state.doc.descendants((node, pos) => {
+        if (!node.isTextblock) return true;
+        // Map textblock text offsets to doc positions (inline atoms = 1 char).
+        let text = '';
+        const posAt = [];
+        node.forEach((child, offset) => {
+          const base = pos + 1 + offset;
+          if (child.isText) {
+            for (let i = 0; i < child.text.length; i++) { text += child.text[i]; posAt.push(base + i); }
+          } else {
+            text += '\uFFFC'; posAt.push(base);
+          }
+        });
+        const hay = text.toLowerCase();
+        let i = hay.indexOf(needle);
+        while (i !== -1) {
+          out.push({ from: posAt[i], to: posAt[i + needle.length - 1] + 1 });
+          i = hay.indexOf(needle, i + Math.max(needle.length, 1));
+        }
+        return false;
+      });
+      return out;
+    },
+    selectRange(from, to, { focus = true } = {}) {
+      const view = ctxGet(editorViewCtx);
+      const sel = TextSelection.create(view.state.doc, from, to);
+      view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
+      if (focus) view.focus();
+    },
     insertText(text) {
       const view = ctxGet(editorViewCtx);
       view.dispatch(view.state.tr.insertText(text));
